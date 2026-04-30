@@ -1,0 +1,11 @@
+openvino>=2024.0
+numpy
+opencv-python
+websockets>=12.0
+pyyaml
+sqlite-utils
+sherpa-onnx
+pyaudio
+edge-tts
+psutil
+python-dateutil

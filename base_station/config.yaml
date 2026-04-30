@@ -1,0 +1,26 @@
+device:
+  npu_device: "NPU"
+  cpu_device: "CPU"
+
+websocket:
+  host: "0.0.0.0"
+  port: 8765
+  heartbeat_timeout_sec: 30
+
+models:
+  face_emotion: "models/emotions-recognition-retail-0003.xml"
+  head_pose: "models/head-pose-estimation-adas-0001.xml"
+  asr_model: "models/sherpa-onnx-streaming-zipformer-zh"
+  vad_model: "models/silero_vad.onnx"
+
+thresholds:
+  fatigue_score: 0.7
+  anxiety_score: 0.65
+  trigger_duration_min: 30
+
+database:
+  path: "../agent/data/emotions.db"
+
+http_server:
+  port: 8080
+  tts_dir: "/tmp/xiao-an-tts"

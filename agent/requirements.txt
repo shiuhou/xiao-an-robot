@@ -1,0 +1,7 @@
+openai>=1.0.0
+anthropic>=0.20.0
+pyyaml
+sqlite-utils
+python-dateutil
+requests
+websockets>=12.0

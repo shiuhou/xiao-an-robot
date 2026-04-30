@@ -34,7 +34,9 @@ void onControlMessage(const String& type, JsonObject payload) {
     // TODO: Route incoming messages to the correct handler
     Serial.printf("[main] Received: %s\n", type.c_str());
 
-    if (type == MsgType::DISPLAY_EXPRESSION) {
+    if (type == MsgType::SYSTEM_WELCOME) {
+        Serial.println("[WS] Connected to base station");
+    } else if (type == MsgType::DISPLAY_EXPRESSION) {
         // TODO: display.setExpression(payload["expression"]);
     } else if (type == MsgType::MOTION_EXECUTE) {
         // TODO: motor.execute(payload["action"], payload["params"]);
@@ -64,9 +66,9 @@ void setup() {
 
     connectWiFi();
 
-    // TODO: motor.begin();
-    // TODO: servo.begin();
-    // TODO: display.begin();
+    motor.begin();
+    servo.begin();
+    display.begin();
     // TODO: mic.begin();
     // TODO: cam.begin();
 

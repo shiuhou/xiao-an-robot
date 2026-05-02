@@ -23,29 +23,58 @@
 #define BASE_STATION_IP   "192.168.1.100"
 #define BASE_STATION_PORT 8765
 
-WSClient      wsClient;
+WSClient        wsClient;
 MotorController motor;
 ServoController servo;
-DisplayController display;
-MicStream     mic;
-CamStream     cam;
+MicStream       mic;
+CamStream       cam;
 
 void onControlMessage(const String& type, JsonObject payload) {
-    // TODO: Route incoming messages to the correct handler
-    Serial.printf("[main] Received: %s\n", type.c_str());
+    Serial.printf("[main] Dispatch: %s\n", type.c_str());
 
     if (type == MsgType::SYSTEM_WELCOME) {
-        Serial.println("[WS] Connected to base station");
+        Serial.println("[main] Session started with base station");
+
     } else if (type == MsgType::DISPLAY_EXPRESSION) {
-        // TODO: display.setExpression(payload["expression"]);
+        const char* expr      = payload["expression"] | Expression::IDLE;
+        int         intensity = payload["intensity"]  | 5;
+        display_emotion(expr, intensity);
+
     } else if (type == MsgType::MOTION_EXECUTE) {
-        // TODO: motor.execute(payload["action"], payload["params"]);
+        const char* action = payload["action"] | MotionAction::STOP;
+        float       param  = payload["param"]  | 0.0f;
+
+        // servo actions: head tilt, ear wiggle, nod
+        if (strcmp(action, MotionAction::TILT_HEAD) == 0) {
+            servo.setHeadTilt((int)param);
+        } else if (strcmp(action, MotionAction::WIGGLE_EARS) == 0) {
+            servo.wiggleEars((int)param > 0 ? (int)param : 3);
+        } else if (strcmp(action, MotionAction::NOD_HEAD) == 0) {
+            servo.nodHead((int)param > 0 ? (int)param : 2);
+        } else {
+            // motor actions: move, turn, stop
+            motor.execute(action, param);
+        }
+
     } else if (type == MsgType::AUDIO_PLAY_TTS) {
-        // TODO: fetch mp3 from payload["audio_url"] and play
+        // TODO: download payload["audio_url"] and feed to I2S DAC
+        Serial.printf("[TTS] Play: %s\n", (const char*)(payload["audio_url"] | ""));
+
     } else if (type == MsgType::AUDIO_PLAY_LOCAL) {
-        // TODO: play local sound file payload["sound"]
+        // TODO: play sound file from SPIFFS/LittleFS
+        Serial.printf("[Audio] Local: %s\n", (const char*)(payload["sound"] | ""));
+
+    } else if (type == MsgType::CONFIG_UPDATE) {
+        // TODO: persist updated fields to NVS
+        Serial.println("[main] Config update received");
+
     } else if (type == MsgType::SYSTEM_SHUTDOWN) {
+        Serial.println("[main] Shutdown requested — restarting");
+        delay(100);
         ESP.restart();
+
+    } else {
+        Serial.printf("[main] Unknown message type: %s\n", type.c_str());
     }
 }
 
@@ -68,7 +97,7 @@ void setup() {
 
     motor.begin();
     servo.begin();
-    display.begin();
+    display_init();
     // TODO: mic.begin();
     // TODO: cam.begin();
 

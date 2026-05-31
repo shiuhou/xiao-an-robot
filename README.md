@@ -112,6 +112,8 @@ bash scripts/run_mock_robot.sh
 
 Real logs, SQLite databases, local `.env` files, virtual environments, `node_modules`, and large model files should stay out of GitHub. Use `.env.example` and `base_station/config.example.yaml` as local configuration templates.
 
+`agent/data/schema.sql` is used to initialize new databases, while `agent/data/migrations/` is reserved for future incremental upgrades of existing databases.
+
 ## License
 
 MIT License - see LICENSE file

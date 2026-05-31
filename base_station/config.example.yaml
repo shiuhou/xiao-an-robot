@@ -1,0 +1,17 @@
+server:
+  host: "0.0.0.0"
+  control_port: 8765
+
+paths:
+  model_dir: "models"
+  database: "../agent/data/xiao_an.db"
+  log_dir: "../logs"
+
+perception:
+  enable_openvino: true
+  enable_audio: true
+  enable_video: true
+
+robot:
+  heartbeat_timeout_sec: 10
+

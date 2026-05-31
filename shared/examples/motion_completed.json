@@ -1,0 +1,10 @@
+{
+  "type": "motion.completed",
+  "ts": 1714536013000,
+  "seq": 4,
+  "payload": {
+    "action_id": "act-001",
+    "result": "ok"
+  }
+}
+

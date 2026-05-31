@@ -1,0 +1,12 @@
+{
+  "type": "device.hello",
+  "ts": 1714536000000,
+  "seq": 1,
+  "payload": {
+    "device_id": "mock-robot-001",
+    "firmware": "mock-robot/0.1",
+    "battery": 96,
+    "capabilities": ["display", "motion", "tts"]
+  }
+}
+

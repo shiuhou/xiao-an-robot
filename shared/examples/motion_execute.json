@@ -1,0 +1,12 @@
+{
+  "type": "motion.execute",
+  "ts": 1714536010000,
+  "seq": 3,
+  "payload": {
+    "action_id": "act-001",
+    "action": "move_out_of_dock",
+    "params": {},
+    "timeout_ms": 5000
+  }
+}
+

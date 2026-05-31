@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/xiao-an/protocol/message.schema.json",
+  "title": "Xiao An WebSocket Message",
+  "description": "Minimal shared envelope for control-channel JSON messages.",
+  "type": "object",
+  "required": ["type", "ts", "seq", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Message type such as device.hello or motion.execute."
+    },
+    "ts": {
+      "type": "integer",
+      "description": "Unix timestamp in milliseconds."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic sequence number from the sender."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Message-specific fields.",
+      "additionalProperties": true
+    }
+  }
+}
+

@@ -1,0 +1,11 @@
+{
+  "type": "display.expression",
+  "ts": 1714536015000,
+  "seq": 5,
+  "payload": {
+    "expression": "caring",
+    "duration_ms": 3000,
+    "loop": false
+  }
+}
+

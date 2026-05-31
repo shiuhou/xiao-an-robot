@@ -1,0 +1,11 @@
+{
+  "type": "error.report",
+  "ts": 1714536020000,
+  "seq": 6,
+  "payload": {
+    "code": "motor_stall",
+    "message": "Left wheel stalled during motion test.",
+    "severity": "warning"
+  }
+}
+

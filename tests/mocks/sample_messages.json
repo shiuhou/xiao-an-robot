@@ -1,0 +1,65 @@
+[
+  {
+    "type": "device.hello",
+    "ts": 1714536000000,
+    "seq": 1,
+    "payload": {
+      "device_id": "mock-robot-001",
+      "firmware": "mock-robot/0.1",
+      "battery": 96,
+      "capabilities": ["display", "motion", "tts"]
+    }
+  },
+  {
+    "type": "device.heartbeat",
+    "ts": 1714536005000,
+    "seq": 2,
+    "payload": {
+      "device_id": "mock-robot-001",
+      "battery": 95,
+      "dock_status": "undocked",
+      "uptime_sec": 5
+    }
+  },
+  {
+    "type": "motion.execute",
+    "ts": 1714536010000,
+    "seq": 3,
+    "payload": {
+      "action_id": "act-001",
+      "action": "move_out_of_dock",
+      "params": {},
+      "timeout_ms": 5000
+    }
+  },
+  {
+    "type": "motion.completed",
+    "ts": 1714536013000,
+    "seq": 4,
+    "payload": {
+      "action_id": "act-001",
+      "result": "ok"
+    }
+  },
+  {
+    "type": "display.expression",
+    "ts": 1714536015000,
+    "seq": 5,
+    "payload": {
+      "expression": "caring",
+      "duration_ms": 3000,
+      "loop": false
+    }
+  },
+  {
+    "type": "error.report",
+    "ts": 1714536020000,
+    "seq": 6,
+    "payload": {
+      "code": "motor_stall",
+      "message": "Left wheel stalled during motion test.",
+      "severity": "warning"
+    }
+  }
+]
+

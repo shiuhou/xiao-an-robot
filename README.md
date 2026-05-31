@@ -88,6 +88,30 @@ xiao-an-robot/
 └── LICENSE
 ```
 
+## Engineering Additions
+
+The repository now includes several low-risk engineering directories for DK2500 deployment and local integration work:
+
+- `shared/`: Shared Python protocol constants, message schema, and example messages.
+- `tests/`: Unit test skeletons, integration test skeletons, and mock clients.
+- `scripts/`: Environment checks, database initialization, and service startup helpers.
+- `hardware/`: DK2500, ESP32 wiring, mechanical, dock, and BOM templates.
+- `logs/`: Local log directory placeholder. Real log files are ignored by Git.
+
+Recommended development and integration flow from the repository root:
+
+```bash
+bash scripts/check_env.sh
+bash scripts/init_db.sh
+bash scripts/start_base_station.sh
+bash scripts/start_agent.sh
+bash scripts/run_mock_robot.sh
+```
+
+`tests/mocks/mock_robot.py` is a fake ESP32 robot for times when the real hardware is not connected. It connects to the DK2500 WebSocket server `/control` channel, sends `device.hello`, sends periodic `device.heartbeat`, and prints robot-facing messages such as `motion.execute`, `display.expression`, and TTS/audio commands.
+
+Real logs, SQLite databases, local `.env` files, virtual environments, `node_modules`, and large model files should stay out of GitHub. Use `.env.example` and `base_station/config.example.yaml` as local configuration templates.
+
 ## License
 
 MIT License - see LICENSE file

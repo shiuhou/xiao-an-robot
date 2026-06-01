@@ -4,7 +4,7 @@ server.py
 WebSocket server running on the Intel DK-2500 base station.
 Handles four channels: /control /audio /video /agent
 
-Run with: python -m ws_server.server
+Run with: python -m base_station.ws_server.server
 
 Author: Team Xiao An
 """
@@ -39,6 +39,12 @@ logger = logging.getLogger("ws_server")
 
 # Active robot sessions: device_id -> session dict
 sessions: Dict[str, dict] = {}
+
+
+def reset_state_for_tests() -> None:
+    """Clear in-memory server state between integration tests."""
+
+    sessions.clear()
 
 
 async def handle_control(websocket: WebSocketServerProtocol):
@@ -278,13 +284,22 @@ async def heartbeat_monitor():
             del sessions[did]
 
 
+async def start_server(host: str = "0.0.0.0", port: int = 8765):
+    """Start the WebSocket server and return the websockets server object."""
+
+    logger.info(f"Starting Xiao An WebSocket server on {host}:{port}")
+    return await websockets.serve(router, host, port)
+
+
 async def main():
-    logger.info("Starting Xiao An WebSocket server on 0.0.0.0:8765")
-    async with websockets.serve(router, "0.0.0.0", 8765):
-        await asyncio.gather(
-            asyncio.Future(),   # run forever
-            heartbeat_monitor(),
-        )
+    server = await start_server("0.0.0.0", 8765)
+    heartbeat_task = asyncio.create_task(heartbeat_monitor())
+    try:
+        await asyncio.Future()   # run forever
+    finally:
+        heartbeat_task.cancel()
+        server.close()
+        await server.wait_closed()
 
 
 if __name__ == "__main__":

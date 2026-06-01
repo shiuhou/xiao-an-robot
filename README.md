@@ -39,7 +39,7 @@ pip install -r requirements.txt
 bash models/download_models.sh
 
 # 启动 WebSocket 服务器
-python ws_server/server.py
+python -m ws_server.server
 ```
 
 ### 智能体 (Agent)

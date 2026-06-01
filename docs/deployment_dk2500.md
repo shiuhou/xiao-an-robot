@@ -49,6 +49,12 @@ This creates `agent/data/xiao_an.db` from `agent/data/schema.sql`.
 bash scripts/start_base_station.sh
 ```
 
+The script enters `base_station/` and starts the server with:
+
+```bash
+python -m ws_server.server
+```
+
 ## 7. Start the Agent
 
 Open a second terminal:
@@ -66,4 +72,3 @@ bash scripts/run_mock_robot.sh
 ```
 
 The mock robot connects to `/control`, sends `device.hello`, and keeps sending heartbeats. Use it before the real ESP32 firmware is ready.
-

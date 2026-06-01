@@ -2,11 +2,18 @@
 
 MOVE_OUT_OF_DOCK = "move_out_of_dock"
 MOVE_BACK_TO_DOCK = "move_back_to_dock"
+TURN = "turn"
+NOD_HEAD = "nod_head"
+TILT_HEAD = "tilt_head"
+WIGGLE_EARS = "wiggle_ears"
 STOP = "stop"
 
-EXPRESSION_IDLE = "idle"
+EXPRESSION_HAPPY = "happy"
+EXPRESSION_SAD = "sad"
 EXPRESSION_CARING = "caring"
 EXPRESSION_TIRED = "tired"
-EXPRESSION_HAPPY = "happy"
 EXPRESSION_THINKING = "thinking"
-
+EXPRESSION_SPEAKING = "speaking"
+EXPRESSION_IDLE = "idle"
+EXPRESSION_SURPRISED = "surprised"
+EXPRESSION_SLEEPING = "sleeping"

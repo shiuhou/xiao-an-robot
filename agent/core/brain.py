@@ -21,3 +21,10 @@ class Brain:
     async def handle_trigger(self, trigger: dict):
         # TODO: build context, call OpenClaw, execute skill, send response to robot
         raise NotImplementedError
+
+
+if __name__ == "__main__":
+    print(
+        "Xiao An Agent OpenClaw runtime wrapper is not implemented yet. "
+        "This placeholder confirms agent/core/brain.py started successfully."
+    )

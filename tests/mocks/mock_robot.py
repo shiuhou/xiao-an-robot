@@ -18,7 +18,6 @@ from typing import Any
 COMMAND_TYPES = {
     "motion.execute",
     "display.expression",
-    "tts.speak",
     "audio.play_tts",
     "audio.play_local",
     "config.update",

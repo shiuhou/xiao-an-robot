@@ -1,11 +1,24 @@
+server:
+  host: "0.0.0.0"
+  control_port: 8765
+
+paths:
+  model_dir: "models"
+  database: "../agent/data/xiao_an.db"
+  log_dir: "../logs"
+  tts_dir: "../logs/tts"
+
+perception:
+  enable_openvino: true
+  enable_audio: true
+  enable_video: true
+
+robot:
+  heartbeat_timeout_sec: 30
+
 device:
   npu_device: "NPU"
   cpu_device: "CPU"
-
-websocket:
-  host: "0.0.0.0"
-  port: 8765
-  heartbeat_timeout_sec: 30
 
 models:
   face_emotion: "models/emotions-recognition-retail-0003.xml"
@@ -18,9 +31,5 @@ thresholds:
   anxiety_score: 0.65
   trigger_duration_min: 30
 
-database:
-  path: "../agent/data/emotions.db"
-
 http_server:
   port: 8080
-  tts_dir: "/tmp/xiao-an-tts"

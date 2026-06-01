@@ -21,6 +21,5 @@ if [ -f "requirements.txt" ]; then
   echo "[info] If dependencies are missing, run: pip install -r requirements.txt"
 fi
 
-echo "[start] python ws_server/server.py"
-python ws_server/server.py
-
+echo "[start] python -m ws_server.server"
+python -m ws_server.server

@@ -1,6 +1,8 @@
 """
-context_builder.py - Assembles rich context for LLM prompts
-Author: 张子尧
+context_builder.py - Assembles Xiao An project context for OpenClaw.
+
+This module gathers memory, emotion history, screen usage, and recent
+interactions, then prepares structured context for the OpenClaw runtime.
 """
 
 

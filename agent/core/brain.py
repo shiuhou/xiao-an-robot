@@ -1,30 +1,62 @@
-"""OpenClaw runtime wrapper for the Xiao An Agent.
+"""Xiao An Agent Brain MVP.
 
-This file is not a replacement brain implementation for OpenClaw. It is the
-Xiao An project's runtime wrapper around OpenClaw: it initializes OpenClaw,
-registers project skills, receives events from base_station, invokes OpenClaw,
-and hands the resulting actions or responses to gateway.
+This module is still not an OpenClaw replacement. For the local simulation MVP,
+it acts as a small event router: emotion events go to EmotionMonitorSkill, which
+can use RobotGateway and EmotionDB to trigger robot care actions.
 """
 
+from __future__ import annotations
 
-class Brain:
-    """Coordinate Xiao An event handling around the OpenClaw runtime."""
+from typing import Any
 
-    def __init__(self, config_path: str = "config.yaml"):
-        # TODO: initialize OpenClaw, memory, context_builder, gateway, and skills
-        self.config_path = config_path
+from agent.core.gateway import RobotGateway
+from agent.skills.emotion_monitor import EmotionMonitorSkill
+from base_station.monitor.emotion_db import EmotionDB
 
-    def run(self):
-        # TODO: start event loop, listen for triggers from base_station
-        raise NotImplementedError
 
-    async def handle_trigger(self, trigger: dict):
-        # TODO: build context, call OpenClaw, execute skill, send response to robot
-        raise NotImplementedError
+SUPPORTED_EMOTION_EVENTS = {"emotion.sample", "emotion.alert"}
+
+
+class XiaoAnBrain:
+    """Minimal Agent brain for routing local MVP events to skills."""
+
+    def __init__(
+        self,
+        gateway: Any | None = None,
+        memory: Any | None = None,
+        gateway_url: str = "ws://127.0.0.1:8765/agent",
+        db_path: str = "agent/data/xiao_an.db",
+        window_seconds: int = 300,
+    ):
+        self.gateway = gateway or RobotGateway(url=gateway_url)
+        self.memory = memory or EmotionDB(db_path=db_path)
+        self.emotion_monitor = EmotionMonitorSkill(
+            gateway=self.gateway,
+            memory=self.memory,
+            window_seconds=window_seconds,
+        )
+
+    async def handle_event(self, event: dict) -> dict:
+        event_type = event.get("type")
+        if event_type in SUPPORTED_EMOTION_EVENTS:
+            trigger = event.get("payload") or event
+            return await self.emotion_monitor.run(trigger)
+
+        return {
+            "handled": False,
+            "reason": "unsupported_event",
+            "message": f"Unsupported event type: {event_type}",
+        }
+
+    def close(self) -> None:
+        close = getattr(self.memory, "close", None)
+        if callable(close):
+            close()
+
+
+# Backward-compatible alias for older imports.
+Brain = XiaoAnBrain
 
 
 if __name__ == "__main__":
-    print(
-        "Xiao An Agent OpenClaw runtime wrapper is not implemented yet. "
-        "This placeholder confirms agent/core/brain.py started successfully."
-    )
+    print("XiaoAnBrain MVP is available. Import XiaoAnBrain and call handle_event(event).")

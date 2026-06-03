@@ -11,8 +11,10 @@ from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     create_emotion_source,
     create_fake_face_runtime,
+    create_runtime,
     runtime_db_path,
 )
+from base_station.perception.face_emotion_pipeline import CameraEmotionSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 
 
@@ -50,6 +52,23 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
             finally:
                 runtime.event_loop.brain.close()
 
+    async def test_can_create_fake_camera_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = create_runtime(
+                source_name="fake_camera",
+                pattern="neutral",
+                count=1,
+                interval_seconds=0,
+                db_path=str(Path(temp_dir) / "runtime.db"),
+                verbose=False,
+            )
+            try:
+                self.assertIsInstance(runtime, BaseStationEmotionRuntime)
+                self.assertIsInstance(runtime.source, CameraEmotionSource)
+                self.assertIsInstance(runtime.event_loop, EmotionEventLoop)
+            finally:
+                runtime.event_loop.brain.close()
+
     async def test_unsupported_source_reports_clear_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported emotion source"):
             create_emotion_source(
@@ -81,6 +100,27 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
             [event["payload"]["emotion_tag"] for event in brain.events],
             ["neutral", "tired", "tired"],
         )
+
+    async def test_fake_camera_runtime_processes_finite_source(self) -> None:
+        brain = FakeBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="mixed",
+            count=3,
+            interval_seconds=0,
+        )
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        results = await runtime.run()
+
+        self.assertEqual(len(results), 3)
+        self.assertEqual(len(brain.events), 3)
+        self.assertEqual(
+            [event["payload"]["emotion_tag"] for event in brain.events],
+            ["neutral", "tired", "tired"],
+        )
+        self.assertEqual([event["payload"]["source"] for event in brain.events], ["fake_face"] * 3)
 
 
 if __name__ == "__main__":

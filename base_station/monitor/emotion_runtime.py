@@ -1,9 +1,9 @@
 """Base station emotion monitoring runtime.
 
 This is the formal base_station entry point for running an emotion source into
-XiaoAnBrain. It currently supports only the fake face source used by the local
-MVP; real camera/OpenVINO sources can replace it later without changing the
-event loop contract.
+XiaoAnBrain. It currently supports fake sources used by the local MVP; real
+camera/OpenVINO sources can replace them later without changing the event loop
+contract.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from typing import Any
 
 from agent.core.brain import XiaoAnBrain
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
+from base_station.perception.face_emotion_pipeline import CameraEmotionSource, FaceEmotionPipeline
+from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 
 
@@ -59,17 +61,28 @@ def create_emotion_source(
     count: int | None,
     interval_seconds: float,
 ):
-    if source != "fake_face":
-        raise ValueError(f"Unsupported emotion source: {source}. Currently only fake_face is supported.")
+    if source == "fake_face":
+        return FakeFaceEmotionSource(
+            pattern=pattern,
+            count=count,
+            interval_seconds=interval_seconds,
+        )
 
-    return FakeFaceEmotionSource(
-        pattern=pattern,
-        count=count,
-        interval_seconds=interval_seconds,
+    if source == "fake_camera":
+        frame_source = FakeCameraFrameSource(
+            count=count,
+            interval_seconds=interval_seconds,
+        )
+        pipeline = FaceEmotionPipeline(pattern=pattern)
+        return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
+
+    raise ValueError(
+        f"Unsupported emotion source: {source}. Currently supported sources: fake_face, fake_camera."
     )
 
 
-def create_fake_face_runtime(
+def create_runtime(
+    source_name: str = "fake_face",
     pattern: str = "tired",
     count: int | None = 5,
     interval_seconds: float = 1.0,
@@ -83,13 +96,35 @@ def create_fake_face_runtime(
         gateway_url=gateway_url,
         db_path=db_path,
     )
-    source = FakeFaceEmotionSource(
+    source = create_emotion_source(
+        source=source_name,
         pattern=pattern,
         count=count,
         interval_seconds=interval_seconds,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
+
+
+def create_fake_face_runtime(
+    pattern: str = "tired",
+    count: int | None = 5,
+    interval_seconds: float = 1.0,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    db_path: str = "agent/data/xiao_an.db",
+    verbose: bool = True,
+) -> BaseStationEmotionRuntime:
+    return create_runtime(
+        source_name="fake_face",
+        pattern=pattern,
+        count=count,
+        interval_seconds=interval_seconds,
+        host=host,
+        port=port,
+        db_path=db_path,
+        verbose=verbose,
+    )
 
 
 def parse_count(value: str) -> int | None:
@@ -103,7 +138,12 @@ def parse_count(value: str) -> int | None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Xiao An base station emotion monitoring runtime.")
-    parser.add_argument("--source", default="fake_face", help="Emotion source. Currently only fake_face is supported.")
+    parser.add_argument(
+        "--source",
+        default="fake_face",
+        choices=["fake_face", "fake_camera"],
+        help="Emotion source.",
+    )
     parser.add_argument(
         "--pattern",
         choices=["neutral", "tired", "anxious", "mixed"],
@@ -122,15 +162,9 @@ def parse_args() -> argparse.Namespace:
 
 async def main() -> None:
     args = parse_args()
-    create_emotion_source(
-        source=args.source,
-        pattern=args.pattern,
-        count=args.count,
-        interval_seconds=args.interval,
-    )
-
     with runtime_db_path(args.db_path, args.fresh_db) as active_db_path:
-        runtime = create_fake_face_runtime(
+        runtime = create_runtime(
+            source_name=args.source,
             pattern=args.pattern,
             count=args.count,
             interval_seconds=args.interval,

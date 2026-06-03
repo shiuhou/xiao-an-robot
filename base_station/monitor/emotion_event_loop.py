@@ -18,14 +18,17 @@ class EmotionEventLoop:
         self.brain = brain
 
     def build_event(self, sample: dict) -> dict:
+        payload = {
+            "source": sample.get("source", "simulator"),
+            "emotion_tag": sample.get("emotion_tag", sample.get("emotion", "neutral")),
+            "confidence": float(sample.get("confidence", 0.0) or 0.0),
+            "fatigue_score": float(sample.get("fatigue_score", 0.0) or 0.0),
+        }
+        if "frame_source" in sample:
+            payload["frame_source"] = sample["frame_source"]
         return {
             "type": "emotion.sample",
-            "payload": {
-                "source": sample.get("source", "simulator"),
-                "emotion_tag": sample.get("emotion_tag", sample.get("emotion", "neutral")),
-                "confidence": float(sample.get("confidence", 0.0) or 0.0),
-                "fatigue_score": float(sample.get("fatigue_score", 0.0) or 0.0),
-            },
+            "payload": payload,
         }
 
     async def handle_sample(self, sample: dict) -> dict:

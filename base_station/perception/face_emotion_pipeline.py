@@ -51,6 +51,7 @@ class FaceEmotionPipeline:
         sample = PATTERN_SAMPLES[pattern].copy()
         sample.update({
             "source": "fake_face",
+            "frame_source": frame.get("source"),
             "frame_id": frame.get("frame_id"),
             "timestamp_ms": frame.get("timestamp_ms"),
         })

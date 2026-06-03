@@ -21,6 +21,7 @@ from base_station.monitor.emotion_event_loop import EmotionEventLoop
 from base_station.perception.face_emotion_pipeline import CameraEmotionSource, FaceEmotionPipeline
 from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
+from base_station.perception.opencv_camera import OpenCVCameraFrameSource
 
 
 class BaseStationEmotionRuntime:
@@ -44,6 +45,49 @@ class BaseStationEmotionRuntime:
         return results
 
 
+class LimitedEmotionSource:
+    """Limit another emotion source to a finite number of samples."""
+
+    def __init__(self, source: Any, count: int | None):
+        self.source = source
+        self.count = count
+
+    async def samples(self):
+        iterator = self.source.samples().__aiter__()
+        emitted = 0
+        try:
+            while self.count is None or emitted < self.count:
+                sample = await iterator.__anext__()
+                emitted += 1
+                yield sample
+        finally:
+            close = getattr(iterator, "aclose", None)
+            if close is not None:
+                await close()
+            nested_source = self.source
+            while nested_source is not None:
+                frame_source = getattr(nested_source, "frame_source", None)
+                frame_source_close = getattr(frame_source, "close", None)
+                if frame_source_close is not None:
+                    frame_source_close()
+                    break
+                nested_source = getattr(nested_source, "source", None)
+
+
+class IntervalEmotionSource:
+    """Add a delay after each emitted sample."""
+
+    def __init__(self, source: Any, interval_seconds: float):
+        self.source = source
+        self.interval_seconds = interval_seconds
+
+    async def samples(self):
+        async for sample in self.source.samples():
+            yield sample
+            if self.interval_seconds > 0:
+                await asyncio.sleep(self.interval_seconds)
+
+
 @contextmanager
 def runtime_db_path(db_path: str, fresh_db: bool):
     if fresh_db:
@@ -60,6 +104,9 @@ def create_emotion_source(
     pattern: str,
     count: int | None,
     interval_seconds: float,
+    camera_index: int = 0,
+    camera_width: int | None = None,
+    camera_height: int | None = None,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -76,8 +123,20 @@ def create_emotion_source(
         pipeline = FaceEmotionPipeline(pattern=pattern)
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
+    if source == "opencv_camera":
+        frame_source = OpenCVCameraFrameSource(
+            camera_index=camera_index,
+            width=camera_width,
+            height=camera_height,
+        )
+        pipeline = FaceEmotionPipeline(pattern=pattern)
+        camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
+        interval_source = IntervalEmotionSource(source=camera_source, interval_seconds=interval_seconds)
+        return LimitedEmotionSource(source=interval_source, count=count)
+
     raise ValueError(
-        f"Unsupported emotion source: {source}. Currently supported sources: fake_face, fake_camera."
+        "Unsupported emotion source: "
+        f"{source}. Currently supported sources: fake_face, fake_camera, opencv_camera."
     )
 
 
@@ -90,6 +149,9 @@ def create_runtime(
     port: int = 8765,
     db_path: str = "agent/data/xiao_an.db",
     verbose: bool = True,
+    camera_index: int = 0,
+    camera_width: int | None = None,
+    camera_height: int | None = None,
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
     brain = XiaoAnBrain(
@@ -101,6 +163,9 @@ def create_runtime(
         pattern=pattern,
         count=count,
         interval_seconds=interval_seconds,
+        camera_index=camera_index,
+        camera_width=camera_width,
+        camera_height=camera_height,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
@@ -141,7 +206,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default="fake_face",
-        choices=["fake_face", "fake_camera"],
+        choices=["fake_face", "fake_camera", "opencv_camera"],
         help="Emotion source.",
     )
     parser.add_argument(
@@ -155,6 +220,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default="127.0.0.1", help="Base station host.")
     parser.add_argument("--port", type=int, default=8765, help="Base station /agent port.")
     parser.add_argument("--db-path", default="agent/data/xiao_an.db", help="SQLite database path.")
+    parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index.")
+    parser.add_argument("--camera-width", type=int, default=None, help="Optional OpenCV camera width.")
+    parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
     return parser.parse_args()
@@ -172,6 +240,9 @@ async def main() -> None:
             port=args.port,
             db_path=active_db_path,
             verbose=args.verbose,
+            camera_index=args.camera_index,
+            camera_width=args.camera_width,
+            camera_height=args.camera_height,
         )
         try:
             await runtime.run()

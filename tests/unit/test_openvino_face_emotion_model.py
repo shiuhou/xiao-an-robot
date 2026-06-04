@@ -11,6 +11,11 @@ from unittest.mock import Mock, patch
 
 from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
 
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 
 class FakeCompiledModel:
     inputs = ["input_layer"]
@@ -59,7 +64,39 @@ def openvino_top_level_modules() -> dict:
     }
 
 
+def fake_cv2_module() -> types.ModuleType:
+    cv2 = types.ModuleType("cv2")
+
+    def resize(image, size):
+        if np is None:
+            raise RuntimeError("numpy unavailable")
+        width, height = size
+        return np.resize(image, (height, width, image.shape[2]))
+
+    cv2.resize = resize
+    return cv2
+
+
 class OpenVINOFaceEmotionModelTest(unittest.TestCase):
+    def create_model(
+        self,
+        input_size: tuple[int, int] = (224, 224),
+        normalize: bool = True,
+        bgr_to_rgb: bool = True,
+    ) -> OpenVINOFaceEmotionModel:
+        modules = openvino_runtime_modules()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "emotion.xml"
+            model_path.write_text("<xml />", encoding="utf-8")
+
+            with patch.dict(sys.modules, modules):
+                return OpenVINOFaceEmotionModel(
+                    str(model_path),
+                    input_size=input_size,
+                    normalize=normalize,
+                    bgr_to_rgb=bgr_to_rgb,
+                )
+
     def test_missing_openvino_raises_clear_import_error(self) -> None:
         with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
             with self.assertRaisesRegex(ImportError, "OpenVINO is not installed"):
@@ -117,6 +154,66 @@ class OpenVINOFaceEmotionModelTest(unittest.TestCase):
 
         with self.assertRaisesRegex(NotImplementedError, "OpenVINO inference postprocessing is not implemented yet"):
             model.predict({"frame_id": 1})
+
+    def test_preprocess_missing_payload_raises_value_error(self) -> None:
+        model = self.create_model()
+
+        with self.assertRaisesRegex(ValueError, "payload"):
+            model.preprocess({"frame_id": 1})
+
+    @unittest.skipIf(np is None, "numpy is not installed")
+    def test_preprocess_converts_hwc_to_nchw(self) -> None:
+        model = self.create_model(input_size=(2, 2), normalize=False, bgr_to_rgb=False)
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        with patch.dict(sys.modules, {"cv2": fake_cv2_module()}):
+            output = model.preprocess({"payload": image})
+
+        self.assertEqual(output.shape, (1, 3, 2, 2))
+
+    @unittest.skipIf(np is None, "numpy is not installed")
+    def test_preprocess_normalizes_float32_values(self) -> None:
+        model = self.create_model(input_size=(1, 1), normalize=True, bgr_to_rgb=False)
+        image = np.array([[[255, 128, 0]]], dtype=np.uint8)
+
+        with patch.dict(sys.modules, {"cv2": fake_cv2_module()}):
+            output = model.preprocess({"payload": image})
+
+        self.assertEqual(output.dtype, np.float32)
+        self.assertGreaterEqual(float(output.min()), 0.0)
+        self.assertLessEqual(float(output.max()), 1.0)
+        self.assertEqual(float(output[0, 0, 0, 0]), 1.0)
+
+    @unittest.skipIf(np is None, "numpy is not installed")
+    def test_preprocess_converts_bgr_to_rgb(self) -> None:
+        model = self.create_model(input_size=(1, 1), normalize=False, bgr_to_rgb=True)
+        image = np.array([[[10, 20, 30]]], dtype=np.uint8)
+
+        with patch.dict(sys.modules, {"cv2": fake_cv2_module()}):
+            output = model.preprocess({"payload": image})
+
+        self.assertEqual(output[0, 0, 0, 0], 30)
+        self.assertEqual(output[0, 1, 0, 0], 20)
+        self.assertEqual(output[0, 2, 0, 0], 10)
+
+    @unittest.skipIf(np is None, "numpy is not installed")
+    def test_preprocess_input_size_controls_output_shape(self) -> None:
+        model = self.create_model(input_size=(64, 64), normalize=False, bgr_to_rgb=False)
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        with patch.dict(sys.modules, {"cv2": fake_cv2_module()}):
+            output = model.preprocess({"payload": image})
+
+        self.assertEqual(output.shape, (1, 3, 64, 64))
+
+    @unittest.skipIf(np is None, "numpy is not installed")
+    def test_preprocess_missing_cv2_raises_import_error(self) -> None:
+        model = self.create_model()
+        image = np.zeros((2, 2, 3), dtype=np.uint8)
+
+        with patch.dict(sys.modules, {"cv2": None}):
+            with self.assertRaisesRegex(ImportError, "opencv-python"):
+                model.preprocess({"payload": image})
 
     def test_compile_model_error_is_not_swallowed(self) -> None:
         modules = openvino_runtime_modules()

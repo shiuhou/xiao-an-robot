@@ -14,7 +14,14 @@ from typing import Any
 class OpenVINOFaceEmotionModel:
     """OpenVINO-backed face emotion model shell."""
 
-    def __init__(self, model_path: str, device: str = "CPU"):
+    def __init__(
+        self,
+        model_path: str,
+        device: str = "CPU",
+        input_size: tuple[int, int] = (224, 224),
+        normalize: bool = True,
+        bgr_to_rgb: bool = True,
+    ):
         Core = self._load_openvino_core()
 
         path = Path(model_path)
@@ -23,6 +30,9 @@ class OpenVINOFaceEmotionModel:
 
         self.model_path = str(path)
         self.device = device
+        self.input_size = input_size
+        self.normalize = normalize
+        self.bgr_to_rgb = bgr_to_rgb
         self.core = Core()
         self.model = self.core.read_model(self.model_path)
         self.compiled_model = self.core.compile_model(self.model, self.device)
@@ -43,6 +53,35 @@ class OpenVINOFaceEmotionModel:
                 "OpenVINO is not installed. Install openvino to use OpenVINOFaceEmotionModel."
             ) from exc
         return Core
+
+    def preprocess(self, frame: dict):
+        if "payload" not in frame or frame["payload"] is None:
+            raise ValueError("OpenVINOFaceEmotionModel.preprocess requires frame['payload'] image data.")
+
+        try:
+            import numpy as np
+        except ImportError as exc:
+            raise ImportError("numpy is required to preprocess OpenVINO face emotion frames.") from exc
+
+        try:
+            import cv2  # type: ignore[import-not-found]
+        except ImportError as exc:
+            raise ImportError("opencv-python is required to preprocess OpenVINO face emotion frames.") from exc
+
+        image = frame["payload"]
+        if not isinstance(image, np.ndarray):
+            image = np.asarray(image)
+
+        input_height, input_width = self.input_size
+        image = cv2.resize(image, (input_width, input_height))
+        if self.bgr_to_rgb:
+            image = image[:, :, ::-1]
+
+        image = image.astype(np.float32)
+        if self.normalize:
+            image = image / 255.0
+
+        return image.transpose(2, 0, 1)[None, ...]
 
     def predict(self, frame: dict) -> dict:
         raise NotImplementedError("OpenVINO inference postprocessing is not implemented yet.")

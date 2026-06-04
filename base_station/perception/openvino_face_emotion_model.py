@@ -1,7 +1,8 @@
-"""OpenVINO face emotion model placeholder.
+"""OpenVINO face emotion model initialization layer.
 
-This module only validates configuration and OpenVINO availability. Real model
-compilation and inference are intentionally left for a later stage.
+This module loads and compiles an OpenVINO model, but real image preprocessing,
+inference execution, and postprocessing are intentionally left for a later
+stage.
 """
 
 from __future__ import annotations
@@ -11,10 +12,10 @@ from typing import Any
 
 
 class OpenVINOFaceEmotionModel:
-    """Placeholder for a future OpenVINO-backed face emotion model."""
+    """OpenVINO-backed face emotion model shell."""
 
     def __init__(self, model_path: str, device: str = "CPU"):
-        self._load_openvino_core()
+        Core = self._load_openvino_core()
 
         path = Path(model_path)
         if not path.exists():
@@ -22,6 +23,13 @@ class OpenVINOFaceEmotionModel:
 
         self.model_path = str(path)
         self.device = device
+        self.core = Core()
+        self.model = self.core.read_model(self.model_path)
+        self.compiled_model = self.core.compile_model(self.model, self.device)
+        self.inputs = list(getattr(self.compiled_model, "inputs", []) or [])
+        self.outputs = list(getattr(self.compiled_model, "outputs", []) or [])
+        self.input_layer = self.inputs[0] if self.inputs else None
+        self.output_layer = self.outputs[0] if self.outputs else None
 
     @staticmethod
     def _load_openvino_core() -> Any:
@@ -37,4 +45,4 @@ class OpenVINOFaceEmotionModel:
         return Core
 
     def predict(self, frame: dict) -> dict:
-        raise NotImplementedError("OpenVINO inference is not implemented yet.")
+        raise NotImplementedError("OpenVINO inference postprocessing is not implemented yet.")

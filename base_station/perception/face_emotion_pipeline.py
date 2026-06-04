@@ -9,46 +9,18 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
-
-PATTERN_SAMPLES = {
-    "neutral": {
-        "emotion_tag": "neutral",
-        "confidence": 0.5,
-        "fatigue_score": 0.2,
-    },
-    "tired": {
-        "emotion_tag": "tired",
-        "confidence": 0.9,
-        "fatigue_score": 0.85,
-    },
-    "anxious": {
-        "emotion_tag": "anxious",
-        "confidence": 0.88,
-        "fatigue_score": 0.4,
-    },
-}
-
-MIXED_PATTERN = ["neutral", "tired", "tired", "neutral", "anxious"]
+from base_station.perception.face_emotion_model import FaceEmotionModel, MockFaceEmotionModel
 
 
 class FaceEmotionPipeline:
     """Skeleton face emotion pipeline with deterministic fake outputs."""
 
-    def __init__(self, pattern: str = "neutral"):
-        if pattern not in {"neutral", "tired", "anxious", "mixed"}:
-            raise ValueError(f"Unsupported face emotion pattern: {pattern}")
+    def __init__(self, pattern: str = "neutral", model: FaceEmotionModel | None = None):
         self.pattern = pattern
-        self._frame_count = 0
-
-    def _resolve_pattern(self) -> str:
-        if self.pattern == "mixed":
-            return MIXED_PATTERN[self._frame_count % len(MIXED_PATTERN)]
-        return self.pattern
+        self.model = model or MockFaceEmotionModel(pattern=pattern)
 
     def process_frame(self, frame: dict) -> dict:
-        pattern = self._resolve_pattern()
-        self._frame_count += 1
-        sample = PATTERN_SAMPLES[pattern].copy()
+        sample = self.model.predict(frame).copy()
         sample.update({
             "source": "fake_face",
             "frame_source": frame.get("source"),

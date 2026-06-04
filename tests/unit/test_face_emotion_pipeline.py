@@ -26,6 +26,19 @@ async def collect_samples(source: CameraEmotionSource) -> list[dict]:
     return samples
 
 
+class CustomModel:
+    def __init__(self) -> None:
+        self.frames = []
+
+    def predict(self, frame: dict) -> dict:
+        self.frames.append(frame)
+        return {
+            "emotion_tag": "focused",
+            "confidence": 0.77,
+            "fatigue_score": 0.12,
+        }
+
+
 class FaceEmotionPipelineTest(unittest.IsolatedAsyncioTestCase):
     async def test_neutral_pattern_outputs_expected_sample(self) -> None:
         sample = FaceEmotionPipeline("neutral").process_frame(make_frame())
@@ -63,6 +76,21 @@ class FaceEmotionPipelineTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sample["frame_id"], 7)
         self.assertEqual(sample["timestamp_ms"], 999)
+        self.assertEqual(sample["frame_source"], "fake_camera")
+
+    async def test_pipeline_uses_injected_model_prediction(self) -> None:
+        model = CustomModel()
+        frame = make_frame(frame_id=9, timestamp_ms=111)
+        sample = FaceEmotionPipeline(model=model).process_frame(frame)
+
+        self.assertEqual(sample["emotion_tag"], "focused")
+        self.assertEqual(sample["confidence"], 0.77)
+        self.assertEqual(sample["fatigue_score"], 0.12)
+        self.assertEqual(sample["source"], "fake_face")
+        self.assertEqual(sample["frame_source"], "fake_camera")
+        self.assertEqual(sample["frame_id"], 9)
+        self.assertEqual(sample["timestamp_ms"], 111)
+        self.assertEqual(model.frames, [frame])
 
     async def test_camera_emotion_source_converts_frames_to_samples(self) -> None:
         frame_source = FakeCameraFrameSource(count=2, interval_seconds=0)
@@ -74,6 +102,7 @@ class FaceEmotionPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(samples), 2)
         self.assertEqual([sample["emotion_tag"] for sample in samples], ["tired", "tired"])
         self.assertEqual([sample["frame_id"] for sample in samples], [1, 2])
+        self.assertEqual([sample["frame_source"] for sample in samples], ["fake_camera", "fake_camera"])
 
 
 if __name__ == "__main__":

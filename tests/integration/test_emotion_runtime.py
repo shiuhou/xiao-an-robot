@@ -11,11 +11,13 @@ from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     IntervalEmotionSource,
     LimitedEmotionSource,
+    create_face_emotion_model,
     create_emotion_source,
     create_fake_face_runtime,
     create_runtime,
     runtime_db_path,
 )
+from base_station.perception.face_emotion_model import MockFaceEmotionModel
 from base_station.perception.face_emotion_pipeline import CameraEmotionSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from unittest.mock import patch
@@ -71,6 +73,22 @@ class FakeOpenCVCameraFrameSource:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeOpenVINOFaceEmotionModel:
+    instances: list["FakeOpenVINOFaceEmotionModel"] = []
+
+    def __init__(self, model_path: str, device: str = "CPU") -> None:
+        self.model_path = model_path
+        self.device = device
+        FakeOpenVINOFaceEmotionModel.instances.append(self)
+
+    def predict(self, frame: dict) -> dict:
+        return {
+            "emotion_tag": "anxious",
+            "confidence": 0.88,
+            "fatigue_score": 0.4,
+        }
 
 
 class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
@@ -143,6 +161,52 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 pattern="tired",
                 count=1,
                 interval_seconds=0,
+            )
+
+    async def test_default_model_backend_for_camera_sources_is_mock(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="tired",
+            count=1,
+            interval_seconds=0,
+        )
+
+        self.assertIsInstance(source.pipeline.model, MockFaceEmotionModel)
+
+    async def test_openvino_backend_requires_model_path(self) -> None:
+        with self.assertRaisesRegex(ValueError, "--model-path is required"):
+            create_face_emotion_model(
+                model_backend="openvino",
+                pattern="neutral",
+                model_path=None,
+                device="CPU",
+            )
+
+    async def test_openvino_backend_creates_model_with_path_and_device(self) -> None:
+        FakeOpenVINOFaceEmotionModel.instances = []
+        with patch(
+            "base_station.monitor.emotion_runtime.OpenVINOFaceEmotionModel",
+            FakeOpenVINOFaceEmotionModel,
+        ):
+            source = create_emotion_source(
+                source="fake_camera",
+                pattern="neutral",
+                count=1,
+                interval_seconds=0,
+                model_backend="openvino",
+                model_path="emotion.xml",
+                device="GPU",
+            )
+
+        self.assertIsInstance(source.pipeline.model, FakeOpenVINOFaceEmotionModel)
+        self.assertEqual(FakeOpenVINOFaceEmotionModel.instances[0].model_path, "emotion.xml")
+        self.assertEqual(FakeOpenVINOFaceEmotionModel.instances[0].device, "GPU")
+
+    async def test_unsupported_model_backend_reports_clear_error(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Unsupported model backend"):
+            create_face_emotion_model(
+                model_backend="camera",
+                pattern="neutral",
             )
 
     async def test_fresh_db_does_not_use_default_db_path(self) -> None:

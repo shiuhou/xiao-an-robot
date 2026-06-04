@@ -18,10 +18,12 @@ from typing import Any
 
 from agent.core.brain import XiaoAnBrain
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
+from base_station.perception.face_emotion_model import MockFaceEmotionModel
 from base_station.perception.face_emotion_pipeline import CameraEmotionSource, FaceEmotionPipeline
 from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
+from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
 
 
 class BaseStationEmotionRuntime:
@@ -99,6 +101,23 @@ def runtime_db_path(db_path: str, fresh_db: bool):
     yield db_path
 
 
+def create_face_emotion_model(
+    model_backend: str,
+    pattern: str,
+    model_path: str | None = None,
+    device: str = "CPU",
+):
+    if model_backend == "mock":
+        return MockFaceEmotionModel(pattern=pattern)
+
+    if model_backend == "openvino":
+        if not model_path:
+            raise ValueError("--model-path is required when --model-backend openvino")
+        return OpenVINOFaceEmotionModel(model_path=model_path, device=device)
+
+    raise ValueError(f"Unsupported model backend: {model_backend}. Currently supported backends: mock, openvino.")
+
+
 def create_emotion_source(
     source: str,
     pattern: str,
@@ -107,6 +126,9 @@ def create_emotion_source(
     camera_index: int = 0,
     camera_width: int | None = None,
     camera_height: int | None = None,
+    model_backend: str = "mock",
+    model_path: str | None = None,
+    device: str = "CPU",
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -120,7 +142,13 @@ def create_emotion_source(
             count=count,
             interval_seconds=interval_seconds,
         )
-        pipeline = FaceEmotionPipeline(pattern=pattern)
+        model = create_face_emotion_model(
+            model_backend=model_backend,
+            pattern=pattern,
+            model_path=model_path,
+            device=device,
+        )
+        pipeline = FaceEmotionPipeline(model=model)
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
     if source == "opencv_camera":
@@ -129,7 +157,13 @@ def create_emotion_source(
             width=camera_width,
             height=camera_height,
         )
-        pipeline = FaceEmotionPipeline(pattern=pattern)
+        model = create_face_emotion_model(
+            model_backend=model_backend,
+            pattern=pattern,
+            model_path=model_path,
+            device=device,
+        )
+        pipeline = FaceEmotionPipeline(model=model)
         camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
         interval_source = IntervalEmotionSource(source=camera_source, interval_seconds=interval_seconds)
         return LimitedEmotionSource(source=interval_source, count=count)
@@ -152,6 +186,9 @@ def create_runtime(
     camera_index: int = 0,
     camera_width: int | None = None,
     camera_height: int | None = None,
+    model_backend: str = "mock",
+    model_path: str | None = None,
+    device: str = "CPU",
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
     brain = XiaoAnBrain(
@@ -166,6 +203,9 @@ def create_runtime(
         camera_index=camera_index,
         camera_width=camera_width,
         camera_height=camera_height,
+        model_backend=model_backend,
+        model_path=model_path,
+        device=device,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
@@ -223,6 +263,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index.")
     parser.add_argument("--camera-width", type=int, default=None, help="Optional OpenCV camera width.")
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
+    parser.add_argument(
+        "--model-backend",
+        choices=["mock", "openvino"],
+        default="mock",
+        help="Face emotion model backend for camera sources.",
+    )
+    parser.add_argument("--model-path", default=None, help="OpenVINO face emotion model path.")
+    parser.add_argument("--device", default="CPU", help="OpenVINO device name.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
     return parser.parse_args()
@@ -243,6 +291,9 @@ async def main() -> None:
             camera_index=args.camera_index,
             camera_width=args.camera_width,
             camera_height=args.camera_height,
+            model_backend=args.model_backend,
+            model_path=args.model_path,
+            device=args.device,
         )
         try:
             await runtime.run()

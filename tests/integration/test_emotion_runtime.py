@@ -190,6 +190,65 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([event["payload"]["source"] for event in brain.events], ["fake_face"] * 3)
         self.assertEqual([event["payload"]["frame_source"] for event in brain.events], ["fake_camera"] * 3)
 
+    async def test_fake_camera_tired_pattern_still_outputs_tired(self) -> None:
+        brain = FakeBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="tired",
+            count=2,
+            interval_seconds=0,
+        )
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        self.assertEqual([event["payload"]["emotion_tag"] for event in brain.events], ["tired", "tired"])
+        self.assertEqual([event["payload"]["frame_source"] for event in brain.events], ["fake_camera"] * 2)
+
+    async def test_opencv_camera_neutral_pattern_outputs_neutral(self) -> None:
+        FakeOpenCVCameraFrameSource.instances = []
+        brain = FakeBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+        with patch(
+            "base_station.monitor.emotion_runtime.OpenCVCameraFrameSource",
+            FakeOpenCVCameraFrameSource,
+        ):
+            source = create_emotion_source(
+                source="opencv_camera",
+                pattern="neutral",
+                count=2,
+                interval_seconds=0,
+            )
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        results = await runtime.run()
+
+        self.assertEqual([event["payload"]["emotion_tag"] for event in brain.events], ["neutral", "neutral"])
+        self.assertEqual([event["payload"]["frame_source"] for event in brain.events], ["opencv_camera"] * 2)
+        self.assertEqual([result["handled"] for result in results], [False, False])
+
+    async def test_opencv_camera_tired_pattern_outputs_tired(self) -> None:
+        FakeOpenCVCameraFrameSource.instances = []
+        brain = FakeBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+        with patch(
+            "base_station.monitor.emotion_runtime.OpenCVCameraFrameSource",
+            FakeOpenCVCameraFrameSource,
+        ):
+            source = create_emotion_source(
+                source="opencv_camera",
+                pattern="tired",
+                count=2,
+                interval_seconds=0,
+            )
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        self.assertEqual([event["payload"]["emotion_tag"] for event in brain.events], ["tired", "tired"])
+        self.assertEqual([event["payload"]["frame_source"] for event in brain.events], ["opencv_camera"] * 2)
+
     async def test_opencv_camera_runtime_processes_finite_source(self) -> None:
         FakeOpenCVCameraFrameSource.instances = []
         brain = FakeBrain()

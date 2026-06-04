@@ -21,6 +21,16 @@ class FakeCompiledModel:
     inputs = ["input_layer"]
     outputs = ["output_layer"]
 
+    def __init__(self) -> None:
+        self.calls = []
+        self.error: Exception | None = None
+
+    def __call__(self, input_tensor: object) -> dict:
+        if self.error is not None:
+            raise self.error
+        self.calls.append(input_tensor)
+        return {"raw_output": input_tensor}
+
 
 class FakeCore:
     instances: list["FakeCore"] = []
@@ -144,16 +154,59 @@ class OpenVINOFaceEmotionModelTest(unittest.TestCase):
         model.core.compile_model.assert_called_once_with("fake_model", "CPU")
 
     def test_predict_raises_not_implemented(self) -> None:
-        modules = openvino_runtime_modules()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            model_path = Path(temp_dir) / "emotion.xml"
-            model_path.write_text("<xml />", encoding="utf-8")
+        model = self.create_model()
+        model.preprocess = Mock(return_value="input_tensor")
+        model.infer = Mock(return_value="raw_outputs")
 
-            with patch.dict(sys.modules, modules):
-                model = OpenVINOFaceEmotionModel(str(model_path))
+        with self.assertRaisesRegex(NotImplementedError, "OpenVINO inference postprocessing is not implemented yet"):
+            model.predict({"payload": "image"})
+
+        model.preprocess.assert_called_once_with({"payload": "image"})
+        model.infer.assert_called_once_with("input_tensor")
+
+    def test_infer_calls_compiled_model_and_returns_outputs(self) -> None:
+        model = self.create_model()
+        input_tensor = object()
+
+        outputs = model.infer(input_tensor)
+
+        self.assertEqual(outputs, {"raw_output": input_tensor})
+        self.assertEqual(model.compiled_model.calls, [input_tensor])
+
+    def test_infer_does_not_swallow_compiled_model_errors(self) -> None:
+        model = self.create_model()
+        model.compiled_model.error = RuntimeError("infer failed")
+
+        with self.assertRaisesRegex(RuntimeError, "infer failed"):
+            model.infer(object())
+
+    def test_predict_calls_preprocess_infer_postprocess_in_order(self) -> None:
+        model = self.create_model()
+        calls = []
+
+        def preprocess(frame: dict) -> str:
+            calls.append("preprocess")
+            self.assertEqual(frame, {"frame_id": 1})
+            return "input_tensor"
+
+        def infer(input_tensor: str) -> str:
+            calls.append("infer")
+            self.assertEqual(input_tensor, "input_tensor")
+            return "raw_outputs"
+
+        def postprocess(outputs: str) -> dict:
+            calls.append("postprocess")
+            self.assertEqual(outputs, "raw_outputs")
+            raise NotImplementedError("OpenVINO inference postprocessing is not implemented yet.")
+
+        model.preprocess = preprocess
+        model.infer = infer
+        model.postprocess = postprocess
 
         with self.assertRaisesRegex(NotImplementedError, "OpenVINO inference postprocessing is not implemented yet"):
             model.predict({"frame_id": 1})
+
+        self.assertEqual(calls, ["preprocess", "infer", "postprocess"])
 
     def test_preprocess_missing_payload_raises_value_error(self) -> None:
         model = self.create_model()

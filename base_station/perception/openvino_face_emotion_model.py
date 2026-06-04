@@ -83,5 +83,13 @@ class OpenVINOFaceEmotionModel:
 
         return image.transpose(2, 0, 1)[None, ...]
 
-    def predict(self, frame: dict) -> dict:
+    def infer(self, input_tensor):
+        return self.compiled_model(input_tensor)
+
+    def postprocess(self, outputs) -> dict:
         raise NotImplementedError("OpenVINO inference postprocessing is not implemented yet.")
+
+    def predict(self, frame: dict) -> dict:
+        input_tensor = self.preprocess(frame)
+        outputs = self.infer(input_tensor)
+        return self.postprocess(outputs)

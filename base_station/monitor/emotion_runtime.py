@@ -13,6 +13,7 @@ import asyncio
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import sys
 import tempfile
 from typing import Any
 
@@ -241,7 +242,10 @@ def parse_count(value: str) -> int | None:
     return parsed
 
 
-def parse_args() -> argparse.Namespace:
+EXPECTED_CLI_ERRORS = (ValueError, ImportError, FileNotFoundError, RuntimeError)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Xiao An base station emotion monitoring runtime.")
     parser.add_argument(
         "--source",
@@ -273,11 +277,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="CPU", help="OpenVINO device name.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-async def main() -> None:
-    args = parse_args()
+async def main(args: argparse.Namespace | None = None) -> None:
+    if args is None:
+        args = parse_args()
     with runtime_db_path(args.db_path, args.fresh_db) as active_db_path:
         runtime = create_runtime(
             source_name=args.source,
@@ -301,5 +306,16 @@ async def main() -> None:
             runtime.event_loop.brain.close()
 
 
+def run_cli(argv: list[str] | None = None) -> int:
+    try:
+        asyncio.run(main(parse_args(argv)))
+    except KeyboardInterrupt:
+        raise
+    except EXPECTED_CLI_ERRORS as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    sys.exit(run_cli())

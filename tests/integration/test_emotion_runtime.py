@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
@@ -16,6 +18,7 @@ from base_station.monitor.emotion_runtime import (
     create_fake_face_runtime,
     create_runtime,
     runtime_db_path,
+    run_cli,
 )
 from base_station.perception.face_emotion_model import MockFaceEmotionModel
 from base_station.perception.face_emotion_pipeline import CameraEmotionSource
@@ -73,6 +76,19 @@ class FakeOpenCVCameraFrameSource:
 
     def close(self) -> None:
         self.closed = True
+
+
+class FakeRuntime:
+    instances: list["FakeRuntime"] = []
+
+    def __init__(self) -> None:
+        self.event_loop = type("FakeEventLoop", (), {"brain": FakeBrain()})()
+        self.ran = False
+        FakeRuntime.instances.append(self)
+
+    async def run(self) -> list[dict]:
+        self.ran = True
+        return []
 
 
 class FakeOpenVINOFaceEmotionModel:
@@ -208,6 +224,73 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 model_backend="camera",
                 pattern="neutral",
             )
+
+    def test_cli_reports_missing_openvino_model_path_without_traceback(self) -> None:
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr):
+            exit_code = run_cli([
+                "--source",
+                "fake_camera",
+                "--model-backend",
+                "openvino",
+                "--count",
+                "1",
+                "--interval",
+                "0",
+            ])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Error: --model-path is required when --model-backend openvino", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_reports_missing_model_file_without_traceback(self) -> None:
+        stderr = io.StringIO()
+
+        with patch(
+            "base_station.monitor.emotion_runtime.OpenVINOFaceEmotionModel",
+            side_effect=FileNotFoundError("OpenVINO model path does not exist: missing-model.xml"),
+        ):
+            with redirect_stderr(stderr):
+                exit_code = run_cli([
+                    "--source",
+                    "fake_camera",
+                    "--model-backend",
+                    "openvino",
+                    "--model-path",
+                    "missing-model.xml",
+                    "--count",
+                    "1",
+                    "--interval",
+                    "0",
+                ])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Error:", stderr.getvalue())
+        self.assertIn("missing-model.xml", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_cli_normal_mock_backend_path_returns_zero(self) -> None:
+        FakeRuntime.instances = []
+
+        with patch("base_station.monitor.emotion_runtime.create_runtime", return_value=FakeRuntime()):
+            exit_code = run_cli([
+                "--source",
+                "opencv_camera",
+                "--model-backend",
+                "mock",
+                "--pattern",
+                "neutral",
+                "--count",
+                "1",
+                "--interval",
+                "0",
+                "--fresh-db",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(FakeRuntime.instances[0].ran)
+        self.assertTrue(FakeRuntime.instances[0].event_loop.brain.closed)
 
     async def test_fresh_db_does_not_use_default_db_path(self) -> None:
         default_path = "agent/data/xiao_an.db"

@@ -25,6 +25,7 @@ from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
 from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
+from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
 
 
 class BaseStationEmotionRuntime:
@@ -91,6 +92,16 @@ class IntervalEmotionSource:
                 await asyncio.sleep(self.interval_seconds)
 
 
+class DirectModelEmotionPipeline:
+    """Use a model that already returns a complete emotion sample."""
+
+    def __init__(self, model: Any):
+        self.model = model
+
+    def process_frame(self, frame: dict) -> dict:
+        return self.model.predict(frame).copy()
+
+
 @contextmanager
 def runtime_db_path(db_path: str, fresh_db: bool):
     if fresh_db:
@@ -116,7 +127,18 @@ def create_face_emotion_model(
             raise ValueError("--model-path is required when --model-backend openvino")
         return OpenVINOFaceEmotionModel(model_path=model_path, device=device)
 
-    raise ValueError(f"Unsupported model backend: {model_backend}. Currently supported backends: mock, openvino.")
+    if model_backend == "qwen_vl":
+        return FakeQwenVLEmotionModel(pattern=pattern)
+
+    raise ValueError(
+        f"Unsupported model backend: {model_backend}. Currently supported backends: mock, openvino, qwen_vl."
+    )
+
+
+def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
+    if model_backend == "qwen_vl":
+        return DirectModelEmotionPipeline(model=model)
+    return FaceEmotionPipeline(pattern=pattern, model=model)
 
 
 def create_emotion_source(
@@ -149,7 +171,7 @@ def create_emotion_source(
             model_path=model_path,
             device=device,
         )
-        pipeline = FaceEmotionPipeline(model=model)
+        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
     if source == "opencv_camera":
@@ -164,7 +186,7 @@ def create_emotion_source(
             model_path=model_path,
             device=device,
         )
-        pipeline = FaceEmotionPipeline(model=model)
+        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
         interval_source = IntervalEmotionSource(source=camera_source, interval_seconds=interval_seconds)
         return LimitedEmotionSource(source=interval_source, count=count)
@@ -255,7 +277,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--pattern",
-        choices=["neutral", "tired", "anxious", "mixed"],
+        choices=["neutral", "tired", "sad", "anxious", "mixed"],
         default="tired",
         help="Fake face pattern.",
     )
@@ -269,7 +291,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
     parser.add_argument(
         "--model-backend",
-        choices=["mock", "openvino"],
+        choices=["mock", "openvino", "qwen_vl"],
         default="mock",
         help="Face emotion model backend for camera sources.",
     )

@@ -9,6 +9,7 @@ from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     create_emotion_source,
     create_face_emotion_model,
+    create_vlm_emotion_model,
     parse_args,
 )
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
@@ -59,6 +60,131 @@ class FakeOpenCVCameraFrameSource:
 
 
 class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
+    async def test_vlm_gate_args_are_available(self) -> None:
+        args = parse_args([
+            "--enable-vlm-gate",
+            "--vlm-backend",
+            "openvino_qwen_vl",
+            "--vlm-model-path",
+            "models/qwen-vl-openvino",
+            "--force-vlm",
+        ])
+
+        self.assertTrue(args.enable_vlm_gate)
+        self.assertEqual(args.vlm_backend, "openvino_qwen_vl")
+        self.assertEqual(args.vlm_model_path, "models/qwen-vl-openvino")
+        self.assertTrue(args.force_vlm)
+
+    async def test_vlm_gate_disabled_keeps_default_camera_flow(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="neutral",
+            count=1,
+            interval_seconds=0,
+            model_backend="mock",
+        )
+        event_loop = FakeEventLoop()
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["source"], "fake_face")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertNotIn("vlm_triggered", sample)
+
+    async def test_vlm_gate_neutral_does_not_trigger_vlm(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="neutral",
+            count=1,
+            interval_seconds=0,
+            model_backend="mock",
+            enable_vlm_gate=True,
+        )
+        event_loop = FakeEventLoop()
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["source"], "fake_face")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["vlm_triggered"], False)
+        self.assertEqual(sample["vlm_trigger_reason"], "normal")
+
+    async def test_vlm_gate_tired_triggers_qwen_vl(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="tired",
+            count=1,
+            interval_seconds=0,
+            model_backend="mock",
+            enable_vlm_gate=True,
+            vlm_backend="qwen_vl",
+        )
+        event_loop = FakeEventLoop()
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["source"], "fake_qwen_vl")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["vlm_triggered"], True)
+        self.assertEqual(sample["vlm_trigger_reason"], "high_fatigue")
+        self.assertIn("visual_reason", sample)
+        self.assertIn("vlm_observation", sample)
+        self.assertEqual(sample["cv_sample"]["source"], "fake_face")
+
+    async def test_force_vlm_triggers_qwen_vl_for_neutral_sample(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="neutral",
+            count=1,
+            interval_seconds=0,
+            model_backend="mock",
+            enable_vlm_gate=True,
+            force_vlm=True,
+        )
+        event_loop = FakeEventLoop()
+        runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+
+        await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["source"], "fake_qwen_vl")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["vlm_triggered"], True)
+        self.assertEqual(sample["vlm_trigger_reason"], "force")
+
+    async def test_openvino_qwen_vl_vlm_backend_requires_vlm_model_path(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "--vlm-model-path is required when --vlm-backend openvino_qwen_vl",
+        ):
+            create_emotion_source(
+                source="fake_camera",
+                pattern="tired",
+                count=1,
+                interval_seconds=0,
+                model_backend="mock",
+                enable_vlm_gate=True,
+                vlm_backend="openvino_qwen_vl",
+            )
+
+    async def test_openvino_qwen_vl_vlm_backend_creates_wrapper(self) -> None:
+        model = create_vlm_emotion_model(
+            vlm_backend="openvino_qwen_vl",
+            pattern="neutral",
+            vlm_model_path="models/qwen-vl-openvino",
+            device="GPU",
+        )
+
+        self.assertIsInstance(model, OpenVINOQwenVLEmotionModel)
+        self.assertEqual(model.runner.model_dir, "models/qwen-vl-openvino")
+        self.assertEqual(model.runner.device, "GPU")
+
     async def test_openvino_qwen_vl_is_legal_model_backend_arg(self) -> None:
         args = parse_args(["--model-backend", "openvino_qwen_vl"])
 

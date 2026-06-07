@@ -18,6 +18,7 @@ import tempfile
 from typing import Any
 
 from agent.core.brain import XiaoAnBrain
+from base_station.monitor.emotion_context_builder import EmotionContextBuilder
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
 from base_station.perception.face_emotion_model import MockFaceEmotionModel
 from base_station.perception.face_emotion_pipeline import CameraEmotionSource, FaceEmotionPipeline
@@ -28,6 +29,7 @@ from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmot
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
 from base_station.perception.qwen_vl_openvino_runner import QwenVLOpenVINORunner
+from base_station.perception.vlm_trigger_gate import VLMTriggerGate
 
 
 class BaseStationEmotionRuntime:
@@ -104,6 +106,58 @@ class DirectModelEmotionPipeline:
         return self.model.predict(frame).copy()
 
 
+class VLMGatedCameraEmotionSource:
+    """Run a lightweight CV sample first, then call VLM only when the gate asks."""
+
+    def __init__(
+        self,
+        frame_source: Any,
+        cv_pipeline: Any,
+        gate: VLMTriggerGate,
+        context_builder: EmotionContextBuilder,
+        vlm_model: Any,
+        memory: Any | None = None,
+        force_vlm: bool = False,
+    ):
+        self.frame_source = frame_source
+        self.cv_pipeline = cv_pipeline
+        self.gate = gate
+        self.context_builder = context_builder
+        self.vlm_model = vlm_model
+        self.memory = memory
+        self.force_vlm = force_vlm
+
+    async def samples(self):
+        async for frame in self.frame_source.frames():
+            cv_sample = self.cv_pipeline.process_frame(frame)
+            gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
+            reason = str(gate_result.get("reason", "normal"))
+
+            if gate_result.get("should_trigger", False):
+                context = self.context_builder.build(
+                    cv_sample=cv_sample,
+                    vlm_sample=None,
+                    asr_text=None,
+                    history_summary=self._history_summary(),
+                )
+                final_sample = self.vlm_model.predict(frame, context=context).copy()
+                final_sample["vlm_triggered"] = True
+                final_sample["vlm_trigger_reason"] = reason
+                final_sample["cv_sample"] = cv_sample.copy()
+            else:
+                final_sample = cv_sample.copy()
+                final_sample["vlm_triggered"] = False
+                final_sample["vlm_trigger_reason"] = reason
+
+            yield final_sample
+
+    def _history_summary(self) -> dict | None:
+        get_recent_summary = getattr(self.memory, "get_recent_summary", None)
+        if callable(get_recent_summary):
+            return get_recent_summary()
+        return None
+
+
 @contextmanager
 def runtime_db_path(db_path: str, fresh_db: bool):
     if fresh_db:
@@ -144,6 +198,27 @@ def create_face_emotion_model(
     )
 
 
+def create_vlm_emotion_model(
+    vlm_backend: str,
+    pattern: str,
+    vlm_model_path: str | None = None,
+    device: str = "CPU",
+):
+    if vlm_backend == "qwen_vl":
+        return FakeQwenVLEmotionModel(pattern=pattern)
+
+    if vlm_backend == "openvino_qwen_vl":
+        if not vlm_model_path:
+            raise ValueError("--vlm-model-path is required when --vlm-backend openvino_qwen_vl")
+        runner = QwenVLOpenVINORunner(model_dir=vlm_model_path, device=device)
+        return OpenVINOQwenVLEmotionModel(runner=runner)
+
+    raise ValueError(
+        "Unsupported VLM backend: "
+        f"{vlm_backend}. Currently supported VLM backends: qwen_vl, openvino_qwen_vl."
+    )
+
+
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
     if model_backend in {"qwen_vl", "openvino_qwen_vl"}:
         return DirectModelEmotionPipeline(model=model)
@@ -161,6 +236,11 @@ def create_emotion_source(
     model_backend: str = "mock",
     model_path: str | None = None,
     device: str = "CPU",
+    enable_vlm_gate: bool = False,
+    vlm_backend: str = "qwen_vl",
+    vlm_model_path: str | None = None,
+    force_vlm: bool = False,
+    history_memory: Any | None = None,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -181,6 +261,22 @@ def create_emotion_source(
             device=device,
         )
         pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
+        if enable_vlm_gate:
+            vlm_model = create_vlm_emotion_model(
+                vlm_backend=vlm_backend,
+                pattern=pattern,
+                vlm_model_path=vlm_model_path,
+                device=device,
+            )
+            return VLMGatedCameraEmotionSource(
+                frame_source=frame_source,
+                cv_pipeline=pipeline,
+                gate=VLMTriggerGate(),
+                context_builder=EmotionContextBuilder(),
+                vlm_model=vlm_model,
+                memory=history_memory,
+                force_vlm=force_vlm,
+            )
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
     if source == "opencv_camera":
@@ -196,7 +292,24 @@ def create_emotion_source(
             device=device,
         )
         pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
-        camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
+        if enable_vlm_gate:
+            vlm_model = create_vlm_emotion_model(
+                vlm_backend=vlm_backend,
+                pattern=pattern,
+                vlm_model_path=vlm_model_path,
+                device=device,
+            )
+            camera_source = VLMGatedCameraEmotionSource(
+                frame_source=frame_source,
+                cv_pipeline=pipeline,
+                gate=VLMTriggerGate(),
+                context_builder=EmotionContextBuilder(),
+                vlm_model=vlm_model,
+                memory=history_memory,
+                force_vlm=force_vlm,
+            )
+        else:
+            camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
         interval_source = IntervalEmotionSource(source=camera_source, interval_seconds=interval_seconds)
         return LimitedEmotionSource(source=interval_source, count=count)
 
@@ -221,6 +334,10 @@ def create_runtime(
     model_backend: str = "mock",
     model_path: str | None = None,
     device: str = "CPU",
+    enable_vlm_gate: bool = False,
+    vlm_backend: str = "qwen_vl",
+    vlm_model_path: str | None = None,
+    force_vlm: bool = False,
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
     brain = XiaoAnBrain(
@@ -238,6 +355,11 @@ def create_runtime(
         model_backend=model_backend,
         model_path=model_path,
         device=device,
+        enable_vlm_gate=enable_vlm_gate,
+        vlm_backend=vlm_backend,
+        vlm_model_path=vlm_model_path,
+        force_vlm=force_vlm,
+        history_memory=brain.memory,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
@@ -306,6 +428,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--model-path", default=None, help="OpenVINO face emotion model path.")
     parser.add_argument("--device", default="CPU", help="OpenVINO device name.")
+    parser.add_argument("--enable-vlm-gate", action="store_true", help="Run VLM only when the trigger gate fires.")
+    parser.add_argument(
+        "--vlm-backend",
+        choices=["qwen_vl", "openvino_qwen_vl"],
+        default="qwen_vl",
+        help="VLM backend used when --enable-vlm-gate fires.",
+    )
+    parser.add_argument("--vlm-model-path", default=None, help="OpenVINO Qwen VL model directory.")
+    parser.add_argument("--force-vlm", action="store_true", help="Force VLM analysis for every camera sample.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
     return parser.parse_args(argv)
@@ -330,6 +461,10 @@ async def main(args: argparse.Namespace | None = None) -> None:
             model_backend=args.model_backend,
             model_path=args.model_path,
             device=args.device,
+            enable_vlm_gate=args.enable_vlm_gate,
+            vlm_backend=args.vlm_backend,
+            vlm_model_path=args.vlm_model_path,
+            force_vlm=args.force_vlm,
         )
         try:
             await runtime.run()

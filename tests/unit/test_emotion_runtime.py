@@ -9,7 +9,9 @@ from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     create_emotion_source,
     create_face_emotion_model,
+    parse_args,
 )
+from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
 
 
@@ -57,6 +59,48 @@ class FakeOpenCVCameraFrameSource:
 
 
 class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
+    async def test_openvino_qwen_vl_is_legal_model_backend_arg(self) -> None:
+        args = parse_args(["--model-backend", "openvino_qwen_vl"])
+
+        self.assertEqual(args.model_backend, "openvino_qwen_vl")
+
+    async def test_openvino_qwen_vl_requires_model_path(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "--model-path is required when --model-backend openvino_qwen_vl",
+        ):
+            create_face_emotion_model(
+                model_backend="openvino_qwen_vl",
+                pattern="neutral",
+            )
+
+    async def test_openvino_qwen_vl_backend_creates_wrapper_with_runner_config(self) -> None:
+        model = create_face_emotion_model(
+            model_backend="openvino_qwen_vl",
+            pattern="neutral",
+            model_path="models/qwen-vl-openvino",
+            device="GPU",
+        )
+
+        self.assertIsInstance(model, OpenVINOQwenVLEmotionModel)
+        self.assertEqual(model.runner.model_dir, "models/qwen-vl-openvino")
+        self.assertEqual(model.runner.device, "GPU")
+
+    async def test_openvino_qwen_vl_camera_source_uses_direct_model_pipeline(self) -> None:
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="neutral",
+            count=1,
+            interval_seconds=0,
+            model_backend="openvino_qwen_vl",
+            model_path="models/qwen-vl-openvino",
+            device="NPU",
+        )
+
+        self.assertIsInstance(source.pipeline.model, OpenVINOQwenVLEmotionModel)
+        self.assertEqual(source.pipeline.model.runner.model_dir, "models/qwen-vl-openvino")
+        self.assertEqual(source.pipeline.model.runner.device, "NPU")
+
     async def test_qwen_vl_backend_creates_fake_qwen_model(self) -> None:
         model = create_face_emotion_model(model_backend="qwen_vl", pattern="neutral")
 

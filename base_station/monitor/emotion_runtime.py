@@ -25,7 +25,9 @@ from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
 from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
+from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
+from base_station.perception.qwen_vl_openvino_runner import QwenVLOpenVINORunner
 
 
 class BaseStationEmotionRuntime:
@@ -127,16 +129,23 @@ def create_face_emotion_model(
             raise ValueError("--model-path is required when --model-backend openvino")
         return OpenVINOFaceEmotionModel(model_path=model_path, device=device)
 
+    if model_backend == "openvino_qwen_vl":
+        if not model_path:
+            raise ValueError("--model-path is required when --model-backend openvino_qwen_vl")
+        runner = QwenVLOpenVINORunner(model_dir=model_path, device=device)
+        return OpenVINOQwenVLEmotionModel(runner=runner)
+
     if model_backend == "qwen_vl":
         return FakeQwenVLEmotionModel(pattern=pattern)
 
     raise ValueError(
-        f"Unsupported model backend: {model_backend}. Currently supported backends: mock, openvino, qwen_vl."
+        "Unsupported model backend: "
+        f"{model_backend}. Currently supported backends: mock, openvino, qwen_vl, openvino_qwen_vl."
     )
 
 
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
-    if model_backend == "qwen_vl":
+    if model_backend in {"qwen_vl", "openvino_qwen_vl"}:
         return DirectModelEmotionPipeline(model=model)
     return FaceEmotionPipeline(pattern=pattern, model=model)
 
@@ -291,7 +300,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
     parser.add_argument(
         "--model-backend",
-        choices=["mock", "openvino", "qwen_vl"],
+        choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl"],
         default="mock",
         help="Face emotion model backend for camera sources.",
     )

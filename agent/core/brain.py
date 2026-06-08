@@ -10,11 +10,14 @@ from __future__ import annotations
 from typing import Any
 
 from agent.core.gateway import RobotGateway
+from agent.skills.companion_request import CompanionRequestSkill
 from agent.skills.emotion_monitor import EmotionMonitorSkill
+from agent.skills.robot_motion import RobotMotionSkill
 from base_station.monitor.emotion_db import EmotionDB
 
 
 SUPPORTED_EMOTION_EVENTS = {"emotion.sample", "emotion.alert"}
+ASR_TRANSCRIPT_EVENT = "asr.transcript"
 
 
 class XiaoAnBrain:
@@ -35,12 +38,19 @@ class XiaoAnBrain:
             memory=self.memory,
             window_seconds=window_seconds,
         )
+        self.companion_request = CompanionRequestSkill(
+            robot_motion=RobotMotionSkill(gateway=self.gateway),
+        )
 
     async def handle_event(self, event: dict) -> dict:
         event_type = event.get("type")
         if event_type in SUPPORTED_EMOTION_EVENTS:
             trigger = event.get("payload") or event
             return await self.emotion_monitor.run(trigger)
+
+        if event_type == ASR_TRANSCRIPT_EVENT:
+            payload = event.get("payload") or {}
+            return await self.companion_request.handle_text(payload.get("text"))
 
         return {
             "handled": False,

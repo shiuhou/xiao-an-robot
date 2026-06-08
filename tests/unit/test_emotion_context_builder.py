@@ -45,6 +45,17 @@ def make_history_summary() -> dict:
     }
 
 
+def make_asr_trigger_result() -> dict:
+    return {
+        "should_trigger": True,
+        "reason": "fatigue_keyword",
+        "matched_keyword": "累",
+        "emotion_tag": "tired",
+        "confidence": 0.75,
+        "fatigue_score": 0.8,
+    }
+
+
 class EmotionContextBuilderTest(unittest.TestCase):
     def test_full_input_builds_full_context(self) -> None:
         context = EmotionContextBuilder().build(
@@ -79,6 +90,50 @@ class EmotionContextBuilderTest(unittest.TestCase):
         context = EmotionContextBuilder().build(asr_text=None)
 
         self.assertEqual(context["asr"], {"text": ""})
+
+    def test_asr_text_without_trigger_keeps_old_shape(self) -> None:
+        context = EmotionContextBuilder().build(asr_text="我有点累")
+
+        self.assertEqual(context["asr"], {"text": "我有点累"})
+
+    def test_asr_text_with_trigger_result_preserves_trigger(self) -> None:
+        trigger_result = make_asr_trigger_result()
+
+        context = EmotionContextBuilder().build(
+            asr_text="我有点累",
+            asr_trigger_result=trigger_result,
+        )
+
+        self.assertEqual(context["asr"]["text"], "我有点累")
+        self.assertEqual(context["asr"]["trigger"], trigger_result)
+
+    def test_asr_trigger_fields_are_preserved(self) -> None:
+        context = EmotionContextBuilder().build(
+            asr_text="我有点累",
+            asr_trigger_result=make_asr_trigger_result(),
+        )
+
+        trigger = context["asr"]["trigger"]
+        self.assertEqual(trigger["should_trigger"], True)
+        self.assertEqual(trigger["reason"], "fatigue_keyword")
+        self.assertEqual(trigger["matched_keyword"], "累")
+        self.assertEqual(trigger["emotion_tag"], "tired")
+        self.assertEqual(trigger["confidence"], 0.75)
+        self.assertEqual(trigger["fatigue_score"], 0.8)
+
+    def test_missing_asr_trigger_result_does_not_error(self) -> None:
+        context = EmotionContextBuilder().build(asr_text="帮我查一下天气")
+
+        self.assertEqual(context["asr"]["text"], "帮我查一下天气")
+        self.assertNotIn("trigger", context["asr"])
+
+    def test_asr_trigger_without_text_does_not_crash(self) -> None:
+        trigger_result = make_asr_trigger_result()
+
+        context = EmotionContextBuilder().build(asr_trigger_result=trigger_result)
+
+        self.assertEqual(context["asr"]["text"], "")
+        self.assertEqual(context["asr"]["trigger"], trigger_result)
 
     def test_missing_history_outputs_default_history(self) -> None:
         context = EmotionContextBuilder().build(history_summary=None)
@@ -126,6 +181,7 @@ class EmotionContextBuilderTest(unittest.TestCase):
             cv_sample=cv_sample,
             vlm_sample=vlm_sample,
             asr_text="hello",
+            asr_trigger_result=make_asr_trigger_result(),
             history_summary=history_summary,
         )
 

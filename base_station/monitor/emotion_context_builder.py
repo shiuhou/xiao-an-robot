@@ -43,12 +43,13 @@ class EmotionContextBuilder:
         cv_sample: dict | None = None,
         vlm_sample: dict | None = None,
         asr_text: str | None = None,
+        asr_trigger_result: dict | None = None,
         history_summary: dict | None = None,
     ) -> dict:
         return {
             "cv": self._pick_fields(cv_sample, CV_FIELDS),
             "vlm": self._pick_fields(vlm_sample, VLM_FIELDS),
-            "asr": {"text": asr_text or ""},
+            "asr": self._build_asr(asr_text, asr_trigger_result),
             "history": self._build_history(history_summary),
         }
 
@@ -66,3 +67,10 @@ class EmotionContextBuilder:
         history = deepcopy(DEFAULT_HISTORY)
         history.update(deepcopy(history_summary))
         return history
+
+    @staticmethod
+    def _build_asr(asr_text: str | None, asr_trigger_result: dict | None) -> dict:
+        asr = {"text": asr_text or ""}
+        if asr_trigger_result is not None:
+            asr["trigger"] = deepcopy(asr_trigger_result)
+        return asr

@@ -1,74 +1,87 @@
-# DK2500 Deployment
+# DK-2500 Deployment
 
-This guide describes the conservative manual setup path for the DK2500.
+This guide tracks the current deployment direction for Xiao An on DK-2500.
+The project is still in staged integration: local simulation is runnable now,
+while real ASR/VAD/VLM model execution is intentionally represented by
+interfaces and placeholders.
 
-## 1. Clone the Repository
+## Local Simulation vs DK-2500
 
-```bash
-git clone <repo-url>
-cd xiao-an-robot
+Windows local development currently uses deterministic fake sources:
+
+- `fake_camera` for camera frames.
+- `fake_qwen_vl` for Qwen VL emotion output.
+- `base_station.monitor.asr_runtime` for text-only ASR transcript simulation.
+- `mock_robot` and the WebSocket `/agent` route for local command forwarding.
+
+DK-2500 deployment will replace those pieces with real sources:
+
+- `opencv_camera` for camera frames.
+- `openvino_qwen_vl` for Qwen2.5-VL-3B after OpenVINO export.
+- `SenseVoice-Small` for ASR.
+- `Silero-VAD` for voice activity detection.
+
+The Qwen2.5-VL-3B deployment route is Optimum Intel / OpenVINO /
+OpenVINO GenAI. Do not plan to run it through direct PyTorch Transformers
+in production on DK-2500.
+
+## Environment Check
+
+Run these from the repository root. On Windows local development, prefer
+PowerShell or CMD:
+
+```powershell
+python tools/check_runtime_env.py
+python tools/check_runtime_env.py --check-camera
 ```
 
-## 2. Check the Environment
+The report includes:
 
-```bash
-bash scripts/check_env.sh
+- Python version.
+- Optional package imports: `cv2`, `openvino`, `funasr`, `torch`, `onnxruntime`.
+- Expected model/data directories.
+- Optional camera open/read result.
+- `overall_status` as `ok`, `warning`, or `error`.
+
+Missing OpenVINO/FunASR/Torch/ONNX Runtime packages are warnings at this stage
+because real model execution is not wired yet.
+
+## Expected Paths
+
+The environment checker looks for:
+
+```text
+agent/data
+base_station/models
+base_station/models/sensevoice-small
+base_station/models/silero-vad
+base_station/models/qwen2_5_vl_openvino
 ```
 
-## 3. Create the Base Station Virtual Environment
+The checker does not create these directories. Create or mount them during
+deployment setup, and do not commit downloaded model files.
 
-```bash
-cd base_station
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
+## Local Commands
+
+ASR transcript simulation:
+
+```powershell
+python -m base_station.monitor.asr_runtime --pattern tired --verbose
+python -m base_station.monitor.asr_runtime --text "我有点累" --verbose
 ```
 
-## 4. Create the Agent Virtual Environment
+Emotion runtime with fake camera:
 
-```bash
-cd agent
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
+```powershell
+python -m base_station.monitor.emotion_runtime --source fake_camera --pattern tired --count 5 --interval 1 --fresh-db --verbose
 ```
 
-## 5. Initialize SQLite
+Emotion runtime with OpenCV camera and mock model:
 
-```bash
-bash scripts/init_db.sh
+```powershell
+python -m base_station.monitor.emotion_runtime --source opencv_camera --model-backend mock --pattern neutral --count 5 --interval 1 --fresh-db --verbose
 ```
 
-This creates `agent/data/xiao_an.db` from `agent/data/schema.sql`.
-
-## 6. Start the Base Station
-
-```bash
-bash scripts/start_base_station.sh
-```
-
-The script enters `base_station/` and starts the server with:
-
-```bash
-python -m ws_server.server
-```
-
-## 7. Start the Agent
-
-Open a second terminal:
-
-```bash
-bash scripts/start_agent.sh
-```
-
-## 8. Start the Mock Robot
-
-Open a third terminal:
-
-```bash
-bash scripts/run_mock_robot.sh
-```
-
-The mock robot connects to `/control`, sends `device.hello`, and keeps sending heartbeats. Use it before the real ESP32 firmware is ready.
+Do not default to `bash scripts/*.sh` on Windows local development. Use
+PowerShell/CMD commands unless you are specifically working inside a Linux
+shell on the target device.

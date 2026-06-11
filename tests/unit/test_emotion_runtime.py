@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -189,6 +190,28 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         args = parse_args(["--model-backend", "openvino_qwen_vl"])
 
         self.assertEqual(args.model_backend, "openvino_qwen_vl")
+
+    async def test_model_root_alias_maps_to_model_path(self) -> None:
+        args = parse_args(["--model-backend", "openvino", "--model-root", "models/face.xml"])
+
+        self.assertEqual(args.model_path, "models/face.xml")
+
+    async def test_vlm_model_root_alias_maps_to_vlm_model_path(self) -> None:
+        args = parse_args(["--enable-vlm-gate", "--vlm-model-root", "models/qwen-vl-openvino"])
+
+        self.assertEqual(args.vlm_model_path, "models/qwen-vl-openvino")
+
+    async def test_openvino_missing_model_path_does_not_import_openvino(self) -> None:
+        with patch("base_station.monitor.emotion_runtime.OpenVINOFaceEmotionModel", None):
+            with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "--model-path is required when --model-backend openvino",
+                ):
+                    create_face_emotion_model(
+                        model_backend="openvino",
+                        pattern="neutral",
+                    )
 
     async def test_openvino_qwen_vl_requires_model_path(self) -> None:
         with self.assertRaisesRegex(

@@ -22,11 +22,11 @@ class OpenVINOFaceEmotionModel:
         normalize: bool = True,
         bgr_to_rgb: bool = True,
     ):
-        Core = self._load_openvino_core()
-
         path = Path(model_path)
         if not path.exists():
             raise FileNotFoundError(f"OpenVINO model path does not exist: {model_path}")
+
+        Core = self._load_openvino_core()
 
         self.model_path = str(path)
         self.device = device

@@ -25,11 +25,12 @@ from base_station.perception.face_emotion_pipeline import CameraEmotionSource, F
 from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
-from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
-from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
-from base_station.perception.qwen_vl_openvino_runner import QwenVLOpenVINORunner
 from base_station.perception.vlm_trigger_gate import VLMTriggerGate
+
+OpenVINOFaceEmotionModel = None
+OpenVINOQwenVLEmotionModel = None
+QwenVLOpenVINORunner = None
 
 
 class BaseStationEmotionRuntime:
@@ -181,11 +182,13 @@ def create_face_emotion_model(
     if model_backend == "openvino":
         if not model_path:
             raise ValueError("--model-path is required when --model-backend openvino")
+        OpenVINOFaceEmotionModel = _load_openvino_face_emotion_model()
         return OpenVINOFaceEmotionModel(model_path=model_path, device=device)
 
     if model_backend == "openvino_qwen_vl":
         if not model_path:
             raise ValueError("--model-path is required when --model-backend openvino_qwen_vl")
+        QwenVLOpenVINORunner, OpenVINOQwenVLEmotionModel = _load_openvino_qwen_vl_components()
         runner = QwenVLOpenVINORunner(model_dir=model_path, device=device)
         return OpenVINOQwenVLEmotionModel(runner=runner)
 
@@ -210,6 +213,7 @@ def create_vlm_emotion_model(
     if vlm_backend == "openvino_qwen_vl":
         if not vlm_model_path:
             raise ValueError("--vlm-model-path is required when --vlm-backend openvino_qwen_vl")
+        QwenVLOpenVINORunner, OpenVINOQwenVLEmotionModel = _load_openvino_qwen_vl_components()
         runner = QwenVLOpenVINORunner(model_dir=vlm_model_path, device=device)
         return OpenVINOQwenVLEmotionModel(runner=runner)
 
@@ -217,6 +221,30 @@ def create_vlm_emotion_model(
         "Unsupported VLM backend: "
         f"{vlm_backend}. Currently supported VLM backends: qwen_vl, openvino_qwen_vl."
     )
+
+
+def _load_openvino_face_emotion_model():
+    global OpenVINOFaceEmotionModel
+    if OpenVINOFaceEmotionModel is None:
+        from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel as loaded
+
+        OpenVINOFaceEmotionModel = loaded
+    return OpenVINOFaceEmotionModel
+
+
+def _load_openvino_qwen_vl_components():
+    global OpenVINOQwenVLEmotionModel, QwenVLOpenVINORunner
+    if QwenVLOpenVINORunner is None:
+        from base_station.perception.qwen_vl_openvino_runner import QwenVLOpenVINORunner as loaded_runner
+
+        QwenVLOpenVINORunner = loaded_runner
+    if OpenVINOQwenVLEmotionModel is None:
+        from base_station.perception.openvino_qwen_vl_emotion_model import (
+            OpenVINOQwenVLEmotionModel as loaded_model,
+        )
+
+        OpenVINOQwenVLEmotionModel = loaded_model
+    return QwenVLOpenVINORunner, OpenVINOQwenVLEmotionModel
 
 
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
@@ -427,6 +455,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Face emotion model backend for camera sources.",
     )
     parser.add_argument("--model-path", default=None, help="OpenVINO face emotion model path.")
+    parser.add_argument("--model-root", dest="model_path", help=argparse.SUPPRESS)
     parser.add_argument("--device", default="CPU", help="OpenVINO device name.")
     parser.add_argument("--enable-vlm-gate", action="store_true", help="Run VLM only when the trigger gate fires.")
     parser.add_argument(
@@ -436,6 +465,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="VLM backend used when --enable-vlm-gate fires.",
     )
     parser.add_argument("--vlm-model-path", default=None, help="OpenVINO Qwen VL model directory.")
+    parser.add_argument("--vlm-model-root", dest="vlm_model_path", help=argparse.SUPPRESS)
     parser.add_argument("--force-vlm", action="store_true", help="Force VLM analysis for every camera sample.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")

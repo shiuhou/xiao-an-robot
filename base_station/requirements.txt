@@ -1,7 +1,7 @@
 openvino>=2024.0
 numpy
 opencv-python
-websockets>=12.0
+websockets>=14,<17
 pyyaml
 sqlite-utils
 sherpa-onnx

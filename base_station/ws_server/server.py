@@ -16,8 +16,8 @@ import time
 import uuid
 from typing import Dict, Optional
 
-import websockets
-from websockets.server import WebSocketServerProtocol
+from websockets.asyncio.server import ServerConnection, serve
+from websockets.exceptions import ConnectionClosed
 
 from .protocol import (
     Expression,
@@ -47,7 +47,17 @@ def reset_state_for_tests() -> None:
     sessions.clear()
 
 
-async def handle_control(websocket: WebSocketServerProtocol):
+def remove_session_if_current(device_id: str, websocket: ServerConnection) -> bool:
+    """Remove a robot session only if it still points at this connection."""
+
+    session = sessions.get(device_id)
+    if session and session.get("ws") is websocket:
+        del sessions[device_id]
+        return True
+    return False
+
+
+async def handle_control(websocket: ServerConnection):
     """Handle /control channel: bidirectional JSON messages."""
     device_id: Optional[str] = None
     try:
@@ -93,11 +103,11 @@ async def handle_control(websocket: WebSocketServerProtocol):
             elif msg_type == MessageType.ERROR_REPORT:
                 logger.warning(f"Robot error [{payload.get('code')}]: {payload.get('message')}")
 
-    except websockets.exceptions.ConnectionClosed:
+    except ConnectionClosed:
         logger.info(f"Robot disconnected: {device_id}")
     finally:
-        if device_id and device_id in sessions:
-            del sessions[device_id]
+        if device_id:
+            remove_session_if_current(device_id, websocket)
 
 
 async def send_to_robot(message: dict, device_id: Optional[str] = None) -> tuple[bool, Optional[str], Optional[str]]:
@@ -120,8 +130,8 @@ async def send_to_robot(message: dict, device_id: Optional[str] = None) -> tuple
 
     try:
         await session["ws"].send(json.dumps(message, ensure_ascii=False))
-    except websockets.exceptions.ConnectionClosed:
-        sessions.pop(device_id, None)
+    except ConnectionClosed:
+        remove_session_if_current(device_id, session["ws"])
         return False, device_id, f"Robot connection is closed: {device_id}"
     except Exception as exc:
         return False, device_id, f"Failed to send message to robot {device_id}: {exc}"
@@ -170,7 +180,7 @@ def build_robot_message(command_payload: dict) -> dict:
 
 
 async def send_agent_ack(
-    websocket: WebSocketServerProtocol,
+    websocket: ServerConnection,
     ok: bool,
     device_id: Optional[str] = None,
     forwarded_type: Optional[str] = None,
@@ -191,7 +201,7 @@ async def send_agent_ack(
     }, ensure_ascii=False))
 
 
-async def handle_agent(websocket: WebSocketServerProtocol):
+async def handle_agent(websocket: ServerConnection):
     """Handle local Agent commands and forward them to the online robot."""
 
     logger.info("Agent command channel connected")
@@ -219,11 +229,11 @@ async def handle_agent(websocket: WebSocketServerProtocol):
                 await send_agent_ack(websocket, ok=False, error="Invalid JSON")
             except (TypeError, ValueError) as exc:
                 await send_agent_ack(websocket, ok=False, error=str(exc))
-    except websockets.exceptions.ConnectionClosed:
+    except ConnectionClosed:
         logger.info("Agent command channel disconnected")
 
 
-async def handle_audio(websocket: WebSocketServerProtocol):
+async def handle_audio(websocket: ServerConnection):
     """Handle /audio channel: receive raw PCM frames from robot."""
     logger.info("Audio stream connected")
     try:
@@ -231,11 +241,11 @@ async def handle_audio(websocket: WebSocketServerProtocol):
             if isinstance(frame, bytes):
                 # TODO: pipe PCM frames to VAD -> ASR pipeline
                 pass
-    except websockets.exceptions.ConnectionClosed:
+    except ConnectionClosed:
         logger.info("Audio stream disconnected")
 
 
-async def handle_video(websocket: WebSocketServerProtocol):
+async def handle_video(websocket: ServerConnection):
     """Handle /video channel: receive JPEG frames from robot."""
     logger.info("Video stream connected")
     try:
@@ -247,11 +257,11 @@ async def handle_video(websocket: WebSocketServerProtocol):
                 jpeg_data = frame[8:8 + length]
                 # TODO: pipe jpeg_data to face emotion detection pipeline
                 logger.debug(f"Video frame: {length} bytes, ts={timestamp}")
-    except websockets.exceptions.ConnectionClosed:
+    except ConnectionClosed:
         logger.info("Video stream disconnected")
 
 
-async def router(websocket: WebSocketServerProtocol):
+async def router(websocket: ServerConnection):
     """Route incoming connections to the correct handler by path."""
     path = websocket.request.path
     logger.info(f"New connection on path: {path}")
@@ -288,7 +298,7 @@ async def start_server(host: str = "0.0.0.0", port: int = 8765):
     """Start the WebSocket server and return the websockets server object."""
 
     logger.info(f"Starting Xiao An WebSocket server on {host}:{port}")
-    return await websockets.serve(router, host, port)
+    return await serve(router, host, port)
 
 
 async def main():

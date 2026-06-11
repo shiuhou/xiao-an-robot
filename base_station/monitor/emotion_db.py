@@ -42,6 +42,15 @@ class EmotionDB:
 
         with self.conn:
             self.conn.executescript(schema_sql)
+            self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        emotion_columns = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(emotions)").fetchall()
+        }
+        if "polarity" not in emotion_columns:
+            self.conn.execute("ALTER TABLE emotions ADD COLUMN polarity TEXT DEFAULT '正面'")
 
     def insert_emotion(
         self,
@@ -49,16 +58,17 @@ class EmotionDB:
         emotion_tag: str,
         confidence: float,
         fatigue_score: float = 0.0,
+        polarity: str = "正面",
         timestamp: int | None = None,
     ) -> int:
         timestamp = int(time.time() * 1000) if timestamp is None else timestamp
         with self.conn:
             cursor = self.conn.execute(
                 """
-                INSERT INTO emotions (timestamp, source, emotion_tag, confidence, fatigue_score)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO emotions (timestamp, source, emotion_tag, confidence, fatigue_score, polarity)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (timestamp, source, emotion_tag, confidence, fatigue_score),
+                (timestamp, source, emotion_tag, confidence, fatigue_score, polarity),
             )
         return int(cursor.lastrowid)
 
@@ -67,7 +77,7 @@ class EmotionDB:
         since_ms = now_ms - int(seconds * 1000)
         cursor = self.conn.execute(
             """
-            SELECT id, timestamp, source, emotion_tag, confidence, fatigue_score
+            SELECT id, timestamp, source, emotion_tag, confidence, fatigue_score, polarity
             FROM emotions
             WHERE timestamp >= ? AND timestamp <= ?
             ORDER BY timestamp DESC

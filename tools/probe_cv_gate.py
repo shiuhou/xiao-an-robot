@@ -17,6 +17,7 @@ from base_station.perception.face_emotion_model import MockFaceEmotionModel
 from base_station.perception.face_emotion_pipeline import FaceEmotionPipeline
 from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
+from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel
 from base_station.perception.vlm_trigger_gate import VLMTriggerGate
 
 
@@ -69,7 +70,9 @@ def parse_count(value: str) -> int:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Probe camera CV output and VLM gate decisions.")
     parser.add_argument("--source", choices=["fake_camera", "opencv_camera"], default="fake_camera", help="Frame source.")
-    parser.add_argument("--model-backend", choices=["mock"], default="mock", help="CV model backend.")
+    parser.add_argument("--model-backend", choices=["mock", "openvino"], default="mock", help="CV model backend.")
+    parser.add_argument("--model-path", default=None, help="OpenVINO CV model path or model root.")
+    parser.add_argument("--device", default="CPU", choices=["CPU", "GPU", "NPU", "AUTO"], help="OpenVINO device.")
     parser.add_argument(
         "--pattern",
         choices=["neutral", "tired", "anxious", "mixed"],
@@ -107,10 +110,12 @@ def build_frame_source(args: argparse.Namespace):
     raise ValueError(f"Unsupported source: {args.source}")
 
 
-def build_model(args: argparse.Namespace) -> MockFaceEmotionModel:
-    if args.model_backend != "mock":
-        raise ValueError(f"Unsupported model backend: {args.model_backend}")
-    return MockFaceEmotionModel(pattern=args.pattern)
+def build_model(args: argparse.Namespace):
+    if args.model_backend == "mock":
+        return MockFaceEmotionModel(pattern=args.pattern)
+    if args.model_backend == "openvino":
+        return OpenVINOFaceEmotionModel(model_path=args.model_path, device=args.device)
+    raise ValueError(f"Unsupported model backend: {args.model_backend}")
 
 
 def normalize_probe_row(sample: dict, gate_result: dict | None, latency_ms: float | None = None) -> dict:
@@ -246,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         asyncio.run(probe_cv_gate(args))
-    except (ImportError, RuntimeError, ValueError) as exc:
+    except (FileNotFoundError, ImportError, RuntimeError, ValueError) as exc:
         print(f"CV gate probe failed: {exc}", file=sys.stderr)
         return 1
     return 0

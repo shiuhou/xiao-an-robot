@@ -75,10 +75,38 @@ class FakeOpenCVCameraFrameSource:
         type(self).closed = True
 
 
+class FakeOpenVINOFaceEmotionModel:
+    instances = []
+    raise_on_init: Exception | None = None
+
+    def __init__(self, model_path: str | None = None, device: str = "CPU") -> None:
+        if type(self).raise_on_init is not None:
+            raise type(self).raise_on_init
+        self.model_path = model_path
+        self.device = device
+        type(self).instances.append(self)
+
+    def predict(self, frame: dict) -> dict:
+        return {
+            "emotion_tag": "tired",
+            "cv_emotion_raw": "sadness",
+            "confidence": 0.91,
+            "fatigue_score": 0.82,
+            "face_detected": True,
+            "calibrated": False,
+            "source": "openvino_face",
+            "frame_source": frame.get("source"),
+            "frame_id": frame.get("frame_id"),
+            "timestamp_ms": frame.get("timestamp_ms"),
+        }
+
+
 class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         FakeOpenCVCameraFrameSource.closed = False
         FakeOpenCVCameraFrameSource.raise_on_open = None
+        FakeOpenVINOFaceEmotionModel.instances = []
+        FakeOpenVINOFaceEmotionModel.raise_on_init = None
 
     def make_args(
         self,
@@ -245,6 +273,92 @@ class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertIn("Unable to open camera index 0", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_parser_accepts_openvino_model_options(self) -> None:
+        args = probe_cv_gate.parse_args([
+            "--source",
+            "opencv_camera",
+            "--model-backend",
+            "openvino",
+            "--model-path",
+            "base_station/models",
+            "--device",
+            "CPU",
+            "--count",
+            "2",
+            "--no-show",
+        ])
+
+        self.assertEqual(args.model_backend, "openvino")
+        self.assertEqual(args.model_path, "base_station/models")
+        self.assertEqual(args.device, "CPU")
+
+    def test_build_model_uses_openvino_face_emotion_model(self) -> None:
+        args = probe_cv_gate.parse_args([
+            "--model-backend",
+            "openvino",
+            "--model-path",
+            "base_station/models",
+            "--device",
+            "AUTO",
+        ])
+
+        with patch("tools.probe_cv_gate.OpenVINOFaceEmotionModel", FakeOpenVINOFaceEmotionModel):
+            model = probe_cv_gate.build_model(args)
+
+        self.assertIsInstance(model, FakeOpenVINOFaceEmotionModel)
+        self.assertEqual(model.model_path, "base_station/models")
+        self.assertEqual(model.device, "AUTO")
+
+    def test_openvino_output_normalizes_to_stable_probe_row(self) -> None:
+        sample = {
+            "emotion_tag": "tired",
+            "cv_emotion_raw": "sadness",
+            "confidence": 0.91,
+            "fatigue_score": 0.82,
+            "face_detected": True,
+            "calibrated": False,
+            "source": "openvino_face",
+            "frame_source": "opencv_camera",
+            "frame_id": 9,
+            "timestamp_ms": 1234,
+        }
+
+        row = probe_cv_gate.normalize_probe_row(
+            sample,
+            {"should_trigger": True, "reason": "high_fatigue"},
+            latency_ms=15.5,
+        )
+
+        self.assertTrue(STABLE_KEYS.issubset(row))
+        self.assertEqual(row["source"], "openvino_face")
+        self.assertEqual(row["cv_emotion_raw"], "sadness")
+        self.assertEqual(row["face_detected"], True)
+        self.assertEqual(row["gate_triggered"], True)
+        self.assertEqual(row["gate_reason"], "high_fatigue")
+        self.assertEqual(row["latency_ms"], 15.5)
+
+    def test_openvino_model_init_failure_returns_user_level_error(self) -> None:
+        FakeOpenVINOFaceEmotionModel.raise_on_init = FileNotFoundError("OpenVINO CV model(s) not found")
+        with patch("tools.probe_cv_gate.OpenVINOFaceEmotionModel", FakeOpenVINOFaceEmotionModel):
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as stderr:
+                exit_code = probe_cv_gate.main([
+                    "--source",
+                    "fake_camera",
+                    "--model-backend",
+                    "openvino",
+                    "--model-path",
+                    "missing-model-root",
+                    "--device",
+                    "CPU",
+                    "--count",
+                    "1",
+                    "--no-show",
+                ])
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("OpenVINO CV model", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
 
 

@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS emotions (
     source TEXT NOT NULL CHECK(source IN ('face', 'voice')),
     emotion_tag TEXT NOT NULL,
     confidence REAL NOT NULL,
-    fatigue_score REAL DEFAULT 0.0
+    fatigue_score REAL DEFAULT 0.0,
+    polarity TEXT DEFAULT '正面'
 );
 
 CREATE TABLE IF NOT EXISTS interactions (

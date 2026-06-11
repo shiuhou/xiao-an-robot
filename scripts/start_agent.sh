@@ -4,29 +4,28 @@ set -e
 # Start the Agent brain process after checking the local database exists.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR/agent"
+cd "$ROOT_DIR"
 
-if [ ! -d "venv" ]; then
+if [ ! -d "agent/venv" ]; then
   echo "[info] agent/venv does not exist."
-  echo "       Create one with: python3 -m venv venv"
-  echo "       Then install deps: source venv/bin/activate && pip install -r requirements.txt"
-  python3 -m venv venv
+  echo "       Create one with: python3 -m venv agent/venv"
+  echo "       Then install deps: source agent/venv/bin/activate && pip install -r agent/requirements.txt"
+  python3 -m venv agent/venv
   echo "[done] Created agent/venv"
 fi
 
 # shellcheck disable=SC1091
-source venv/bin/activate
+source agent/venv/bin/activate
 
-if [ ! -f "data/xiao_an.db" ]; then
-  echo "[error] data/xiao_an.db does not exist."
+if [ ! -f "agent/data/xiao_an.db" ]; then
+  echo "[error] agent/data/xiao_an.db does not exist."
   echo "        Run from the repository root: bash scripts/init_db.sh"
   exit 1
 fi
 
-if [ -f "requirements.txt" ]; then
-  echo "[info] If dependencies are missing, run: pip install -r requirements.txt"
+if [ -f "agent/requirements.txt" ]; then
+  echo "[info] If dependencies are missing, run: pip install -r agent/requirements.txt"
 fi
 
-echo "[start] python core/brain.py"
-python core/brain.py
-
+echo "[start] python -m agent.core.brain"
+python -m agent.core.brain

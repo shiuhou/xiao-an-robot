@@ -21,6 +21,8 @@ base_station/models/*.tflite
 base_station/models/*.pt
 base_station/models/*.ckpt
 models/
+!base_station/models/
+!base_station/models/README.md
 *.pth
 *.safetensors
 agent/data/USER.md

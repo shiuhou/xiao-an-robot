@@ -33,7 +33,7 @@ class RobotMotionSkill:
         return await self.gateway.send_motion("move_out_of_dock")
 
     async def return_to_dock(self) -> dict:
-        return await self.gateway.send_motion("return_to_dock")
+        return await self.gateway.send_motion("move_back_to_dock")
 
     async def say(self, text: str) -> dict:
         return await self.gateway.send_tts(text)

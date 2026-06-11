@@ -108,15 +108,18 @@ class OpenVINOFaceEmotionModelTest(unittest.TestCase):
                 )
 
     def test_missing_openvino_raises_clear_import_error(self) -> None:
-        with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
-            with self.assertRaisesRegex(ImportError, "OpenVINO is not installed"):
-                OpenVINOFaceEmotionModel("missing.xml")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "emotion.xml"
+            model_path.write_text("<xml />", encoding="utf-8")
+
+            with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
+                with self.assertRaisesRegex(ImportError, "OpenVINO is not installed"):
+                    OpenVINOFaceEmotionModel(str(model_path))
 
     def test_missing_model_path_raises_file_not_found(self) -> None:
-        modules = openvino_runtime_modules()
         missing_path = "missing_model.xml"
 
-        with patch.dict(sys.modules, modules):
+        with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
             with self.assertRaisesRegex(FileNotFoundError, missing_path):
                 OpenVINOFaceEmotionModel(missing_path)
 

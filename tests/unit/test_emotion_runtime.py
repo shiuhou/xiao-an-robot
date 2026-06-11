@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -189,6 +190,42 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         args = parse_args(["--model-backend", "openvino_qwen_vl"])
 
         self.assertEqual(args.model_backend, "openvino_qwen_vl")
+
+    async def test_model_root_alias_maps_to_model_path(self) -> None:
+        args = parse_args(["--model-backend", "openvino", "--model-root", "models/face.xml"])
+
+        self.assertEqual(args.model_path, "models/face.xml")
+
+    async def test_vlm_model_root_alias_maps_to_vlm_model_path(self) -> None:
+        args = parse_args(["--enable-vlm-gate", "--vlm-model-root", "models/qwen-vl-openvino"])
+
+        self.assertEqual(args.vlm_model_path, "models/qwen-vl-openvino")
+
+    async def test_openvino_missing_model_path_does_not_import_openvino(self) -> None:
+        with patch("base_station.monitor.emotion_runtime.OpenVINOFaceEmotionModel", None):
+            with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
+                with self.assertRaisesRegex(
+                    FileNotFoundError,
+                    "OpenVINO CV model",
+                ):
+                    create_face_emotion_model(
+                        model_backend="openvino",
+                        pattern="neutral",
+                    )
+
+    async def test_fake_vlm_backend_creates_fake_qwen_model(self) -> None:
+        model = create_vlm_emotion_model(vlm_backend="fake", pattern="neutral")
+
+        self.assertIsInstance(model, FakeQwenVLEmotionModel)
+
+    async def test_qwen_vl_vlm_backend_remains_fake_alias(self) -> None:
+        model = create_vlm_emotion_model(vlm_backend="qwen_vl", pattern="neutral")
+
+        self.assertIsInstance(model, FakeQwenVLEmotionModel)
+
+    async def test_vlm_face_backend_missing_model_path_reports_clear_error(self) -> None:
+        with self.assertRaisesRegex(FileNotFoundError, "VLM model not found"):
+            create_vlm_emotion_model(vlm_backend="vlm_face", pattern="neutral", vlm_model_path="missing-vlm")
 
     async def test_openvino_qwen_vl_requires_model_path(self) -> None:
         with self.assertRaisesRegex(

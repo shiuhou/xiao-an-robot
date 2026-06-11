@@ -189,8 +189,8 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(source.pipeline.model, MockFaceEmotionModel)
 
-    async def test_openvino_backend_requires_model_path(self) -> None:
-        with self.assertRaisesRegex(ValueError, "--model-path is required"):
+    async def test_openvino_backend_reports_missing_default_models(self) -> None:
+        with self.assertRaisesRegex(FileNotFoundError, "OpenVINO CV model"):
             create_face_emotion_model(
                 model_backend="openvino",
                 pattern="neutral",
@@ -225,7 +225,7 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 pattern="neutral",
             )
 
-    def test_cli_reports_missing_openvino_model_path_without_traceback(self) -> None:
+    def test_cli_reports_missing_openvino_models_without_traceback(self) -> None:
         stderr = io.StringIO()
 
         with redirect_stderr(stderr):
@@ -241,7 +241,8 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
             ])
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("Error: --model-path is required when --model-backend openvino", stderr.getvalue())
+        self.assertIn("Error: OpenVINO CV model", stderr.getvalue())
+        self.assertNotIn("No module named 'openvino'", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_cli_reports_missing_model_file_without_traceback(self) -> None:

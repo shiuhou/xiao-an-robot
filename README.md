@@ -28,33 +28,33 @@ pio run -t upload
 
 ### 基站服务 (Base Station)
 
-```bash
-cd base_station
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-# or: venv\Scripts\activate  # Windows
-pip install -r requirements.txt
+Windows PowerShell/CMD, run from the repository root:
+
+```powershell
+python -m venv base_station\venv
+base_station\venv\Scripts\python -m pip install -r base_station\requirements.txt
+base_station\venv\Scripts\python -m base_station.ws_server.server
 
 # 下载 OpenVINO 模型
-bash models/download_models.sh
+# Optional model download via Git Bash: bash base_station/models/download_models.sh
 
 # 启动 WebSocket 服务器
-python -m ws_server.server
+# python -m base_station.ws_server.server
 ```
 
 ### 智能体 (Agent)
 
-```bash
-cd agent
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+Windows PowerShell/CMD, run from the repository root:
+
+```powershell
+python -m venv agent\venv
+agent\venv\Scripts\python -m pip install -r agent\requirements.txt
 
 # 初始化数据库
-sqlite3 data/xiao_an.db < data/schema.sql
+sqlite3 agent\data\xiao_an.db ".read agent\data\schema.sql"
 
 # 启动大脑
-python core/brain.py
+agent\venv\Scripts\python -m agent.core.brain
 ```
 
 ## 团队成员

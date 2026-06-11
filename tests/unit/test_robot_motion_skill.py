@@ -52,6 +52,36 @@ class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
             ("tts", "hello"),
         ])
 
+    async def test_return_to_dock_sends_protocol_action(self) -> None:
+        gateway = FakeGateway()
+        skill = RobotMotionSkill(gateway=gateway)
+
+        await skill.return_to_dock()
+
+        self.assertEqual(gateway.calls, [
+            ("motion", "move_back_to_dock", {}, 5000),
+        ])
+
+    async def test_run_accepts_legacy_return_to_dock_action(self) -> None:
+        gateway = FakeGateway()
+        skill = RobotMotionSkill(gateway=gateway)
+
+        await skill.run("return_to_dock")
+
+        self.assertEqual(gateway.calls, [
+            ("motion", "move_back_to_dock", {}, 5000),
+        ])
+
+    async def test_run_accepts_protocol_move_back_to_dock_action(self) -> None:
+        gateway = FakeGateway()
+        skill = RobotMotionSkill(gateway=gateway)
+
+        await skill.run("move_back_to_dock")
+
+        self.assertEqual(gateway.calls, [
+            ("motion", "move_back_to_dock", {}, 5000),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

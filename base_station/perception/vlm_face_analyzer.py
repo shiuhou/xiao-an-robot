@@ -54,7 +54,11 @@ class VLMFaceAnalyzer:
         self._cv2 = cv2
         self._frontal = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
         self._profile = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
-        self.processor = AutoProcessor.from_pretrained(str(self.model_dir), max_pixels=MAX_PIXELS)
+        self.processor = AutoProcessor.from_pretrained(
+            str(self.model_dir),
+            max_pixels=MAX_PIXELS,
+            fix_mistral_regex=True,
+        )
         self.model = OVModelForVisualCausalLM.from_pretrained(str(self.model_dir), device=device)
 
     def _detect_face(self, gray):

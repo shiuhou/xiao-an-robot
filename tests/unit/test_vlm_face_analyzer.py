@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import sys
+import tempfile
+import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from base_station.perception import vlm_face_analyzer as vfa
 
@@ -53,6 +55,42 @@ class VLMFaceAnalyzerParseTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(FileNotFoundError, "VLM model not found"):
                 vfa.VLMFaceAnalyzer(model_dir="missing-vlm-model")
+
+    def test_processor_loads_with_mistral_regex_fix(self) -> None:
+        cv2 = types.ModuleType("cv2")
+        cv2.data = types.SimpleNamespace(haarcascades="")
+        cv2.CascadeClassifier = MagicMock(return_value=object())
+
+        auto_processor = MagicMock()
+        auto_processor.from_pretrained = MagicMock(return_value=object())
+        transformers = types.ModuleType("transformers")
+        transformers.AutoProcessor = auto_processor
+
+        ov_model = MagicMock()
+        ov_model.from_pretrained = MagicMock(return_value=object())
+        optimum = types.ModuleType("optimum")
+        optimum_intel = types.ModuleType("optimum.intel")
+        optimum_intel.OVModelForVisualCausalLM = ov_model
+
+        with tempfile.TemporaryDirectory() as model_dir:
+            with patch.dict(
+                sys.modules,
+                {
+                    "cv2": cv2,
+                    "transformers": transformers,
+                    "optimum": optimum,
+                    "optimum.intel": optimum_intel,
+                    "qwen_vl_utils": types.ModuleType("qwen_vl_utils"),
+                    "PIL": types.ModuleType("PIL"),
+                },
+            ):
+                vfa.VLMFaceAnalyzer(model_dir=model_dir)
+
+        auto_processor.from_pretrained.assert_called_once_with(
+            model_dir,
+            max_pixels=vfa.MAX_PIXELS,
+            fix_mistral_regex=True,
+        )
 
 
 if __name__ == "__main__":

@@ -205,13 +205,27 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         with patch("base_station.monitor.emotion_runtime.OpenVINOFaceEmotionModel", None):
             with patch.dict(sys.modules, {"openvino": None, "openvino.runtime": None}):
                 with self.assertRaisesRegex(
-                    ValueError,
-                    "--model-path is required when --model-backend openvino",
+                    FileNotFoundError,
+                    "OpenVINO CV model",
                 ):
                     create_face_emotion_model(
                         model_backend="openvino",
                         pattern="neutral",
                     )
+
+    async def test_fake_vlm_backend_creates_fake_qwen_model(self) -> None:
+        model = create_vlm_emotion_model(vlm_backend="fake", pattern="neutral")
+
+        self.assertIsInstance(model, FakeQwenVLEmotionModel)
+
+    async def test_qwen_vl_vlm_backend_remains_fake_alias(self) -> None:
+        model = create_vlm_emotion_model(vlm_backend="qwen_vl", pattern="neutral")
+
+        self.assertIsInstance(model, FakeQwenVLEmotionModel)
+
+    async def test_vlm_face_backend_missing_model_path_reports_clear_error(self) -> None:
+        with self.assertRaisesRegex(FileNotFoundError, "VLM model not found"):
+            create_vlm_emotion_model(vlm_backend="vlm_face", pattern="neutral", vlm_model_path="missing-vlm")
 
     async def test_openvino_qwen_vl_requires_model_path(self) -> None:
         with self.assertRaisesRegex(

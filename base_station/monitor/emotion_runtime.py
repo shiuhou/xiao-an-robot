@@ -31,6 +31,7 @@ from base_station.perception.vlm_trigger_gate import VLMTriggerGate
 OpenVINOFaceEmotionModel = None
 OpenVINOQwenVLEmotionModel = None
 QwenVLOpenVINORunner = None
+VLMFaceAnalyzer = None
 
 
 class BaseStationEmotionRuntime:
@@ -141,7 +142,8 @@ class VLMGatedCameraEmotionSource:
                     asr_text=None,
                     history_summary=self._history_summary(),
                 )
-                final_sample = self.vlm_model.predict(frame, context=context).copy()
+                prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+                final_sample = prediction.copy()
                 final_sample["vlm_triggered"] = True
                 final_sample["vlm_trigger_reason"] = reason
                 final_sample["cv_sample"] = cv_sample.copy()
@@ -180,8 +182,6 @@ def create_face_emotion_model(
         return MockFaceEmotionModel(pattern=pattern)
 
     if model_backend == "openvino":
-        if not model_path:
-            raise ValueError("--model-path is required when --model-backend openvino")
         OpenVINOFaceEmotionModel = _load_openvino_face_emotion_model()
         return OpenVINOFaceEmotionModel(model_path=model_path, device=device)
 
@@ -207,8 +207,14 @@ def create_vlm_emotion_model(
     vlm_model_path: str | None = None,
     device: str = "CPU",
 ):
-    if vlm_backend == "qwen_vl":
+    if vlm_backend in {"fake", "qwen_vl"}:
         return FakeQwenVLEmotionModel(pattern=pattern)
+
+    if vlm_backend == "vlm_face":
+        VLMFaceAnalyzer = _load_vlm_face_analyzer()
+        if vlm_model_path:
+            return VLMFaceAnalyzer(model_dir=vlm_model_path, device=device)
+        return VLMFaceAnalyzer(device=device)
 
     if vlm_backend == "openvino_qwen_vl":
         if not vlm_model_path:
@@ -219,7 +225,7 @@ def create_vlm_emotion_model(
 
     raise ValueError(
         "Unsupported VLM backend: "
-        f"{vlm_backend}. Currently supported VLM backends: qwen_vl, openvino_qwen_vl."
+        f"{vlm_backend}. Currently supported VLM backends: fake, qwen_vl, vlm_face, openvino_qwen_vl."
     )
 
 
@@ -245,6 +251,15 @@ def _load_openvino_qwen_vl_components():
 
         OpenVINOQwenVLEmotionModel = loaded_model
     return QwenVLOpenVINORunner, OpenVINOQwenVLEmotionModel
+
+
+def _load_vlm_face_analyzer():
+    global VLMFaceAnalyzer
+    if VLMFaceAnalyzer is None:
+        from base_station.perception.vlm_face_analyzer import VLMFaceAnalyzer as loaded
+
+        VLMFaceAnalyzer = loaded
+    return VLMFaceAnalyzer
 
 
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
@@ -460,7 +475,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--enable-vlm-gate", action="store_true", help="Run VLM only when the trigger gate fires.")
     parser.add_argument(
         "--vlm-backend",
-        choices=["qwen_vl", "openvino_qwen_vl"],
+        choices=["fake", "qwen_vl", "vlm_face", "openvino_qwen_vl"],
         default="qwen_vl",
         help="VLM backend used when --enable-vlm-gate fires.",
     )

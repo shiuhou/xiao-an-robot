@@ -5,14 +5,22 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
+from agent.core.local_tools import LocalToolRegistry
 from agent.core.openclaw_adapter import OpenClawDecision, OpenClawToolCall
 
 
 class ActionExecutor:
     """Apply OpenClaw decisions to the local robot execution layer."""
 
-    def __init__(self, robot_motion_skill: Any):
+    LOCAL_TOOL_NAMES = {"note.add", "work_context.record", "summary.daily"}
+
+    def __init__(self, robot_motion_skill: Any = None, local_tool_registry: Any = None):
         self.robot_motion_skill = robot_motion_skill
+        self.local_tool_registry = (
+            local_tool_registry
+            if local_tool_registry is not None
+            else LocalToolRegistry()
+        )
 
     async def execute(self, decision: OpenClawDecision) -> dict:
         executed_actions: list[dict] = []
@@ -82,23 +90,37 @@ class ActionExecutor:
             executed_actions.append(self._executed(tool_call))
             return
 
+        if name in self.LOCAL_TOOL_NAMES:
+            result = self.local_tool_registry.execute(name, arguments)
+            if result.get("ok", False):
+                executed_actions.append(self._executed(tool_call, result=result))
+            else:
+                skipped_actions.append(self._skipped(tool_call, "local_tool_failed", result=result))
+            return
+
         skipped_actions.append(self._skipped(tool_call, "unknown_tool"))
 
     @staticmethod
-    def _executed(tool_call: OpenClawToolCall) -> dict:
-        return {
+    def _executed(tool_call: OpenClawToolCall, result: dict | None = None) -> dict:
+        action = {
             "name": tool_call.name,
             "source": "tool_call",
             "arguments": dict(tool_call.arguments),
         }
+        if result is not None:
+            action["result"] = result
+        return action
 
     @staticmethod
-    def _skipped(tool_call: OpenClawToolCall, reason: str) -> dict:
-        return {
+    def _skipped(tool_call: OpenClawToolCall, reason: str, result: dict | None = None) -> dict:
+        action = {
             "name": tool_call.name,
             "reason": reason,
             "arguments": dict(tool_call.arguments),
         }
+        if result is not None:
+            action["result"] = result
+        return action
 
     @staticmethod
     async def _call(function, *args):

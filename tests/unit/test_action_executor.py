@@ -50,6 +50,22 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
         return {"ok": True}
 
 
+class FakeLocalToolRegistry:
+    def __init__(self, result: dict | None = None) -> None:
+        self.calls = []
+        self.result = result
+
+    def execute(self, name: str, arguments: dict | None = None) -> dict:
+        self.calls.append((name, arguments))
+        if self.result is not None:
+            return self.result
+        return {
+            "ok": True,
+            "name": name,
+            "result": arguments or {},
+        }
+
+
 class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
     async def test_unhandled_decision_executes_nothing(self) -> None:
         robot_motion = FakeRobotMotionSkill()
@@ -65,6 +81,20 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_motion.expression_calls, [])
         self.assertEqual(robot_motion.move_out_calls, 0)
         self.assertEqual(robot_motion.return_to_dock_calls, 0)
+
+    async def test_unhandled_decision_does_not_call_local_tool_registry(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        local_tools = FakeLocalToolRegistry()
+        executor = ActionExecutor(robot_motion, local_tool_registry=local_tools)
+        decision = OpenClawDecision(
+            handled=False,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "ignored"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(local_tools.calls, [])
 
     async def test_reply_text_calls_say_and_records_action(self) -> None:
         robot_motion = FakeRobotMotionSkill()
@@ -145,6 +175,70 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
             "reason": "unknown_tool",
             "arguments": {"x": 1},
         }])
+
+    async def test_note_add_tool_call_uses_local_tool_registry(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        local_tools = FakeLocalToolRegistry()
+        executor = ActionExecutor(robot_motion, local_tool_registry=local_tools)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(local_tools.calls, [("note.add", {"content": "hello"})])
+        self.assertEqual(result["executed_actions"][0]["name"], "note.add")
+        self.assertEqual(result["executed_actions"][0]["source"], "tool_call")
+        self.assertEqual(result["executed_actions"][0]["result"]["ok"], True)
+
+    async def test_work_context_record_tool_call_uses_local_tool_registry(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        local_tools = FakeLocalToolRegistry()
+        executor = ActionExecutor(robot_motion, local_tool_registry=local_tools)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="work_context.record", arguments={"content": "coding"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(local_tools.calls, [("work_context.record", {"content": "coding"})])
+        self.assertEqual(result["executed_actions"][0]["name"], "work_context.record")
+
+    async def test_summary_daily_tool_call_uses_local_tool_registry(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        local_tools = FakeLocalToolRegistry()
+        executor = ActionExecutor(robot_motion, local_tool_registry=local_tools)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="summary.daily", arguments={"date": "2026-06-13"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(local_tools.calls, [("summary.daily", {"date": "2026-06-13"})])
+        self.assertEqual(result["executed_actions"][0]["name"], "summary.daily")
+
+    async def test_local_tool_ok_false_goes_to_skipped_actions(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        local_tools = FakeLocalToolRegistry(result={
+            "ok": False,
+            "name": "note.add",
+            "error": "failed",
+        })
+        executor = ActionExecutor(robot_motion, local_tool_registry=local_tools)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"], [])
+        self.assertEqual(result["skipped_actions"][0]["name"], "note.add")
+        self.assertEqual(result["skipped_actions"][0]["reason"], "local_tool_failed")
+        self.assertEqual(result["skipped_actions"][0]["result"]["error"], "failed")
 
     async def test_robot_say_missing_text_is_skipped(self) -> None:
         robot_motion = FakeRobotMotionSkill()

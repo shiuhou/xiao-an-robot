@@ -20,6 +20,7 @@ from base_station.monitor.emotion_db import EmotionDB
 
 SUPPORTED_EMOTION_EVENTS = {"emotion.sample", "emotion.alert"}
 ASR_TRANSCRIPT_EVENT = "asr.transcript"
+FRONTEND_MESSAGE_EVENT = "frontend.message"
 
 
 class XiaoAnBrain:
@@ -77,6 +78,23 @@ class XiaoAnBrain:
             execution_result["route"] = "link_1_openclaw"
             execution_result["reason"] = "openclaw_decision"
             execution_result["companion_result"] = companion_result
+            return execution_result
+
+        if event_type == FRONTEND_MESSAGE_EVENT:
+            payload = event.get("payload") or {}
+            openclaw_event = OpenClawEvent(
+                type=FRONTEND_MESSAGE_EVENT,
+                text=payload.get("text", ""),
+                source="frontend",
+                session_id=payload.get("session_id", "default"),
+                context={
+                    "payload": payload,
+                },
+            )
+            decision = self.openclaw_adapter.handle_event(openclaw_event)
+            execution_result = await self.action_executor.execute(decision)
+            execution_result["route"] = "frontend_openclaw"
+            execution_result["reason"] = "openclaw_decision"
             return execution_result
 
         return {

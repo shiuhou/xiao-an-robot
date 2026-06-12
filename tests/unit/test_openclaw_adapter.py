@@ -22,8 +22,48 @@ class OpenClawAdapterTest(unittest.TestCase):
         self.assertEqual(event.session_id, "default")
         self.assertEqual(event.context, {})
 
+    def test_openclaw_event_to_dict_outputs_all_fields(self) -> None:
+        event = OpenClawEvent(
+            type="frontend.message",
+            text="你好小安",
+            source="frontend",
+            session_id="session-1",
+            context={"payload": {"text": "你好小安"}},
+        )
+
+        self.assertEqual(event.to_dict(), {
+            "type": "frontend.message",
+            "text": "你好小安",
+            "source": "frontend",
+            "session_id": "session-1",
+            "context": {"payload": {"text": "你好小安"}},
+        })
+
     def test_openclaw_tool_call_default_arguments_is_empty_dict(self) -> None:
         tool_call = OpenClawToolCall(name="robot.say")
+
+        self.assertEqual(tool_call.name, "robot.say")
+        self.assertEqual(tool_call.arguments, {})
+
+    def test_openclaw_tool_call_to_dict_outputs_name_and_arguments(self) -> None:
+        tool_call = OpenClawToolCall(name="robot.say", arguments={"text": "你好"})
+
+        self.assertEqual(tool_call.to_dict(), {
+            "name": "robot.say",
+            "arguments": {"text": "你好"},
+        })
+
+    def test_openclaw_tool_call_from_dict_parses_normal_dict(self) -> None:
+        tool_call = OpenClawToolCall.from_dict({
+            "name": "robot.say",
+            "arguments": {"text": "你好"},
+        })
+
+        self.assertEqual(tool_call.name, "robot.say")
+        self.assertEqual(tool_call.arguments, {"text": "你好"})
+
+    def test_openclaw_tool_call_from_dict_defaults_missing_arguments(self) -> None:
+        tool_call = OpenClawToolCall.from_dict({"name": "robot.say"})
 
         self.assertEqual(tool_call.name, "robot.say")
         self.assertEqual(tool_call.arguments, {})
@@ -32,6 +72,51 @@ class OpenClawAdapterTest(unittest.TestCase):
         decision = OpenClawDecision(handled=True)
 
         self.assertTrue(decision.handled)
+        self.assertEqual(decision.reply_text, "")
+        self.assertEqual(decision.tool_calls, [])
+        self.assertIsNone(decision.raw)
+
+    def test_openclaw_decision_to_dict_outputs_reply_text_and_tool_calls(self) -> None:
+        decision = OpenClawDecision(
+            handled=True,
+            reply_text="你好",
+            tool_calls=[
+                OpenClawToolCall(name="robot.say", arguments={"text": "你好"}),
+            ],
+            raw={"provider": "fake"},
+        )
+
+        self.assertEqual(decision.to_dict(), {
+            "handled": True,
+            "reply_text": "你好",
+            "tool_calls": [
+                {"name": "robot.say", "arguments": {"text": "你好"}},
+            ],
+            "raw": {"provider": "fake"},
+        })
+
+    def test_openclaw_decision_from_dict_parses_tool_calls(self) -> None:
+        data = {
+            "handled": True,
+            "reply_text": "你好",
+            "tool_calls": [
+                {"name": "robot.say", "arguments": {"text": "你好"}},
+            ],
+        }
+
+        decision = OpenClawDecision.from_dict(data)
+
+        self.assertTrue(decision.handled)
+        self.assertEqual(decision.reply_text, "你好")
+        self.assertEqual(len(decision.tool_calls), 1)
+        self.assertEqual(decision.tool_calls[0].name, "robot.say")
+        self.assertEqual(decision.tool_calls[0].arguments, {"text": "你好"})
+        self.assertIs(decision.raw, data)
+
+    def test_openclaw_decision_from_dict_handles_invalid_input(self) -> None:
+        decision = OpenClawDecision.from_dict("not a dict")
+
+        self.assertFalse(decision.handled)
         self.assertEqual(decision.reply_text, "")
         self.assertEqual(decision.tool_calls, [])
         self.assertIsNone(decision.raw)

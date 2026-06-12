@@ -54,7 +54,38 @@ class XiaoAnBrain:
         event_type = event.get("type")
         if event_type in SUPPORTED_EMOTION_EVENTS:
             trigger = event.get("payload") or event
-            return await self.emotion_monitor.run(trigger)
+            emotion_result = await self.emotion_monitor.run(trigger)
+            if not emotion_result.get("handled", False):
+                return emotion_result
+
+            emotion_result["route"] = "link_2_emotion_fast_path"
+            emotion_result["openclaw_event_type"] = "emotion.intervention"
+            trigger_context = trigger if isinstance(trigger, dict) else {}
+            openclaw_context = {
+                "event": event,
+                "trigger": trigger,
+                "emotion_result": dict(emotion_result),
+            }
+            if "reason" in emotion_result:
+                openclaw_context["reason"] = emotion_result["reason"]
+                openclaw_context["trigger_reason"] = emotion_result["reason"]
+            for key in ("emotion_tag", "fatigue_score", "confidence"):
+                if key in trigger_context:
+                    openclaw_context[key] = trigger_context[key]
+
+            try:
+                openclaw_event = OpenClawEvent(
+                    type="emotion.intervention",
+                    text="User emotion intervention triggered.",
+                    source="emotion_monitor",
+                    session_id=trigger_context.get("session_id", "default"),
+                    context=openclaw_context,
+                )
+                decision = self.openclaw_adapter.handle_event(openclaw_event)
+                emotion_result["openclaw_result"] = await self.action_executor.execute(decision)
+            except Exception as exc:
+                emotion_result["openclaw_error"] = str(exc)
+            return emotion_result
 
         if event_type == ASR_TRANSCRIPT_EVENT:
             payload = event.get("payload") or {}

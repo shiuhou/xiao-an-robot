@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 
 from agent.core.brain import XiaoAnBrain
+from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 
 
 class FakeGateway:
@@ -64,7 +65,11 @@ class XiaoAnBrainTest(unittest.IsolatedAsyncioTestCase):
             "top_emotion": "tired",
             "emotions_count": {"tired": 1},
         })
-        brain = XiaoAnBrain(gateway=gateway, memory=memory)
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=memory,
+            openclaw_adapter=FakeOpenClawAdapter(decision=OpenClawDecision(handled=False)),
+        )
 
         result = await brain.handle_event({
             "type": "emotion.sample",

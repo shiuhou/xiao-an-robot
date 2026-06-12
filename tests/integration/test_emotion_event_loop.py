@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
+from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 from base_station.monitor.emotion_db import EmotionDB
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
 
@@ -33,7 +34,11 @@ class EmotionEventLoopIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db = EmotionDB(str(Path(self.temp_dir.name) / "emotion_loop.db"))
         self.gateway = FakeGateway()
-        self.brain = XiaoAnBrain(gateway=self.gateway, memory=self.db)
+        self.brain = XiaoAnBrain(
+            gateway=self.gateway,
+            memory=self.db,
+            openclaw_adapter=FakeOpenClawAdapter(decision=OpenClawDecision(handled=False)),
+        )
         self.loop = EmotionEventLoop(brain=self.brain)
 
     async def asyncTearDown(self) -> None:

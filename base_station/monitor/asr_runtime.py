@@ -16,6 +16,10 @@ PATTERN_TEXT = {
     "tired": "我有点累",
     "negative": "我今天好烦",
     "normal": "帮我查一下天气",
+    "openclaw": "帮我查一下天气",
+    "greeting": "你好小安",
+    "summary": "生成今天总结",
+    "work": "我刚刚在写项目代码",
 }
 
 
@@ -43,13 +47,23 @@ def build_asr_event(text: str) -> dict:
 
 
 def build_output(text: str, event: dict, result: dict) -> dict:
-    return {
+    output = {
         "text": text,
         "event_type": event.get("type"),
         "handled": result.get("handled", False),
         "reason": result.get("reason"),
         "trigger_result": result.get("trigger_result"),
     }
+    for key in (
+        "route",
+        "reply_text",
+        "executed_actions",
+        "skipped_actions",
+        "companion_result",
+    ):
+        if key in result:
+            output[key] = result[key]
+    return output
 
 
 async def run_once(

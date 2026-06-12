@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from base_station.monitor.asr_runtime import build_asr_event, resolve_transcript, run_once
+from base_station.monitor.asr_runtime import build_asr_event, build_output, resolve_transcript, run_once
 
 
 class FakeBrain:
@@ -66,6 +66,30 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(event["type"], "asr.transcript")
         self.assertEqual(event["payload"]["text"], "我有点累")
+
+    async def test_build_output_preserves_openclaw_followup_fields(self) -> None:
+        event = build_asr_event("我有点累")
+        result = {
+            "handled": True,
+            "reason": "asr_emotion_triggered",
+            "trigger_result": {"reason": "fatigue_keyword"},
+            "route": "link_3_companion_fast_path",
+            "openclaw_event_type": "companion.request",
+            "openclaw_result": {
+                "handled": True,
+                "reply_text": "收到，我会交给 OpenClaw 处理。",
+                "executed_actions": [{"name": "robot.say"}],
+                "skipped_actions": [],
+            },
+            "openclaw_error": "temporary error",
+        }
+
+        output = build_output("我有点累", event, result)
+
+        self.assertEqual(output["route"], "link_3_companion_fast_path")
+        self.assertEqual(output["openclaw_event_type"], "companion.request")
+        self.assertEqual(output["openclaw_result"]["reply_text"], "收到，我会交给 OpenClaw 处理。")
+        self.assertEqual(output["openclaw_error"], "temporary error")
 
     async def test_run_once_uses_fake_brain_without_websocket(self) -> None:
         brain = FakeBrain(handled=True, reason="asr_emotion_triggered")

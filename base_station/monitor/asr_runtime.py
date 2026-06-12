@@ -60,6 +60,9 @@ def build_output(text: str, event: dict, result: dict) -> dict:
         "executed_actions",
         "skipped_actions",
         "companion_result",
+        "openclaw_result",
+        "openclaw_error",
+        "openclaw_event_type",
     ):
         if key in result:
             output[key] = result[key]

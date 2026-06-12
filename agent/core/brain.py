@@ -61,6 +61,27 @@ class XiaoAnBrain:
             text = payload.get("text")
             companion_result = await self.companion_request.handle_text(text)
             if companion_result.get("handled", False):
+                companion_result["route"] = "link_3_companion_fast_path"
+                companion_result["openclaw_event_type"] = "companion.request"
+                companion_context = {
+                    "payload": payload,
+                    "companion_result": dict(companion_result),
+                }
+                if "trigger_result" in companion_result:
+                    companion_context["trigger_result"] = companion_result["trigger_result"]
+
+                try:
+                    openclaw_event = OpenClawEvent(
+                        type="companion.request",
+                        text=payload.get("text", "") or "",
+                        source="asr",
+                        session_id=payload.get("session_id", "default"),
+                        context=companion_context,
+                    )
+                    decision = self.openclaw_adapter.handle_event(openclaw_event)
+                    companion_result["openclaw_result"] = await self.action_executor.execute(decision)
+                except Exception as exc:
+                    companion_result["openclaw_error"] = str(exc)
                 return companion_result
 
             openclaw_event = OpenClawEvent(

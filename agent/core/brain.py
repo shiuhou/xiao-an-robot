@@ -11,7 +11,8 @@ from typing import Any
 
 from agent.core.action_executor import ActionExecutor
 from agent.core.gateway import RobotGateway
-from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawEvent
+from agent.core.openclaw_adapter import OpenClawEvent
+from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.skills.companion_request import CompanionRequestSkill
 from agent.skills.emotion_monitor import EmotionMonitorSkill
 from agent.skills.robot_motion import RobotMotionSkill
@@ -47,8 +48,16 @@ class XiaoAnBrain:
         self.companion_request = CompanionRequestSkill(
             robot_motion=self.robot_motion,
         )
-        self.openclaw_adapter = openclaw_adapter or FakeOpenClawAdapter()
-        self.action_executor = action_executor or ActionExecutor(self.robot_motion)
+        self.openclaw_adapter = (
+            openclaw_adapter
+            if openclaw_adapter is not None
+            else build_openclaw_adapter_from_env()
+        )
+        self.action_executor = (
+            action_executor
+            if action_executor is not None
+            else ActionExecutor(self.robot_motion)
+        )
 
     async def handle_event(self, event: dict) -> dict:
         event_type = event.get("type")

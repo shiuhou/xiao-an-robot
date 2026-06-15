@@ -269,6 +269,118 @@ class XiaoAnMemoryStore:
         })
         return summary
 
+    def insert_tool_run(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any] | None = None,
+        result: dict[str, Any] | None = None,
+        status: str = "success",
+        error: str | None = None,
+        source_event_type: str | None = None,
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        payload = {
+            "tool_name": tool_name,
+            "arguments": arguments or {},
+            "result": result or {},
+            "status": status,
+            "error": error,
+            "source_event_type": source_event_type,
+        }
+        event_id = self.insert_event(
+            event_type="tool.run",
+            source="action_executor",
+            text=f"{tool_name} status={status}",
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            privacy_level=privacy_level,
+        )
+        event = self.get_event(event_id)
+        persisted_timestamp_ms = (
+            int(event["timestamp_ms"])
+            if event is not None
+            else int(time.time() * 1000)
+        )
+        created_at_ms = int(time.time() * 1000)
+        arguments_json = json.dumps(arguments or {}, ensure_ascii=False)
+        result_json = json.dumps(result or {}, ensure_ascii=False)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO tool_runs (
+                    event_id, timestamp_ms, source_event_type, tool_name,
+                    arguments_json, result_json, status, error, created_at_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    persisted_timestamp_ms,
+                    source_event_type,
+                    tool_name,
+                    arguments_json,
+                    result_json,
+                    status,
+                    error,
+                    created_at_ms,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "tool_run_id": int(cursor.lastrowid),
+        }
+
+    def query_recent_tool_runs(
+        self,
+        limit: int = 20,
+        tool_name: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if tool_name is not None:
+            clauses.append("tool_name = ?")
+            params.append(tool_name)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, timestamp_ms, source_event_type, tool_name,
+                   arguments_json, result_json, status, error, created_at_ms
+            FROM tool_runs
+            {where_sql}
+            ORDER BY timestamp_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [self._tool_run_row_to_dict(row) for row in cursor.fetchall()]
+
+    def get_tool_run_summary(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_recent_tool_runs(limit=limit)
+        tool_count: dict[str, int] = {}
+        status_count: dict[str, int] = {}
+        for row in rows:
+            tool_name = str(row["tool_name"])
+            status = str(row["status"])
+            tool_count[tool_name] = tool_count.get(tool_name, 0) + 1
+            status_count[status] = status_count.get(status, 0) + 1
+
+        return {
+            "count": len(rows),
+            "success_count": status_count.get("success", 0),
+            "failed_count": status_count.get("failed", 0),
+            "skipped_count": status_count.get("skipped", 0),
+            "latest_tool": rows[0]["tool_name"] if rows else None,
+            "tool_count": tool_count,
+            "status_count": status_count,
+        }
+
     def save_interaction(
         self,
         user_text: str,
@@ -371,6 +483,18 @@ class XiaoAnMemoryStore:
         except json.JSONDecodeError:
             event["payload"] = {}
         return event
+
+    def _tool_run_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        tool_run = dict(row)
+        try:
+            tool_run["arguments"] = json.loads(tool_run.get("arguments_json") or "{}")
+        except json.JSONDecodeError:
+            tool_run["arguments"] = {}
+        try:
+            tool_run["result"] = json.loads(tool_run.get("result_json") or "{}")
+        except json.JSONDecodeError:
+            tool_run["result"] = {}
+        return tool_run
 
     def _top_count_key(self, counts: dict[str, int]) -> str | None:
         if not counts:

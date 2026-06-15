@@ -32,6 +32,11 @@ class FakeRobotMotionSkill:
         return {"ok": True}
 
 
+class FailingRobotMotionSkill(FakeRobotMotionSkill):
+    def say(self, text: str) -> dict:
+        raise RuntimeError("say failed")
+
+
 class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
     async def say(self, text: str) -> dict:
         self.say_calls.append(text)
@@ -51,12 +56,15 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
 
 
 class FakeLocalToolRegistry:
-    def __init__(self, result: dict | None = None) -> None:
+    def __init__(self, result: dict | None = None, raise_error: bool = False) -> None:
         self.calls = []
         self.result = result
+        self.raise_error = raise_error
 
     def execute(self, name: str, arguments: dict | None = None) -> dict:
         self.calls.append((name, arguments))
+        if self.raise_error:
+            raise RuntimeError("local tool failed hard")
         if self.result is not None:
             return self.result
         return {
@@ -64,6 +72,18 @@ class FakeLocalToolRegistry:
             "name": name,
             "result": arguments or {},
         }
+
+
+class FakeMemoryStore:
+    def __init__(self, raise_error: bool = False) -> None:
+        self.raise_error = raise_error
+        self.tool_runs = []
+
+    def insert_tool_run(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        self.tool_runs.append(kwargs)
+        return {"event_id": len(self.tool_runs), "tool_run_id": len(self.tool_runs)}
 
 
 class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
@@ -287,6 +307,107 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.move_out_calls, 1)
         self.assertEqual(result["executed_actions"][0]["name"], "robot.move_out_of_dock")
+
+    async def test_reply_text_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+
+        await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
+
+        self.assertEqual(len(memory_store.tool_runs), 1)
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.say")
+        self.assertEqual(memory_store.tool_runs[0]["arguments"], {"text": "hello"})
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_robot_say_tool_call_records_success(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="robot.say", arguments={"text": "hello"})],
+        )
+
+        await executor.execute(decision, source_event_type="asr.transcript")
+
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.say")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+        self.assertEqual(memory_store.tool_runs[0]["source_event_type"], "asr.transcript")
+
+    async def test_local_tool_success_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        local_tools = FakeLocalToolRegistry()
+        executor = ActionExecutor(
+            FakeRobotMotionSkill(),
+            local_tool_registry=local_tools,
+            memory_store=memory_store,
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "note.add")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+        self.assertEqual(memory_store.tool_runs[0]["result"]["ok"], True)
+
+    async def test_unknown_tool_records_skipped(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="robot.unknown", arguments={"x": 1})],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.unknown")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "skipped")
+        self.assertEqual(memory_store.tool_runs[0]["error"], "unknown_tool")
+
+    async def test_local_tool_ok_false_records_skipped(self) -> None:
+        memory_store = FakeMemoryStore()
+        local_tools = FakeLocalToolRegistry(result={
+            "ok": False,
+            "name": "note.add",
+            "error": "failed",
+        })
+        executor = ActionExecutor(
+            FakeRobotMotionSkill(),
+            local_tool_registry=local_tools,
+            memory_store=memory_store,
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(memory_store.tool_runs[0]["status"], "skipped")
+        self.assertEqual(memory_store.tool_runs[0]["error"], "local_tool_failed")
+
+    async def test_tool_execution_failure_records_failed_and_reraises(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FailingRobotMotionSkill(), memory_store=memory_store)
+
+        with self.assertRaises(RuntimeError):
+            await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
+
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.say")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "failed")
+        self.assertIn("say failed", memory_store.tool_runs[0]["error"])
+
+    async def test_memory_store_failure_does_not_break_execution(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        memory_store = FakeMemoryStore(raise_error=True)
+        executor = ActionExecutor(robot_motion, memory_store=memory_store)
+
+        result = await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
+
+        self.assertEqual(robot_motion.say_calls, ["hello"])
+        self.assertEqual(result["executed_actions"][0]["name"], "robot.say")
 
 
 if __name__ == "__main__":

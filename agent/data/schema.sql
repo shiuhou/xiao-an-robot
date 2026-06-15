@@ -93,3 +93,31 @@ CREATE INDEX IF NOT EXISTS idx_work_activities_project_id
 
 CREATE INDEX IF NOT EXISTS idx_work_activities_event_id
     ON work_activities (event_id);
+
+CREATE TABLE IF NOT EXISTS tool_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER,
+    timestamp_ms INTEGER NOT NULL,
+    source_event_type TEXT,
+    tool_name TEXT NOT NULL,
+    arguments_json TEXT NOT NULL DEFAULT '{}',
+    result_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'unknown',
+    error TEXT,
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_runs_timestamp
+    ON tool_runs (timestamp_ms);
+
+CREATE INDEX IF NOT EXISTS idx_tool_runs_tool_name
+    ON tool_runs (tool_name);
+
+CREATE INDEX IF NOT EXISTS idx_tool_runs_status
+    ON tool_runs (status);
+
+CREATE INDEX IF NOT EXISTS idx_tool_runs_source_event_type
+    ON tool_runs (source_event_type);
+
+CREATE INDEX IF NOT EXISTS idx_tool_runs_event_id
+    ON tool_runs (event_id);

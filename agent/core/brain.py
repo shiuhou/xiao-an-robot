@@ -70,7 +70,7 @@ class XiaoAnBrain:
         self.action_executor = (
             action_executor
             if action_executor is not None
-            else ActionExecutor(self.robot_motion)
+            else ActionExecutor(self.robot_motion, memory_store=self.context_memory)
         )
 
     async def handle_event(self, event: dict) -> dict:

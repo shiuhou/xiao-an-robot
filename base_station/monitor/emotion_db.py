@@ -14,8 +14,15 @@ from typing import Any
 
 
 class EmotionDB:
-    def __init__(self, db_path: str):
+    def __init__(
+        self,
+        db_path: str,
+        memory_store: Any | None = None,
+        mirror_to_memory: bool = False,
+    ):
         self.db_path = db_path
+        self.memory_store = memory_store
+        self.mirror_to_memory = mirror_to_memory
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self._init_schema()
@@ -61,6 +68,7 @@ class EmotionDB:
         polarity: str = "正面",
         timestamp: int | None = None,
     ) -> int:
+        event_timestamp_ms = timestamp
         timestamp = int(time.time() * 1000) if timestamp is None else timestamp
         with self.conn:
             cursor = self.conn.execute(
@@ -70,7 +78,64 @@ class EmotionDB:
                 """,
                 (timestamp, source, emotion_tag, confidence, fatigue_score, polarity),
             )
-        return int(cursor.lastrowid)
+        row_id = int(cursor.lastrowid)
+        self._mirror_emotion_event(
+            row_id=row_id,
+            source=source,
+            emotion_tag=emotion_tag,
+            confidence=confidence,
+            fatigue_score=fatigue_score,
+            polarity=polarity,
+            timestamp=timestamp,
+            event_timestamp_ms=event_timestamp_ms,
+        )
+        return row_id
+
+    def _mirror_emotion_event(
+        self,
+        row_id: int,
+        source: str,
+        emotion_tag: str,
+        confidence: float,
+        fatigue_score: float,
+        polarity: str,
+        timestamp: int | None,
+        event_timestamp_ms: int | None,
+    ) -> None:
+        if not self.mirror_to_memory or self.memory_store is None:
+            return
+
+        insert_event = getattr(self.memory_store, "insert_event", None)
+        if insert_event is None:
+            return
+
+        payload = {
+            "timestamp_ms": timestamp,
+            "source": source,
+            "emotion_tag": emotion_tag,
+            "confidence": confidence,
+            "fatigue_score": fatigue_score,
+            "polarity": polarity,
+            "emotion_row_id": row_id,
+            "emotion_id": row_id,
+        }
+        text = (
+            f"emotion={emotion_tag} "
+            f"fatigue_score={fatigue_score} "
+            f"confidence={confidence}"
+        )
+
+        try:
+            insert_event(
+                event_type="emotion.sample",
+                source=source or "emotion_db",
+                text=text,
+                payload=dict(payload),
+                timestamp_ms=event_timestamp_ms,
+                privacy_level="normal",
+            )
+        except Exception:
+            return
 
     def query_recent(self, seconds: int = 300, now_ms: int | None = None) -> list[dict[str, Any]]:
         now_ms = int(time.time() * 1000) if now_ms is None else now_ms

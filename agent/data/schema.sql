@@ -60,3 +60,36 @@ CREATE INDEX IF NOT EXISTS idx_memory_events_session_id
 
 CREATE INDEX IF NOT EXISTS idx_memory_events_project_id
     ON memory_events (project_id);
+
+CREATE TABLE IF NOT EXISTS work_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER,
+    timestamp_ms INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    app_name TEXT NOT NULL DEFAULT '',
+    window_title TEXT NOT NULL DEFAULT '',
+    activity_type TEXT NOT NULL DEFAULT 'unknown',
+    project_hint TEXT,
+    project_id INTEGER,
+    confidence REAL NOT NULL DEFAULT 0.0,
+    duration_seconds REAL,
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_timestamp
+    ON work_activities (timestamp_ms);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_activity_type
+    ON work_activities (activity_type);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_app_name
+    ON work_activities (app_name);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_project_hint
+    ON work_activities (project_hint);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_project_id
+    ON work_activities (project_id);
+
+CREATE INDEX IF NOT EXISTS idx_work_activities_event_id
+    ON work_activities (event_id);

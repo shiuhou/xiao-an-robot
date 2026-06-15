@@ -129,6 +129,146 @@ class XiaoAnMemoryStore:
         ).fetchone()
         return self._event_row_to_dict(row) if row is not None else None
 
+    def insert_work_activity(
+        self,
+        source: str = "unknown",
+        app_name: str = "",
+        window_title: str = "",
+        activity_type: str = "unknown",
+        project_hint: str | None = None,
+        confidence: float = 0.0,
+        duration_seconds: float | None = None,
+        timestamp_ms: int | None = None,
+        project_id: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        event_text = f"{app_name} | {activity_type} | {project_hint}"
+        payload = {
+            "app_name": app_name,
+            "window_title": window_title,
+            "activity_type": activity_type,
+            "project_hint": project_hint,
+            "confidence": confidence,
+            "duration_seconds": duration_seconds,
+        }
+        event_id = self.insert_event(
+            event_type="work.activity",
+            source=source,
+            text=event_text,
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            project_id=project_id,
+            privacy_level=privacy_level,
+        )
+        event = self.get_event(event_id)
+        persisted_timestamp_ms = (
+            int(event["timestamp_ms"])
+            if event is not None
+            else int(time.time() * 1000)
+        )
+        created_at_ms = int(time.time() * 1000)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO work_activities (
+                    event_id, timestamp_ms, source, app_name, window_title,
+                    activity_type, project_hint, project_id, confidence,
+                    duration_seconds, created_at_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    persisted_timestamp_ms,
+                    source,
+                    app_name,
+                    window_title,
+                    activity_type,
+                    project_hint,
+                    project_id,
+                    confidence,
+                    duration_seconds,
+                    created_at_ms,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "work_activity_id": int(cursor.lastrowid),
+        }
+
+    def query_recent_work_activities(
+        self,
+        limit: int = 20,
+        activity_type: str | None = None,
+        project_hint: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if activity_type is not None:
+            clauses.append("activity_type = ?")
+            params.append(activity_type)
+        if project_hint is not None:
+            clauses.append("project_hint = ?")
+            params.append(project_hint)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, timestamp_ms, source, app_name, window_title,
+                   activity_type, project_hint, project_id, confidence,
+                   duration_seconds, created_at_ms
+            FROM work_activities
+            {where_sql}
+            ORDER BY timestamp_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_recent_work_summary(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_recent_work_activities(limit=limit)
+        summary: dict[str, Any] = {
+            "count": len(rows),
+            "latest_activity_type": None,
+            "latest_app_name": None,
+            "latest_project_hint": None,
+            "top_activity_type": None,
+            "top_app_name": None,
+            "activity_type_count": {},
+            "app_count": {},
+            "project_hint_count": {},
+        }
+        if not rows:
+            return summary
+
+        latest = rows[0]
+        activity_type_count: dict[str, int] = {}
+        app_count: dict[str, int] = {}
+        project_hint_count: dict[str, int] = {}
+        for row in rows:
+            activity_type = str(row["activity_type"])
+            app_name = str(row["app_name"])
+            project_hint = row["project_hint"]
+            activity_type_count[activity_type] = activity_type_count.get(activity_type, 0) + 1
+            app_count[app_name] = app_count.get(app_name, 0) + 1
+            if project_hint is not None:
+                project_key = str(project_hint)
+                project_hint_count[project_key] = project_hint_count.get(project_key, 0) + 1
+
+        summary.update({
+            "latest_activity_type": latest["activity_type"],
+            "latest_app_name": latest["app_name"],
+            "latest_project_hint": latest["project_hint"],
+            "top_activity_type": self._top_count_key(activity_type_count),
+            "top_app_name": self._top_count_key(app_count),
+            "activity_type_count": activity_type_count,
+            "app_count": app_count,
+            "project_hint_count": project_hint_count,
+        })
+        return summary
+
     def save_interaction(
         self,
         user_text: str,
@@ -231,6 +371,11 @@ class XiaoAnMemoryStore:
         except json.JSONDecodeError:
             event["payload"] = {}
         return event
+
+    def _top_count_key(self, counts: dict[str, int]) -> str | None:
+        if not counts:
+            return None
+        return max(counts.items(), key=lambda item: item[1])[0]
 
 
 class Memory(XiaoAnMemoryStore):

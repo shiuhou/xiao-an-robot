@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from agent.core.action_executor import ActionExecutor
 from agent.core.brain import XiaoAnBrain
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision, OpenClawToolCall
+from tools import test_openclaw_tool_calls as manual_tool_calls
 
 
 class FakeRobotMotionSkill:
@@ -142,6 +145,116 @@ class OpenClawToolCallRuntimeTest(unittest.IsolatedAsyncioTestCase):
         summary_action = next(action for action in result["executed_actions"] if action["name"] == "summary.daily")
         self.assertEqual(summary_action["result"]["result"]["status"], "placeholder")
         self.assertEqual(fake_robot.calls, [("say", "我已经帮你处理了。")])
+
+    async def test_manual_script_without_record_memory_keeps_output_without_snapshot(self) -> None:
+        class FakeBrain:
+            def __init__(self, **kwargs) -> None:
+                self.kwargs = kwargs
+
+            async def handle_event(self, event: dict) -> dict:
+                return {"handled": True, "route": "fake"}
+
+            def close(self) -> None:
+                pass
+
+        original_brain = manual_tool_calls.XiaoAnBrain
+        manual_tool_calls.XiaoAnBrain = FakeBrain
+        try:
+            args = manual_tool_calls.parse_args(["--tool", "note.add", "--text", "hello"])
+            output = await manual_tool_calls.run(args)
+        finally:
+            manual_tool_calls.XiaoAnBrain = original_brain
+
+        self.assertEqual(output["tool"], "note.add")
+        self.assertEqual(output["result"], {"handled": True, "route": "fake"})
+        self.assertNotIn("memory_snapshot", output)
+
+    async def test_manual_script_record_memory_note_add_outputs_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "note.add",
+                "--text",
+                "remember this",
+            ])
+
+            output = await manual_tool_calls.run(args)
+
+        snapshot = output["memory_snapshot"]
+        self.assertEqual(snapshot["db_path"], str(db_path.resolve()))
+        self.assertTrue(any(row["tool_name"] == "note.add" for row in snapshot["recent_tool_runs"]))
+        self.assertTrue(any(row["content"] == "remember this" for row in snapshot["recent_notes"]))
+
+    async def test_manual_script_record_memory_work_context_records_note_not_work_activity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "work_context.record",
+                "--text",
+                "record current work",
+            ])
+
+            output = await manual_tool_calls.run(args)
+
+        snapshot = output["memory_snapshot"]
+        self.assertTrue(any(row["content"] == "record current work" for row in snapshot["recent_notes"]))
+        self.assertEqual(snapshot["recent_work_activities"], [])
+
+    async def test_manual_script_record_memory_summary_daily_outputs_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "summary.daily",
+                "--text",
+                "summary today",
+            ])
+
+            output = await manual_tool_calls.run(args)
+
+        snapshot = output["memory_snapshot"]
+        self.assertTrue(any(row["summary_type"] == "daily" for row in snapshot["recent_summaries"]))
+
+    async def test_manual_script_fresh_db_clears_previous_test_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            first_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "note.add",
+                "--text",
+                "old note",
+            ])
+            await manual_tool_calls.run(first_args)
+
+            second_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--fresh-db",
+                "--tool",
+                "note.add",
+                "--text",
+                "new note",
+            ])
+            output = await manual_tool_calls.run(second_args)
+
+        notes = output["memory_snapshot"]["recent_notes"]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["content"], "new note")
 
 
 if __name__ == "__main__":

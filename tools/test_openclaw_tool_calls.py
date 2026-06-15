@@ -18,6 +18,9 @@ from agent.core.brain import XiaoAnBrain
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision, OpenClawToolCall
 
 
+DEFAULT_MEMORY_DB_PATH = PROJECT_ROOT / "agent" / "data" / "manual_tool_test.db"
+
+
 class FakeRobotMotionSkill:
     def __init__(self) -> None:
         self.calls = []
@@ -66,7 +69,7 @@ def build_event(event_type: str, text: str) -> dict:
     }
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Test local OpenClaw tool_calls without a real OpenClaw server.")
     parser.add_argument(
         "--event-type",
@@ -82,13 +85,112 @@ def parse_args() -> argparse.Namespace:
         help="Fake OpenClaw tool_call to execute.",
     )
     parser.add_argument("--verbose", action="store_true", help="Accepted for local debugging; output is always JSON.")
-    return parser.parse_args()
+    parser.add_argument("--record-memory", action="store_true", help="Record tool calls into a test XiaoAnMemoryStore.")
+    parser.add_argument("--db-path", default=None, help="Database path for --record-memory.")
+    parser.add_argument(
+        "--fresh-db",
+        action="store_true",
+        help="Delete the selected test database before running when --record-memory is enabled.",
+    )
+    parser.add_argument("--memory-limit", type=int, default=10, help="Recent memory rows to include in output.")
+    return parser.parse_args(argv)
 
 
-async def main() -> None:
-    args = parse_args()
+def _resolve_memory_db_path(args: argparse.Namespace) -> Path:
+    if args.db_path:
+        return Path(args.db_path).expanduser().resolve()
+    return DEFAULT_MEMORY_DB_PATH.resolve()
+
+
+def _prepare_memory_store(args: argparse.Namespace):
+    if not args.record_memory:
+        return None, None
+
+    from agent.core.memory import XiaoAnMemoryStore
+
+    db_path = _resolve_memory_db_path(args)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    if args.fresh_db and db_path.exists():
+        explicit_db_path = args.db_path is not None
+        default_test_db = db_path == DEFAULT_MEMORY_DB_PATH.resolve()
+        if explicit_db_path or default_test_db:
+            db_path.unlink()
+    return XiaoAnMemoryStore(db_path=str(db_path)), db_path
+
+
+def _safe_snapshot_call(memory_store, method_name: str, memory_errors: list[dict], **kwargs):
+    method = getattr(memory_store, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return method(**kwargs)
+    except Exception as exc:
+        memory_errors.append({"scope": method_name, "error": str(exc)})
+        return None
+
+
+def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dict:
+    memory_errors: list[dict] = []
+    snapshot = {
+        "db_path": str(db_path),
+        "recent_events": _safe_snapshot_call(
+            memory_store,
+            "query_recent_events",
+            memory_errors,
+            limit=memory_limit,
+        ),
+        "recent_tool_runs": _safe_snapshot_call(
+            memory_store,
+            "query_recent_tool_runs",
+            memory_errors,
+            limit=memory_limit,
+        ),
+        "recent_notes": _safe_snapshot_call(
+            memory_store,
+            "query_recent_notes",
+            memory_errors,
+            limit=memory_limit,
+        ),
+        "recent_summaries": _safe_snapshot_call(
+            memory_store,
+            "query_recent_summaries",
+            memory_errors,
+            limit=memory_limit,
+        ),
+        "recent_work_activities": _safe_snapshot_call(
+            memory_store,
+            "query_recent_work_activities",
+            memory_errors,
+            limit=memory_limit,
+        ),
+        "tool_run_summary": _safe_snapshot_call(
+            memory_store,
+            "get_tool_run_summary",
+            memory_errors,
+        ),
+        "notes_summary": _safe_snapshot_call(
+            memory_store,
+            "get_notes_summary",
+            memory_errors,
+        ),
+        "summary_overview": _safe_snapshot_call(
+            memory_store,
+            "get_summary_overview",
+            memory_errors,
+        ),
+    }
+    if memory_errors:
+        snapshot["memory_errors"] = memory_errors
+    return snapshot
+
+
+async def run(args: argparse.Namespace) -> dict:
+    memory_store, memory_db_path = _prepare_memory_store(args)
     fake_robot = FakeRobotMotionSkill()
-    action_executor = ActionExecutor(robot_motion_skill=fake_robot)
+    if memory_store is None:
+        action_executor = ActionExecutor(robot_motion_skill=fake_robot)
+    else:
+        action_executor = ActionExecutor(robot_motion_skill=fake_robot, memory_store=memory_store)
     fake_adapter = FakeOpenClawAdapter(
         decision=OpenClawDecision(
             handled=True,
@@ -96,10 +198,14 @@ async def main() -> None:
             tool_calls=[build_tool_call(args.tool, args.text)],
         ),
     )
-    brain = XiaoAnBrain(
-        openclaw_adapter=fake_adapter,
-        action_executor=action_executor,
-    )
+    brain_kwargs = {
+        "openclaw_adapter": fake_adapter,
+        "action_executor": action_executor,
+    }
+    if memory_store is not None:
+        brain_kwargs["db_path"] = str(memory_db_path)
+        brain_kwargs["context_memory"] = memory_store
+    brain = XiaoAnBrain(**brain_kwargs)
     try:
         result = await brain.handle_event(build_event(args.event_type, args.text))
         output = {
@@ -108,9 +214,22 @@ async def main() -> None:
             "result": result,
             "fake_robot_calls": fake_robot.calls,
         }
-        print(json.dumps(output, ensure_ascii=False, indent=2))
+        if memory_store is not None:
+            output["memory_snapshot"] = build_memory_snapshot(
+                memory_store,
+                memory_db_path,
+                args.memory_limit,
+            )
+        return output
     finally:
         brain.close()
+        if memory_store is not None:
+            memory_store.close()
+
+
+async def main(argv: list[str] | None = None) -> None:
+    output = await run(parse_args(argv))
+    print(json.dumps(output, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

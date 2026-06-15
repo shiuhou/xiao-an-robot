@@ -78,12 +78,35 @@ class FakeMemoryStore:
     def __init__(self, raise_error: bool = False) -> None:
         self.raise_error = raise_error
         self.tool_runs = []
+        self.notes = []
+        self.summaries = []
 
     def insert_tool_run(self, **kwargs) -> dict:
         if self.raise_error:
             raise RuntimeError("memory unavailable")
         self.tool_runs.append(kwargs)
         return {"event_id": len(self.tool_runs), "tool_run_id": len(self.tool_runs)}
+
+    def insert_note(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        self.notes.append(kwargs)
+        return {"event_id": len(self.notes), "note_id": len(self.notes)}
+
+    def insert_summary(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        self.summaries.append(kwargs)
+        return {"event_id": len(self.summaries), "summary_id": len(self.summaries)}
+
+    def get_recent_work_summary(self) -> dict:
+        return {"count": 2}
+
+    def get_notes_summary(self) -> dict:
+        return {"count": len(self.notes)}
+
+    def get_tool_run_summary(self) -> dict:
+        return {"count": len(self.tool_runs)}
 
 
 class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
@@ -408,6 +431,77 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.say_calls, ["hello"])
         self.assertEqual(result["executed_actions"][0]["name"], "robot.say")
+
+    async def test_default_local_tool_registry_receives_memory_store_for_note_add(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(memory_store.notes[0]["content"], "hello")
+        self.assertEqual(result["executed_actions"][0]["name"], "note.add")
+        self.assertTrue(result["executed_actions"][0]["result"]["result"]["persisted"])
+
+    async def test_note_add_persists_note_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="note.add", arguments={"content": "hello"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "note.add")
+        self.assertEqual(memory_store.notes[0]["content"], "hello")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "note.add")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_work_context_record_persists_note_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="work_context.record",
+                    arguments={"content": "coding", "project_hint": "xiao-an-robot"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "work_context.record")
+        self.assertEqual(memory_store.notes[0]["content"], "coding")
+        self.assertEqual(memory_store.notes[0]["tags"], ["work_context"])
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "work_context.record")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_summary_daily_persists_summary_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="summary.daily",
+                    arguments={"date": "2026-06-16"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "summary.daily")
+        self.assertEqual(memory_store.summaries[0]["summary_type"], "daily")
+        self.assertEqual(memory_store.summaries[0]["date"], "2026-06-16")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "summary.daily")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
 
 
 if __name__ == "__main__":

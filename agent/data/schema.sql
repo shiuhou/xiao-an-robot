@@ -121,3 +121,62 @@ CREATE INDEX IF NOT EXISTS idx_tool_runs_source_event_type
 
 CREATE INDEX IF NOT EXISTS idx_tool_runs_event_id
     ON tool_runs (event_id);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER,
+    timestamp_ms INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    source TEXT NOT NULL DEFAULT 'unknown',
+    project_hint TEXT,
+    project_id INTEGER,
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS summaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER,
+    timestamp_ms INTEGER NOT NULL,
+    summary_type TEXT NOT NULL,
+    title TEXT,
+    content TEXT NOT NULL,
+    date TEXT,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    project_hint TEXT,
+    project_id INTEGER,
+    input_range_start_ms INTEGER,
+    input_range_end_ms INTEGER,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_timestamp
+    ON notes (timestamp_ms);
+
+CREATE INDEX IF NOT EXISTS idx_notes_project_hint
+    ON notes (project_hint);
+
+CREATE INDEX IF NOT EXISTS idx_notes_project_id
+    ON notes (project_id);
+
+CREATE INDEX IF NOT EXISTS idx_notes_event_id
+    ON notes (event_id);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_timestamp
+    ON summaries (timestamp_ms);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_summary_type
+    ON summaries (summary_type);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_date
+    ON summaries (date);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_project_hint
+    ON summaries (project_hint);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_project_id
+    ON summaries (project_id);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_event_id
+    ON summaries (event_id);

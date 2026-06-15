@@ -25,7 +25,7 @@ class ActionExecutor:
         self.local_tool_registry = (
             local_tool_registry
             if local_tool_registry is not None
-            else LocalToolRegistry()
+            else LocalToolRegistry(memory_store=memory_store)
         )
 
     async def execute(self, decision: OpenClawDecision, source_event_type: str | None = None) -> dict:

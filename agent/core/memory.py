@@ -381,6 +381,234 @@ class XiaoAnMemoryStore:
             "status_count": status_count,
         }
 
+    def insert_note(
+        self,
+        content: str,
+        tags: list[str] | None = None,
+        source: str = "tool_call",
+        project_hint: str | None = None,
+        project_id: int | None = None,
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        active_tags = tags or []
+        payload = {
+            "content": content,
+            "tags": active_tags,
+            "project_hint": project_hint,
+            "project_id": project_id,
+        }
+        event_id = self.insert_event(
+            event_type="note.added",
+            source=source,
+            text=content,
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            project_id=project_id,
+            privacy_level=privacy_level,
+        )
+        event = self.get_event(event_id)
+        persisted_timestamp_ms = (
+            int(event["timestamp_ms"])
+            if event is not None
+            else int(time.time() * 1000)
+        )
+        created_at_ms = int(time.time() * 1000)
+        tags_json = json.dumps(active_tags, ensure_ascii=False)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO notes (
+                    event_id, timestamp_ms, content, tags_json, source,
+                    project_hint, project_id, created_at_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    persisted_timestamp_ms,
+                    content,
+                    tags_json,
+                    source,
+                    project_hint,
+                    project_id,
+                    created_at_ms,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "note_id": int(cursor.lastrowid),
+        }
+
+    def query_recent_notes(
+        self,
+        limit: int = 20,
+        project_hint: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if project_hint is not None:
+            clauses.append("project_hint = ?")
+            params.append(project_hint)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, timestamp_ms, content, tags_json, source,
+                   project_hint, project_id, created_at_ms
+            FROM notes
+            {where_sql}
+            ORDER BY timestamp_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [self._note_row_to_dict(row) for row in cursor.fetchall()]
+
+    def get_notes_summary(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_recent_notes(limit=limit)
+        summary: dict[str, Any] = {
+            "count": len(rows),
+            "latest_content": None,
+            "tag_count": {},
+            "project_hint_count": {},
+        }
+        if not rows:
+            return summary
+
+        tag_count: dict[str, int] = {}
+        project_hint_count: dict[str, int] = {}
+        for row in rows:
+            for tag in row.get("tags", []):
+                tag_key = str(tag)
+                tag_count[tag_key] = tag_count.get(tag_key, 0) + 1
+            if row.get("project_hint") is not None:
+                project_key = str(row["project_hint"])
+                project_hint_count[project_key] = project_hint_count.get(project_key, 0) + 1
+
+        summary.update({
+            "latest_content": rows[0]["content"],
+            "tag_count": tag_count,
+            "project_hint_count": project_hint_count,
+        })
+        return summary
+
+    def insert_summary(
+        self,
+        summary_type: str,
+        content: str,
+        title: str | None = None,
+        date: str | None = None,
+        source: str = "tool_call",
+        project_hint: str | None = None,
+        project_id: int | None = None,
+        input_range_start_ms: int | None = None,
+        input_range_end_ms: int | None = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        active_metadata = metadata or {}
+        payload = {
+            "summary_type": summary_type,
+            "title": title,
+            "date": date,
+            "project_hint": project_hint,
+            "metadata": active_metadata,
+        }
+        event_id = self.insert_event(
+            event_type="summary.generated",
+            source=source,
+            text=content,
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            project_id=project_id,
+            privacy_level=privacy_level,
+        )
+        event = self.get_event(event_id)
+        persisted_timestamp_ms = (
+            int(event["timestamp_ms"])
+            if event is not None
+            else int(time.time() * 1000)
+        )
+        created_at_ms = int(time.time() * 1000)
+        metadata_json = json.dumps(active_metadata, ensure_ascii=False)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO summaries (
+                    event_id, timestamp_ms, summary_type, title, content, date,
+                    source, project_hint, project_id, input_range_start_ms,
+                    input_range_end_ms, metadata_json, created_at_ms
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    persisted_timestamp_ms,
+                    summary_type,
+                    title,
+                    content,
+                    date,
+                    source,
+                    project_hint,
+                    project_id,
+                    input_range_start_ms,
+                    input_range_end_ms,
+                    metadata_json,
+                    created_at_ms,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "summary_id": int(cursor.lastrowid),
+        }
+
+    def query_recent_summaries(
+        self,
+        limit: int = 20,
+        summary_type: str | None = None,
+        date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if summary_type is not None:
+            clauses.append("summary_type = ?")
+            params.append(summary_type)
+        if date is not None:
+            clauses.append("date = ?")
+            params.append(date)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, timestamp_ms, summary_type, title, content, date,
+                   source, project_hint, project_id, input_range_start_ms,
+                   input_range_end_ms, metadata_json, created_at_ms
+            FROM summaries
+            {where_sql}
+            ORDER BY timestamp_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [self._summary_row_to_dict(row) for row in cursor.fetchall()]
+
+    def get_summary_overview(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_recent_summaries(limit=limit)
+        summary_type_count: dict[str, int] = {}
+        for row in rows:
+            summary_type = str(row["summary_type"])
+            summary_type_count[summary_type] = summary_type_count.get(summary_type, 0) + 1
+        return {
+            "count": len(rows),
+            "summary_type_count": summary_type_count,
+            "latest_summary_type": rows[0]["summary_type"] if rows else None,
+            "latest_title": rows[0]["title"] if rows else None,
+        }
+
     def save_interaction(
         self,
         user_text: str,
@@ -495,6 +723,24 @@ class XiaoAnMemoryStore:
         except json.JSONDecodeError:
             tool_run["result"] = {}
         return tool_run
+
+    def _note_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        note = dict(row)
+        try:
+            tags = json.loads(note.get("tags_json") or "[]")
+        except json.JSONDecodeError:
+            tags = []
+        note["tags"] = tags if isinstance(tags, list) else []
+        return note
+
+    def _summary_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        summary = dict(row)
+        try:
+            metadata = json.loads(summary.get("metadata_json") or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        summary["metadata"] = metadata if isinstance(metadata, dict) else {}
+        return summary
 
     def _top_count_key(self, counts: dict[str, int]) -> str | None:
         if not counts:

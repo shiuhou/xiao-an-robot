@@ -52,6 +52,37 @@ class FakeMemory:
         self.closed = True
 
 
+class FakeContextMemory:
+    def get_recent_work_summary(self, limit: int = 20) -> dict:
+        return {
+            "count": 3,
+            "latest_activity_type": "coding",
+            "latest_app_name": "VS Code",
+            "latest_project_hint": "xiao-an-robot",
+            "top_activity_type": "coding",
+            "top_app_name": "VS Code",
+            "activity_type_count": {"coding": 3},
+            "app_count": {"VS Code": 3},
+            "project_hint_count": {"xiao-an-robot": 3},
+        }
+
+    def query_recent_work_activities(self, limit: int = 5) -> list[dict]:
+        return [{
+            "app_name": "VS Code",
+            "activity_type": "coding",
+            "project_hint": "xiao-an-robot",
+        }]
+
+
+class FakeHandledCompanion:
+    async def handle_text(self, text: str | None) -> dict:
+        return {
+            "handled": True,
+            "reason": "asr_emotion_triggered",
+            "trigger_result": {"should_trigger": True},
+        }
+
+
 class RaisingOpenClawAdapter:
     def __init__(self) -> None:
         self.events = []
@@ -258,6 +289,64 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["route"], "link_1_openclaw")
         self.assertEqual(result["reason"], "openclaw_decision")
         self.assertEqual(gateway.calls, [])
+
+    async def test_asr_transcript_weather_question_does_not_inject_work(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "今天天气怎么样"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertNotIn("work", context)
+        self.assertFalse(context["context_policy"]["needs_work_context"])
+
+    async def test_asr_transcript_work_question_injects_work(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "我刚刚在做什么"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertEqual(context["payload"]["text"], "我刚刚在做什么")
+        self.assertEqual(context["work"]["recent_summary"]["latest_app_name"], "VS Code")
+        self.assertEqual(context["work"]["recent_activities"][0]["activity_type"], "coding")
+
+    async def test_asr_transcript_tired_fast_path_route_is_unchanged(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter()
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+        brain.companion_request = FakeHandledCompanion()
+
+        result = await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "鎴戞湁鐐圭疮"},
+        })
+
+        self.assertEqual(result["route"], "link_3_companion_fast_path")
 
 
 if __name__ == "__main__":

@@ -49,6 +49,28 @@ class FakeMemory:
         pass
 
 
+class FakeContextMemory:
+    def get_recent_work_summary(self, limit: int = 20) -> dict:
+        return {
+            "count": 3,
+            "latest_activity_type": "coding",
+            "latest_app_name": "VS Code",
+            "latest_project_hint": "xiao-an-robot",
+            "top_activity_type": "coding",
+            "top_app_name": "VS Code",
+            "activity_type_count": {"coding": 3},
+            "app_count": {"VS Code": 3},
+            "project_hint_count": {"xiao-an-robot": 3},
+        }
+
+    def query_recent_work_activities(self, limit: int = 5) -> list[dict]:
+        return [{
+            "app_name": "VS Code",
+            "activity_type": "coding",
+            "project_hint": "xiao-an-robot",
+        }]
+
+
 class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
     async def test_frontend_message_routes_to_openclaw_adapter(self) -> None:
         gateway = FakeGateway()
@@ -143,6 +165,47 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["route"], "frontend_openclaw")
         self.assertEqual(result["reason"], "openclaw_decision")
         self.assertEqual(openclaw_adapter.events[0].session_id, "default")
+
+    async def test_frontend_message_greeting_does_not_inject_work(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "你好小安"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertNotIn("work", context)
+        self.assertFalse(context["context_policy"]["needs_work_context"])
+
+    async def test_frontend_message_work_question_injects_work(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "我刚刚在做什么"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertEqual(context["payload"]["text"], "我刚刚在做什么")
+        self.assertEqual(context["work"]["recent_summary"]["latest_activity_type"], "coding")
+        self.assertEqual(context["work"]["recent_activities"][0]["app_name"], "VS Code")
 
 
 if __name__ == "__main__":

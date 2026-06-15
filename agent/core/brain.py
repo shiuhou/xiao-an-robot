@@ -10,7 +10,9 @@ from __future__ import annotations
 from typing import Any
 
 from agent.core.action_executor import ActionExecutor
+from agent.core.context_builder import ContextBuilder
 from agent.core.gateway import RobotGateway
+from agent.core.memory import XiaoAnMemoryStore
 from agent.core.openclaw_adapter import OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.skills.companion_request import CompanionRequestSkill
@@ -36,9 +38,21 @@ class XiaoAnBrain:
         window_seconds: int = 300,
         openclaw_adapter: Any | None = None,
         action_executor: Any | None = None,
+        context_builder: Any | None = None,
+        context_memory: Any | None = None,
     ):
         self.gateway = gateway or RobotGateway(url=gateway_url)
         self.memory = memory or EmotionDB(db_path=db_path)
+        self._owns_context_memory = False
+        if context_builder is not None:
+            self.context_builder = context_builder
+            self.context_memory = context_memory
+        else:
+            if context_memory is None:
+                context_memory = XiaoAnMemoryStore(db_path=db_path)
+                self._owns_context_memory = True
+            self.context_memory = context_memory
+            self.context_builder = ContextBuilder(memory_store=context_memory)
         self.robot_motion = RobotMotionSkill(gateway=self.gateway)
         self.emotion_monitor = EmotionMonitorSkill(
             gateway=self.gateway,
@@ -124,15 +138,22 @@ class XiaoAnBrain:
                     companion_result["openclaw_error"] = str(exc)
                 return companion_result
 
+            base_context = {
+                "payload": payload,
+                "companion_result": companion_result,
+            }
+            openclaw_context = self._build_openclaw_context(
+                text=text,
+                base_context=base_context,
+                event_type=ASR_TRANSCRIPT_EVENT,
+                source="asr",
+            )
             openclaw_event = OpenClawEvent(
                 type=ASR_TRANSCRIPT_EVENT,
                 text=text,
                 source="asr",
                 session_id=payload.get("session_id", "default"),
-                context={
-                    "payload": payload,
-                    "companion_result": companion_result,
-                },
+                context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
             execution_result = await self.action_executor.execute(decision)
@@ -143,14 +164,21 @@ class XiaoAnBrain:
 
         if event_type == FRONTEND_MESSAGE_EVENT:
             payload = event.get("payload") or {}
+            base_context = {
+                "payload": payload,
+            }
+            openclaw_context = self._build_openclaw_context(
+                text=payload.get("text", ""),
+                base_context=base_context,
+                event_type=FRONTEND_MESSAGE_EVENT,
+                source="frontend",
+            )
             openclaw_event = OpenClawEvent(
                 type=FRONTEND_MESSAGE_EVENT,
                 text=payload.get("text", ""),
                 source="frontend",
                 session_id=payload.get("session_id", "default"),
-                context={
-                    "payload": payload,
-                },
+                context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
             execution_result = await self.action_executor.execute(decision)
@@ -164,10 +192,36 @@ class XiaoAnBrain:
             "message": f"Unsupported event type: {event_type}",
         }
 
+    def _build_openclaw_context(
+        self,
+        text: str | None,
+        base_context: dict,
+        event_type: str,
+        source: str,
+    ) -> dict:
+        try:
+            return self.context_builder.build_for_text(
+                text,
+                base_context=base_context,
+                event_type=event_type,
+                source=source,
+            )
+        except Exception as exc:
+            context = dict(base_context)
+            context.setdefault("context_errors", []).append({
+                "scope": "context_builder",
+                "error": str(exc),
+            })
+            return context
+
     def close(self) -> None:
         close = getattr(self.memory, "close", None)
         if callable(close):
             close()
+        if self._owns_context_memory:
+            close = getattr(self.context_memory, "close", None)
+            if callable(close):
+                close()
 
 
 # Backward-compatible alias for older imports.

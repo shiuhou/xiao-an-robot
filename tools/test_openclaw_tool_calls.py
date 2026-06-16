@@ -42,7 +42,7 @@ class FakeRobotMotionSkill:
         return {"ok": True}
 
 
-def build_tool_call(tool: str, text: str) -> OpenClawToolCall:
+def build_tool_call(tool: str, text: str, delay_seconds: int | None = None) -> OpenClawToolCall:
     if tool == "note.add":
         return OpenClawToolCall(
             name="note.add",
@@ -52,6 +52,24 @@ def build_tool_call(tool: str, text: str) -> OpenClawToolCall:
         return OpenClawToolCall(
             name="work_context.record",
             arguments={"content": text, "source": "manual-test"},
+        )
+    if tool == "reminder.add":
+        return OpenClawToolCall(
+            name="reminder.add",
+            arguments={
+                "message": text,
+                "delay_seconds": delay_seconds if delay_seconds is not None else 60,
+            },
+        )
+    if tool == "reminder.query":
+        return OpenClawToolCall(
+            name="reminder.query",
+            arguments={"include_fired": True},
+        )
+    if tool == "reminder.cancel":
+        return OpenClawToolCall(
+            name="reminder.cancel",
+            arguments={"message_contains": text},
         )
     return OpenClawToolCall(
         name="summary.daily",
@@ -80,10 +98,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--text", default="帮我记一下明天下午交报告", help="Event text.")
     parser.add_argument(
         "--tool",
-        choices=["note.add", "work_context.record", "summary.daily"],
+        choices=[
+            "note.add",
+            "work_context.record",
+            "summary.daily",
+            "reminder.add",
+            "reminder.query",
+            "reminder.cancel",
+        ],
         default="note.add",
         help="Fake OpenClaw tool_call to execute.",
     )
+    parser.add_argument("--delay-seconds", type=int, default=None, help="Delay for reminder.add.")
     parser.add_argument("--verbose", action="store_true", help="Accepted for local debugging; output is always JSON.")
     parser.add_argument("--record-memory", action="store_true", help="Record tool calls into a test XiaoAnMemoryStore.")
     parser.add_argument("--db-path", default=None, help="Database path for --record-memory.")
@@ -163,6 +189,13 @@ def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dic
             memory_errors,
             limit=memory_limit,
         ),
+        "recent_reminders": _safe_snapshot_call(
+            memory_store,
+            "query_reminders",
+            memory_errors,
+            limit=memory_limit,
+            include_fired=True,
+        ),
         "tool_run_summary": _safe_snapshot_call(
             memory_store,
             "get_tool_run_summary",
@@ -176,6 +209,11 @@ def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dic
         "summary_overview": _safe_snapshot_call(
             memory_store,
             "get_summary_overview",
+            memory_errors,
+        ),
+        "reminders_summary": _safe_snapshot_call(
+            memory_store,
+            "get_reminders_summary",
             memory_errors,
         ),
     }
@@ -195,7 +233,7 @@ async def run(args: argparse.Namespace) -> dict:
         decision=OpenClawDecision(
             handled=True,
             reply_text="我已经帮你处理了。",
-            tool_calls=[build_tool_call(args.tool, args.text)],
+            tool_calls=[build_tool_call(args.tool, args.text, args.delay_seconds)],
         ),
     )
     brain_kwargs = {

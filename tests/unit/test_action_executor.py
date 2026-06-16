@@ -80,6 +80,7 @@ class FakeMemoryStore:
         self.tool_runs = []
         self.notes = []
         self.summaries = []
+        self.reminders = []
 
     def insert_tool_run(self, **kwargs) -> dict:
         if self.raise_error:
@@ -98,6 +99,32 @@ class FakeMemoryStore:
             raise RuntimeError("memory unavailable")
         self.summaries.append(kwargs)
         return {"event_id": len(self.summaries), "summary_id": len(self.summaries)}
+
+    def insert_reminder(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        reminder = dict(kwargs)
+        reminder["id"] = len(self.reminders) + 1
+        reminder["status"] = "pending"
+        self.reminders.append(reminder)
+        return {"event_id": len(self.reminders), "reminder_id": len(self.reminders), "due_at_ms": 1234}
+
+    def query_reminders(self, limit: int = 20, status: str | None = None, include_fired: bool = False) -> list[dict]:
+        reminders = self.reminders
+        if status is not None:
+            reminders = [item for item in reminders if item.get("status") == status]
+        elif not include_fired:
+            reminders = [item for item in reminders if item.get("status") == "pending"]
+        return reminders[:limit]
+
+    def cancel_reminder(self, reminder_id=None, message_contains=None, **kwargs) -> dict:
+        for reminder in self.reminders:
+            id_matches = reminder_id is not None and reminder["id"] == int(reminder_id)
+            text_matches = message_contains and message_contains in reminder["message"]
+            if reminder.get("status") == "pending" and (id_matches or text_matches):
+                reminder["status"] = "cancelled"
+                return {"ok": True, "event_id": 99, "reminder_id": reminder["id"], "message": reminder["message"]}
+        return {"ok": False, "reason": "not_found"}
 
     def get_recent_work_summary(self) -> dict:
         return {"count": 2}
@@ -501,6 +528,47 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory_store.summaries[0]["summary_type"], "daily")
         self.assertEqual(memory_store.summaries[0]["date"], "2026-06-16")
         self.assertEqual(memory_store.tool_runs[0]["tool_name"], "summary.daily")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_reminder_add_executes_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="reminder.add",
+                    arguments={"message": "wake me", "delay_seconds": 60},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "reminder.add")
+        self.assertEqual(memory_store.reminders[0]["message"], "wake me")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "reminder.add")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_reminder_cancel_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        memory_store.insert_reminder(message="wake me", delay_seconds=60)
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="reminder.cancel",
+                    arguments={"message_contains": "wake"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "reminder.cancel")
+        self.assertEqual(memory_store.reminders[0]["status"], "cancelled")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "reminder.cancel")
         self.assertEqual(memory_store.tool_runs[0]["status"], "success")
 
 

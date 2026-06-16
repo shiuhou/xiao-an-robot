@@ -12,7 +12,14 @@ from agent.core.openclaw_adapter import OpenClawDecision, OpenClawToolCall
 class ActionExecutor:
     """Apply OpenClaw decisions to the local robot execution layer."""
 
-    LOCAL_TOOL_NAMES = {"note.add", "work_context.record", "summary.daily"}
+    LOCAL_TOOL_NAMES = {
+        "note.add",
+        "work_context.record",
+        "summary.daily",
+        "reminder.add",
+        "reminder.query",
+        "reminder.cancel",
+    }
 
     def __init__(
         self,

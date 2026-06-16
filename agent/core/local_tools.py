@@ -24,6 +24,15 @@ class LocalToolRegistry:
         if name == "summary.daily":
             return self._execute_summary_daily(active_arguments)
 
+        if name == "reminder.add":
+            return self._execute_reminder_add(active_arguments)
+
+        if name == "reminder.query":
+            return self._execute_reminder_query(active_arguments)
+
+        if name == "reminder.cancel":
+            return self._execute_reminder_cancel(active_arguments)
+
         return {
             "ok": False,
             "name": name,
@@ -152,6 +161,119 @@ class LocalToolRegistry:
                 "persisted": True,
                 "summary_result": summary_result,
                 "content": content,
+            },
+        }
+
+    def _execute_reminder_add(self, arguments: dict) -> dict:
+        message = arguments.get("message") or arguments.get("content") or arguments.get("text") or ""
+        delay_seconds = arguments.get("delay_seconds")
+        due_at_ms = arguments.get("due_at_ms")
+        result = {
+            "message": message,
+            "due_at_ms": due_at_ms,
+            "delay_seconds": delay_seconds,
+            "persisted": False,
+        }
+        if not self._has_memory_method("insert_reminder"):
+            return {
+                "ok": True,
+                "name": "reminder.add",
+                "result": result,
+            }
+        if not message:
+            return {"ok": False, "name": "reminder.add", "error": "missing_message"}
+
+        try:
+            reminder_result = self.memory_store.insert_reminder(
+                message=message,
+                due_at_ms=due_at_ms,
+                delay_seconds=delay_seconds,
+                source="tool_call",
+                project_hint=arguments.get("project_hint"),
+                metadata=arguments.get("metadata") if isinstance(arguments.get("metadata"), dict) else None,
+            )
+        except Exception as exc:
+            return {"ok": False, "name": "reminder.add", "error": str(exc)}
+
+        result.update({
+            "persisted": True,
+            "reminder_result": reminder_result,
+        })
+        return {
+            "ok": True,
+            "name": "reminder.add",
+            "result": result,
+        }
+
+    def _execute_reminder_query(self, arguments: dict) -> dict:
+        limit = int(arguments.get("limit", 20) or 20)
+        status = arguments.get("status")
+        include_fired = bool(arguments.get("include_fired", False))
+        if not self._has_memory_method("query_reminders"):
+            return {
+                "ok": True,
+                "name": "reminder.query",
+                "reminders": [],
+                "count": 0,
+            }
+
+        try:
+            reminders = self.memory_store.query_reminders(
+                limit=limit,
+                status=status,
+                include_fired=include_fired,
+            )
+        except Exception as exc:
+            return {"ok": False, "name": "reminder.query", "error": str(exc)}
+
+        return {
+            "ok": True,
+            "name": "reminder.query",
+            "reminders": reminders,
+            "count": len(reminders),
+        }
+
+    def _execute_reminder_cancel(self, arguments: dict) -> dict:
+        reminder_id = arguments.get("reminder_id")
+        message_contains = (
+            arguments.get("message_contains")
+            or arguments.get("content")
+            or arguments.get("text")
+            or arguments.get("message")
+        )
+        if not self._has_memory_method("cancel_reminder"):
+            return {
+                "ok": True,
+                "name": "reminder.cancel",
+                "result": {
+                    "persisted": False,
+                    "reminder_id": reminder_id,
+                    "message_contains": message_contains,
+                },
+            }
+
+        try:
+            cancel_result = self.memory_store.cancel_reminder(
+                reminder_id=reminder_id,
+                message_contains=message_contains,
+                source="tool_call",
+            )
+        except Exception as exc:
+            return {"ok": False, "name": "reminder.cancel", "error": str(exc)}
+
+        if not cancel_result.get("ok", False):
+            return {
+                "ok": False,
+                "name": "reminder.cancel",
+                "reason": cancel_result.get("reason", "not_found"),
+                "result": cancel_result,
+            }
+        return {
+            "ok": True,
+            "name": "reminder.cancel",
+            "result": {
+                "persisted": True,
+                "cancel_result": cancel_result,
             },
         }
 

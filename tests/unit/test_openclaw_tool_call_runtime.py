@@ -256,6 +256,83 @@ class OpenClawToolCallRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(notes), 1)
         self.assertEqual(notes[0]["content"], "new note")
 
+    async def test_manual_script_record_memory_reminder_add_outputs_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "reminder.add",
+                "--text",
+                "wake me",
+                "--delay-seconds",
+                "60",
+            ])
+
+            output = await manual_tool_calls.run(args)
+
+        reminders = output["memory_snapshot"]["recent_reminders"]
+        self.assertEqual(reminders[0]["message"], "wake me")
+        self.assertEqual(reminders[0]["status"], "pending")
+
+    async def test_manual_script_record_memory_reminder_query_returns_reminders(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            add_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "reminder.add",
+                "--text",
+                "wake me",
+            ])
+            await manual_tool_calls.run(add_args)
+
+            query_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "reminder.query",
+            ])
+            output = await manual_tool_calls.run(query_args)
+
+        query_action = next(action for action in output["result"]["executed_actions"] if action["name"] == "reminder.query")
+        self.assertEqual(query_action["result"]["count"], 1)
+        self.assertEqual(query_action["result"]["reminders"][0]["message"], "wake me")
+
+    async def test_manual_script_record_memory_reminder_cancel_cancels_reminder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            add_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "reminder.add",
+                "--text",
+                "wake me",
+            ])
+            await manual_tool_calls.run(add_args)
+
+            cancel_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "reminder.cancel",
+                "--text",
+                "wake",
+            ])
+            output = await manual_tool_calls.run(cancel_args)
+
+        reminders = output["memory_snapshot"]["recent_reminders"]
+        self.assertEqual(reminders[0]["message"], "wake me")
+        self.assertEqual(reminders[0]["status"], "cancelled")
+
 
 if __name__ == "__main__":
     unittest.main()

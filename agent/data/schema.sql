@@ -180,3 +180,29 @@ CREATE INDEX IF NOT EXISTS idx_summaries_project_id
 
 CREATE INDEX IF NOT EXISTS idx_summaries_event_id
     ON summaries (event_id);
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER,
+    created_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+    due_at_ms INTEGER NOT NULL,
+    fired_at_ms INTEGER,
+    status TEXT NOT NULL DEFAULT 'pending',
+    message TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'unknown',
+    project_hint TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_due_at
+    ON reminders (due_at_ms);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_status
+    ON reminders (status);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_created_at
+    ON reminders (created_at_ms);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_event_id
+    ON reminders (event_id);

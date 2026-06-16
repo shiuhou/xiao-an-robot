@@ -13,6 +13,7 @@ class FakeMemoryStore:
         self.notes = []
         self.summaries = []
         self.work_activities = []
+        self.reminders = []
 
     def insert_note(self, **kwargs) -> dict:
         if self.raise_error:
@@ -29,6 +30,36 @@ class FakeMemoryStore:
     def insert_work_activity(self, **kwargs) -> dict:
         self.work_activities.append(kwargs)
         return {"event_id": 999, "work_activity_id": 999}
+
+    def insert_reminder(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        reminder = dict(kwargs)
+        reminder["id"] = len(self.reminders) + 1
+        reminder["status"] = "pending"
+        self.reminders.append(reminder)
+        return {"event_id": len(self.reminders), "reminder_id": len(self.reminders), "due_at_ms": 1234}
+
+    def query_reminders(self, limit: int = 20, status: str | None = None, include_fired: bool = False) -> list[dict]:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        reminders = self.reminders
+        if status is not None:
+            reminders = [item for item in reminders if item.get("status") == status]
+        elif not include_fired:
+            reminders = [item for item in reminders if item.get("status") == "pending"]
+        return reminders[:limit]
+
+    def cancel_reminder(self, reminder_id=None, message_contains=None, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        for reminder in self.reminders:
+            id_matches = reminder_id is not None and reminder["id"] == int(reminder_id)
+            text_matches = message_contains and message_contains in reminder["message"]
+            if reminder.get("status") == "pending" and (id_matches or text_matches):
+                reminder["status"] = "cancelled"
+                return {"ok": True, "event_id": 99, "reminder_id": reminder["id"], "message": reminder["message"]}
+        return {"ok": False, "reason": "not_found"}
 
     def get_recent_work_summary(self) -> dict:
         return {"count": 2}
@@ -173,6 +204,61 @@ class LocalToolRegistryTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["name"], "note.add")
         self.assertIn("memory unavailable", result["error"])
+
+    def test_reminder_add_with_memory_store_persists(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+
+        result = registry.execute("reminder.add", {"message": "wake me", "delay_seconds": 60})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["result"]["persisted"])
+        self.assertEqual(result["result"]["reminder_result"]["reminder_id"], 1)
+        self.assertEqual(memory_store.reminders[0]["message"], "wake me")
+
+    def test_reminder_query_returns_pending_reminders(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+        registry.execute("reminder.add", {"message": "wake me", "delay_seconds": 60})
+
+        result = registry.execute("reminder.query", {"status": "pending"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["reminders"][0]["message"], "wake me")
+
+    def test_reminder_cancel_cancels_reminder(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+        registry.execute("reminder.add", {"message": "wake me", "delay_seconds": 60})
+
+        result = registry.execute("reminder.cancel", {"message_contains": "wake"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["result"]["cancel_result"]["reminder_id"], 1)
+        self.assertEqual(memory_store.reminders[0]["status"], "cancelled")
+
+    def test_reminder_cancel_not_found_returns_ok_false(self) -> None:
+        registry = LocalToolRegistry(memory_store=FakeMemoryStore())
+
+        result = registry.execute("reminder.cancel", {"message_contains": "missing"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "not_found")
+
+    def test_reminder_tools_without_memory_store_do_not_crash(self) -> None:
+        registry = LocalToolRegistry()
+
+        add_result = registry.execute("reminder.add", {"message": "wake me", "delay_seconds": 60})
+        query_result = registry.execute("reminder.query", {})
+        cancel_result = registry.execute("reminder.cancel", {"message_contains": "wake"})
+
+        self.assertTrue(add_result["ok"])
+        self.assertFalse(add_result["result"]["persisted"])
+        self.assertTrue(query_result["ok"])
+        self.assertEqual(query_result["reminders"], [])
+        self.assertTrue(cancel_result["ok"])
+        self.assertFalse(cancel_result["result"]["persisted"])
 
 
 if __name__ == "__main__":

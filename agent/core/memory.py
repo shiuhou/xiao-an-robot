@@ -609,6 +609,243 @@ class XiaoAnMemoryStore:
             "latest_title": rows[0]["title"] if rows else None,
         }
 
+    def insert_reminder(
+        self,
+        message: str,
+        due_at_ms: int | None = None,
+        delay_seconds: int | float | None = None,
+        source: str = "tool_call",
+        project_hint: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        if not message:
+            raise ValueError("message is required")
+        if due_at_ms is None and delay_seconds is None:
+            raise ValueError("due_at_ms or delay_seconds is required")
+
+        now_ms = int(time.time() * 1000)
+        normalized_delay_seconds = delay_seconds
+        if due_at_ms is None:
+            delay_value = float(delay_seconds if delay_seconds is not None else 0)
+            if delay_value <= 0:
+                delay_value = 1.0
+                normalized_delay_seconds = 1
+            due_at_ms = now_ms + int(delay_value * 1000)
+        else:
+            due_at_ms = int(due_at_ms)
+
+        active_metadata = metadata or {}
+        payload = {
+            "message": message,
+            "due_at_ms": due_at_ms,
+            "delay_seconds": normalized_delay_seconds,
+            "project_hint": project_hint,
+            "metadata": active_metadata,
+        }
+        event_id = self.insert_event(
+            event_type="reminder.added",
+            source=source,
+            text=message,
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            privacy_level=privacy_level,
+        )
+        metadata_json = json.dumps(active_metadata, ensure_ascii=False)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO reminders (
+                    event_id, created_at_ms, updated_at_ms, due_at_ms,
+                    fired_at_ms, status, message, source, project_hint,
+                    metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    now_ms,
+                    now_ms,
+                    due_at_ms,
+                    None,
+                    "pending",
+                    message,
+                    source,
+                    project_hint,
+                    metadata_json,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "reminder_id": int(cursor.lastrowid),
+            "due_at_ms": int(due_at_ms),
+        }
+
+    def query_reminders(
+        self,
+        limit: int = 20,
+        status: str | None = None,
+        include_fired: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        elif not include_fired:
+            clauses.append("status = ?")
+            params.append("pending")
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, created_at_ms, updated_at_ms, due_at_ms,
+                   fired_at_ms, status, message, source, project_hint,
+                   metadata_json
+            FROM reminders
+            {where_sql}
+            ORDER BY created_at_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [self._reminder_row_to_dict(row) for row in cursor.fetchall()]
+
+    def query_due_reminders(
+        self,
+        now_ms: int | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        now_ms = int(time.time() * 1000) if now_ms is None else int(now_ms)
+        cursor = self.conn.execute(
+            """
+            SELECT id, event_id, created_at_ms, updated_at_ms, due_at_ms,
+                   fired_at_ms, status, message, source, project_hint,
+                   metadata_json
+            FROM reminders
+            WHERE status = ? AND due_at_ms <= ?
+            ORDER BY due_at_ms ASC, id ASC
+            LIMIT ?
+            """,
+            ("pending", now_ms, int(limit)),
+        )
+        return [self._reminder_row_to_dict(row) for row in cursor.fetchall()]
+
+    def mark_reminder_fired(
+        self,
+        reminder_id: int,
+        fired_at_ms: int | None = None,
+        source: str = "reminder_scheduler",
+        privacy_level: str = "normal",
+    ) -> dict[str, Any]:
+        reminder = self._get_reminder_row(reminder_id)
+        if reminder is None:
+            return {"ok": False, "reason": "not_found", "reminder_id": reminder_id}
+
+        fired_at_ms = int(time.time() * 1000) if fired_at_ms is None else int(fired_at_ms)
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE reminders
+                SET status = ?, fired_at_ms = ?, updated_at_ms = ?
+                WHERE id = ?
+                """,
+                ("fired", fired_at_ms, fired_at_ms, int(reminder_id)),
+            )
+        payload = {
+            "reminder_id": int(reminder_id),
+            "message": reminder["message"],
+            "due_at_ms": reminder["due_at_ms"],
+            "fired_at_ms": fired_at_ms,
+        }
+        event_id = self.insert_event(
+            event_type="reminder.fired",
+            source=source,
+            text=reminder["message"],
+            payload=payload,
+            timestamp_ms=fired_at_ms,
+            privacy_level=privacy_level,
+        )
+        return {
+            "ok": True,
+            "event_id": event_id,
+            "reminder_id": int(reminder_id),
+        }
+
+    def cancel_reminder(
+        self,
+        reminder_id: int | None = None,
+        message_contains: str | None = None,
+        source: str = "tool_call",
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, Any]:
+        reminder = None
+        if reminder_id is not None:
+            reminder = self._get_reminder_row(int(reminder_id), status="pending")
+        elif message_contains:
+            reminder = self.conn.execute(
+                """
+                SELECT id, event_id, created_at_ms, updated_at_ms, due_at_ms,
+                       fired_at_ms, status, message, source, project_hint,
+                       metadata_json
+                FROM reminders
+                WHERE status = ? AND message LIKE ?
+                ORDER BY created_at_ms DESC, id DESC
+                LIMIT 1
+                """,
+                ("pending", f"%{message_contains}%"),
+            ).fetchone()
+
+        if reminder is None:
+            return {"ok": False, "reason": "not_found"}
+
+        now_ms = int(time.time() * 1000) if timestamp_ms is None else int(timestamp_ms)
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE reminders
+                SET status = ?, updated_at_ms = ?
+                WHERE id = ?
+                """,
+                ("cancelled", now_ms, int(reminder["id"])),
+            )
+        payload = {
+            "reminder_id": int(reminder["id"]),
+            "message": reminder["message"],
+        }
+        event_id = self.insert_event(
+            event_type="reminder.cancelled",
+            source=source,
+            text=reminder["message"],
+            payload=payload,
+            timestamp_ms=now_ms,
+            privacy_level=privacy_level,
+        )
+        return {
+            "ok": True,
+            "event_id": event_id,
+            "reminder_id": int(reminder["id"]),
+            "message": reminder["message"],
+        }
+
+    def get_reminders_summary(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_reminders(limit=limit, include_fired=True)
+        status_count: dict[str, int] = {}
+        for row in rows:
+            status = str(row["status"])
+            status_count[status] = status_count.get(status, 0) + 1
+        return {
+            "count": len(rows),
+            "pending_count": status_count.get("pending", 0),
+            "fired_count": status_count.get("fired", 0),
+            "cancelled_count": status_count.get("cancelled", 0),
+            "latest_message": rows[0]["message"] if rows else None,
+            "status_count": status_count,
+        }
+
     def save_interaction(
         self,
         user_text: str,
@@ -741,6 +978,32 @@ class XiaoAnMemoryStore:
             metadata = {}
         summary["metadata"] = metadata if isinstance(metadata, dict) else {}
         return summary
+
+    def _reminder_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        reminder = dict(row)
+        try:
+            metadata = json.loads(reminder.get("metadata_json") or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        reminder["metadata"] = metadata if isinstance(metadata, dict) else {}
+        return reminder
+
+    def _get_reminder_row(self, reminder_id: int, status: str | None = None) -> sqlite3.Row | None:
+        clauses = ["id = ?"]
+        params: list[Any] = [int(reminder_id)]
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        return self.conn.execute(
+            f"""
+            SELECT id, event_id, created_at_ms, updated_at_ms, due_at_ms,
+                   fired_at_ms, status, message, source, project_hint,
+                   metadata_json
+            FROM reminders
+            WHERE {' AND '.join(clauses)}
+            """,
+            params,
+        ).fetchone()
 
     def _top_count_key(self, counts: dict[str, int]) -> str | None:
         if not counts:

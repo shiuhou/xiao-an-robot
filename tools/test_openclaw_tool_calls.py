@@ -47,6 +47,7 @@ def build_tool_call(
     text: str,
     delay_seconds: int | None = None,
     task_id: int | None = None,
+    date: str | None = None,
 ) -> OpenClawToolCall:
     if tool == "note.add":
         return OpenClawToolCall(
@@ -102,9 +103,12 @@ def build_tool_call(
             name="task.cancel",
             arguments=arguments,
         )
+    arguments = {}
+    if date:
+        arguments["date"] = date
     return OpenClawToolCall(
         name="summary.daily",
-        arguments={"date": "today"},
+        arguments=arguments,
     )
 
 
@@ -146,7 +150,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--delay-seconds", type=int, default=None, help="Delay for reminder.add.")
     parser.add_argument("--task-id", type=int, default=None, help="Task id for task.complete/task.cancel.")
-    parser.add_argument("--verbose", action="store_true", help="Accepted for local debugging; output is always JSON.")
+    parser.add_argument("--date", default=None, help="Date for summary.daily, e.g. 2026-06-16.")
+    parser.add_argument("--verbose", action="store_true", help="Print full JSON output.")
     parser.add_argument("--record-memory", action="store_true", help="Record tool calls into a test XiaoAnMemoryStore.")
     parser.add_argument("--db-path", default=None, help="Database path for --record-memory.")
     parser.add_argument(
@@ -270,6 +275,52 @@ def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dic
     return snapshot
 
 
+def build_memory_summary(memory_snapshot: dict | None) -> dict:
+    snapshot = memory_snapshot or {}
+    return {
+        "recent_events_count": _list_count(snapshot.get("recent_events")),
+        "recent_tool_runs_count": _list_count(snapshot.get("recent_tool_runs")),
+        "recent_notes_count": _list_count(snapshot.get("recent_notes")),
+        "recent_summaries_count": _list_count(snapshot.get("recent_summaries")),
+        "recent_tasks_count": _list_count(snapshot.get("recent_tasks")),
+        "recent_reminders_count": _list_count(snapshot.get("recent_reminders")),
+        "tool_run_summary": snapshot.get("tool_run_summary") or {},
+        "notes_summary": snapshot.get("notes_summary") or {},
+        "tasks_summary": snapshot.get("tasks_summary") or {},
+        "reminders_summary": snapshot.get("reminders_summary") or {},
+        "summary_overview": snapshot.get("summary_overview") or {},
+    }
+
+
+def build_compact_output(output: dict) -> dict:
+    result = output.get("result") or {}
+    executed_actions = result.get("executed_actions") or []
+    skipped_actions = result.get("skipped_actions") or []
+    compact = {
+        "event_type": output.get("event_type"),
+        "tool": output.get("tool"),
+        "handled": result.get("handled"),
+        "route": result.get("route"),
+        "reason": result.get("reason"),
+        "executed_action_names": [action.get("name") for action in executed_actions],
+        "skipped_action_names": [action.get("name") for action in skipped_actions],
+        "fake_robot_call_count": _list_count(output.get("fake_robot_calls")),
+    }
+    if "memory_snapshot" in output:
+        compact["memory_summary"] = build_memory_summary(output.get("memory_snapshot"))
+    return compact
+
+
+def format_output(output: dict, verbose: bool = False) -> dict:
+    if verbose:
+        return output
+    return build_compact_output(output)
+
+
+def _list_count(value) -> int:
+    return len(value) if isinstance(value, list) else 0
+
+
 async def run(args: argparse.Namespace) -> dict:
     memory_store, memory_db_path = _prepare_memory_store(args)
     fake_robot = FakeRobotMotionSkill()
@@ -281,7 +332,7 @@ async def run(args: argparse.Namespace) -> dict:
         decision=OpenClawDecision(
             handled=True,
             reply_text="我已经帮你处理了。",
-            tool_calls=[build_tool_call(args.tool, args.text, args.delay_seconds, args.task_id)],
+            tool_calls=[build_tool_call(args.tool, args.text, args.delay_seconds, args.task_id, args.date)],
         ),
     )
     brain_kwargs = {
@@ -314,8 +365,9 @@ async def run(args: argparse.Namespace) -> dict:
 
 
 async def main(argv: list[str] | None = None) -> None:
-    output = await run(parse_args(argv))
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    args = parse_args(argv)
+    output = await run(args)
+    print(json.dumps(format_output(output, verbose=args.verbose), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

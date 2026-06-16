@@ -438,6 +438,88 @@ class OpenClawToolCallRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tasks[0]["title"], "write tests")
         self.assertEqual(tasks[0]["status"], "cancelled")
 
+    async def test_manual_script_compact_output_omits_full_memory_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "note.add",
+                "--text",
+                "compact note",
+            ])
+            output = await manual_tool_calls.run(args)
+
+        compact = manual_tool_calls.format_output(output, verbose=False)
+
+        self.assertIn("executed_action_names", compact)
+        self.assertNotIn("memory_snapshot", compact)
+        self.assertIn("memory_summary", compact)
+
+    async def test_manual_script_verbose_output_includes_full_memory_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "note.add",
+                "--text",
+                "verbose note",
+            ])
+            output = await manual_tool_calls.run(args)
+
+        verbose = manual_tool_calls.format_output(output, verbose=True)
+
+        self.assertIn("memory_snapshot", verbose)
+        self.assertIn("recent_notes", verbose["memory_snapshot"])
+
+    async def test_manual_script_record_memory_compact_output_has_memory_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "note.add",
+                "--text",
+                "summary note",
+            ])
+            output = await manual_tool_calls.run(args)
+
+        compact = manual_tool_calls.format_output(output, verbose=False)
+
+        self.assertGreaterEqual(compact["memory_summary"]["recent_events_count"], 1)
+        self.assertGreaterEqual(compact["memory_summary"]["recent_notes_count"], 1)
+        self.assertIsInstance(compact["memory_summary"]["tool_run_summary"], dict)
+
+    def test_manual_script_summary_daily_default_does_not_pass_today_date(self) -> None:
+        tool_call = manual_tool_calls.build_tool_call("summary.daily", "summary")
+
+        self.assertEqual(tool_call.arguments, {})
+
+    async def test_manual_script_summary_daily_explicit_date_is_used(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "summary.daily",
+                "--date",
+                "2026-06-16",
+            ])
+            output = await manual_tool_calls.run(args)
+
+        summaries = output["memory_snapshot"]["recent_summaries"]
+        self.assertEqual(summaries[0]["date"], "2026-06-16")
+        self.assertIn("2026-06-16", summaries[0]["title"])
+
 
 if __name__ == "__main__":
     unittest.main()

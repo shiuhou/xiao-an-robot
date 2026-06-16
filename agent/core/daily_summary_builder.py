@@ -19,7 +19,7 @@ class DailySummaryBuilder:
         project_hint: str | None = None,
         limit: int | None = None,
     ) -> dict[str, Any]:
-        active_date = date or date_type.today().isoformat()
+        active_date = self._normalize_date(date)
         active_limit = int(limit or self.default_limit)
         errors: list[dict[str, str]] = []
 
@@ -76,6 +76,7 @@ class DailySummaryBuilder:
         ]
         metadata = {
             "date": active_date,
+            "input_date": date,
             "project_hint": project_hint,
             "sections": sections,
             "counts": counts,
@@ -111,6 +112,15 @@ class DailySummaryBuilder:
         except Exception as exc:
             errors.append({"scope": method_name, "error": str(exc)})
             return None
+
+    @staticmethod
+    def _normalize_date(date: str | None) -> str:
+        if date is None:
+            return date_type.today().isoformat()
+        value = str(date).strip()
+        if not value or value in {"today", "今天"}:
+            return date_type.today().isoformat()
+        return value
 
     def _build_content(
         self,

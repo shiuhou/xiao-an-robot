@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import date as date_type
 
 from agent.core.daily_summary_builder import DailySummaryBuilder
 
@@ -155,6 +156,29 @@ class DailySummaryBuilderTest(unittest.TestCase):
         self.assertIsInstance(summary["content"], str)
         self.assertIsInstance(summary["metadata"], dict)
         self.assertIn("今日概览", summary["metadata"]["sections"])
+
+    def test_none_date_uses_today_iso_date(self) -> None:
+        summary = DailySummaryBuilder(FakeSummaryMemory()).build(date=None)
+
+        self.assertEqual(summary["date"], date_type.today().isoformat())
+        self.assertIsNotNone(summary["date"])
+
+    def test_today_date_is_normalized(self) -> None:
+        summary = DailySummaryBuilder(FakeSummaryMemory()).build(date="today")
+
+        self.assertEqual(summary["date"], date_type.today().isoformat())
+        self.assertNotEqual(summary["date"], "today")
+        self.assertNotIn("today", summary["title"])
+
+    def test_chinese_today_date_is_normalized(self) -> None:
+        summary = DailySummaryBuilder(FakeSummaryMemory()).build(date="今天")
+
+        self.assertEqual(summary["date"], date_type.today().isoformat())
+
+    def test_iso_date_is_preserved(self) -> None:
+        summary = DailySummaryBuilder(FakeSummaryMemory()).build(date="2026-06-16")
+
+        self.assertEqual(summary["date"], "2026-06-16")
 
 
 if __name__ == "__main__":

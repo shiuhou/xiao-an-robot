@@ -225,6 +225,7 @@ class OpenClawToolCallRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         snapshot = output["memory_snapshot"]
         self.assertTrue(any(row["summary_type"] == "daily" for row in snapshot["recent_summaries"]))
+        self.assertTrue(any("今日概览" in row["content"] for row in snapshot["recent_summaries"]))
 
     async def test_manual_script_fresh_db_clears_previous_test_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

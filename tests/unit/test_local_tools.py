@@ -8,8 +8,15 @@ from agent.core.local_tools import LocalToolRegistry
 
 
 class FakeMemoryStore:
-    def __init__(self, raise_error: bool = False) -> None:
+    def __init__(
+        self,
+        raise_error: bool = False,
+        raise_summary_query: bool = False,
+        raise_insert_summary: bool = False,
+    ) -> None:
         self.raise_error = raise_error
+        self.raise_summary_query = raise_summary_query
+        self.raise_insert_summary = raise_insert_summary
         self.notes = []
         self.summaries = []
         self.work_activities = []
@@ -23,7 +30,7 @@ class FakeMemoryStore:
         return {"event_id": len(self.notes), "note_id": len(self.notes)}
 
     def insert_summary(self, **kwargs) -> dict:
-        if self.raise_error:
+        if self.raise_error or self.raise_insert_summary:
             raise RuntimeError("memory unavailable")
         self.summaries.append(kwargs)
         return {"event_id": len(self.summaries), "summary_id": len(self.summaries)}
@@ -106,14 +113,57 @@ class FakeMemoryStore:
                 return {"ok": True, "event_id": 100, "task_id": task["id"], "title": task["title"]}
         return {"ok": False, "reason": "not_found"}
 
-    def get_recent_work_summary(self) -> dict:
-        return {"count": 2}
+    def get_recent_work_summary(self, limit: int = 20) -> dict:
+        return {
+            "count": 2,
+            "top_activity_type": "coding",
+            "top_app_name": "VS Code",
+            "latest_project_hint": "xiao-an-robot",
+        }
 
-    def get_notes_summary(self) -> dict:
+    def query_recent_work_activities(self, limit: int = 20) -> list[dict]:
+        return self.work_activities[:limit]
+
+    def get_notes_summary(self, limit: int = 20) -> dict:
         return {"count": len(self.notes)}
 
-    def get_tool_run_summary(self) -> dict:
-        return {"count": 3}
+    def query_recent_notes(self, limit: int = 20, project_hint=None) -> list[dict]:
+        if self.raise_summary_query:
+            raise RuntimeError("notes query failed")
+        return self.notes[:limit]
+
+    def get_tool_run_summary(self, limit: int = 20) -> dict:
+        return {"count": 3, "tool_count": {"note.add": 1, "summary.daily": 1}}
+
+    def query_recent_tool_runs(self, limit: int = 20) -> list[dict]:
+        return []
+
+    def get_tasks_summary(self, limit: int = 20) -> dict:
+        status_count = {}
+        for task in self.tasks:
+            status = task.get("status")
+            status_count[status] = status_count.get(status, 0) + 1
+        return {
+            "count": len(self.tasks),
+            "pending_count": status_count.get("pending", 0),
+            "done_count": status_count.get("done", 0),
+            "cancelled_count": status_count.get("cancelled", 0),
+        }
+
+    def get_reminders_summary(self, limit: int = 20) -> dict:
+        status_count = {}
+        for reminder in self.reminders:
+            status = reminder.get("status")
+            status_count[status] = status_count.get(status, 0) + 1
+        return {
+            "count": len(self.reminders),
+            "pending_count": status_count.get("pending", 0),
+            "fired_count": status_count.get("fired", 0),
+            "cancelled_count": status_count.get("cancelled", 0),
+        }
+
+    def get_emotion_summary(self, hours: int = 24) -> dict:
+        return {"count": 0}
 
 
 class LocalToolRegistryTest(unittest.TestCase):
@@ -238,7 +288,7 @@ class LocalToolRegistryTest(unittest.TestCase):
         self.assertEqual(result["result"]["summary_result"], {"event_id": 1, "summary_id": 1})
         self.assertEqual(memory_store.summaries[0]["summary_type"], "daily")
         self.assertEqual(memory_store.summaries[0]["date"], "2026-06-16")
-        self.assertIn("Daily summary for 2026-06-16", memory_store.summaries[0]["content"])
+        self.assertIn("小安日报 - 2026-06-16", memory_store.summaries[0]["content"])
 
     def test_memory_store_error_returns_ok_false(self) -> None:
         memory_store = FakeMemoryStore(raise_error=True)
@@ -373,6 +423,47 @@ class LocalToolRegistryTest(unittest.TestCase):
         self.assertFalse(complete_result["result"]["persisted"])
         self.assertTrue(cancel_result["ok"])
         self.assertFalse(cancel_result["result"]["persisted"])
+
+    def test_summary_daily_returns_summary_field(self) -> None:
+        registry = LocalToolRegistry(memory_store=FakeMemoryStore())
+
+        result = registry.execute("summary.daily", {"date": "2026-06-16"})
+
+        self.assertTrue(result["ok"])
+        self.assertIn("summary", result["result"])
+        self.assertEqual(result["result"]["summary"]["summary_type"], "daily")
+
+    def test_summary_daily_content_includes_memory_data(self) -> None:
+        memory_store = FakeMemoryStore()
+        memory_store.insert_note(content="明天下午交报告")
+        memory_store.insert_task(title="完成日报", status="pending")
+        registry = LocalToolRegistry(memory_store=memory_store)
+
+        result = registry.execute("summary.daily", {"date": "2026-06-16"})
+
+        content = result["result"]["summary"]["content"]
+        self.assertIn("明天下午交报告", content)
+        self.assertIn("完成日报", content)
+        self.assertIn("coding", content)
+        self.assertIn("VS Code", content)
+
+    def test_summary_daily_query_error_still_generates(self) -> None:
+        registry = LocalToolRegistry(memory_store=FakeMemoryStore(raise_summary_query=True))
+
+        result = registry.execute("summary.daily", {"date": "2026-06-16"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["result"]["summary"]["content"])
+        self.assertEqual(result["result"]["summary"]["metadata"]["errors"][0]["scope"], "query_recent_notes")
+
+    def test_summary_daily_insert_failure_returns_ok_false(self) -> None:
+        registry = LocalToolRegistry(memory_store=FakeMemoryStore(raise_insert_summary=True))
+
+        result = registry.execute("summary.daily", {"date": "2026-06-16"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["name"], "summary.daily")
+        self.assertIn("memory unavailable", result["error"])
 
 
 if __name__ == "__main__":

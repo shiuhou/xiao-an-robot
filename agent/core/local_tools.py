@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from agent.core.daily_summary_builder import DailySummaryBuilder
+
 
 class LocalToolRegistry:
     """Small local tool placeholder registry with no side effects."""
@@ -143,23 +145,20 @@ class LocalToolRegistry:
             }
 
         project_hint = arguments.get("project_hint")
-        metadata = {
-            "work_summary": self._safe_memory_call("get_recent_work_summary"),
-            "notes_summary": self._safe_memory_call("get_notes_summary"),
-            "tool_run_summary": self._safe_memory_call("get_tool_run_summary"),
-        }
-        content = self._build_daily_summary_content(date, metadata)
-        title = arguments.get("title") or f"Daily Summary {date}"
+        summary = DailySummaryBuilder(self.memory_store).build(
+            date=arguments.get("date"),
+            project_hint=project_hint,
+        )
         try:
             summary_result = self.memory_store.insert_summary(
                 summary_type="daily",
-                title=title,
-                content=content,
-                date=date,
+                title=summary["title"],
+                content=summary["content"],
+                date=summary["date"],
                 source="tool_call",
                 project_hint=project_hint,
                 project_id=arguments.get("project_id"),
-                metadata=metadata,
+                metadata=summary["metadata"],
             )
         except Exception as exc:
             return {"ok": False, "name": "summary.daily", "error": str(exc)}
@@ -168,11 +167,12 @@ class LocalToolRegistry:
             "ok": True,
             "name": "summary.daily",
             "result": {
-                "date": date,
+                "date": summary["date"],
                 "status": "generated",
                 "persisted": True,
                 "summary_result": summary_result,
-                "content": content,
+                "summary": summary,
+                "content": summary["content"],
             },
         }
 
@@ -447,15 +447,3 @@ class LocalToolRegistry:
             if tag not in merged:
                 merged.append(tag)
         return merged
-
-    @staticmethod
-    def _build_daily_summary_content(date: str, metadata: dict) -> str:
-        work_count = (metadata.get("work_summary") or {}).get("count", 0)
-        note_count = (metadata.get("notes_summary") or {}).get("count", 0)
-        tool_count = (metadata.get("tool_run_summary") or {}).get("count", 0)
-        return (
-            f"Daily summary for {date}\n"
-            f"- Work activities: {work_count}\n"
-            f"- Notes: {note_count}\n"
-            f"- Tool runs: {tool_count}"
-        )

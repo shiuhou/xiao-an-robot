@@ -70,6 +70,33 @@ class FakeContextMemory:
             "project_hint": "xiao-an-robot",
         }]
 
+    def get_notes_summary(self, limit: int = 20) -> dict:
+        return {"count": 1, "latest_content": "明天下午交报告"}
+
+    def query_recent_notes(self, limit: int = 5) -> list[dict]:
+        return [{"content": "明天下午交报告", "tags": ["work_context"]}]
+
+    def get_tasks_summary(self, limit: int = 20) -> dict:
+        return {"count": 2, "pending_count": 1, "done_count": 1}
+
+    def query_tasks(self, limit: int = 10, include_done: bool = False) -> list[dict]:
+        return [
+            {"title": "完成 Step 24", "status": "pending"},
+            {"title": "完成 Step 23.5", "status": "done"},
+        ]
+
+    def get_reminders_summary(self, limit: int = 20) -> dict:
+        return {"count": 1, "pending_count": 1, "fired_count": 0}
+
+    def query_reminders(self, limit: int = 10, include_fired: bool = False) -> list[dict]:
+        return [{"message": "休息一下", "status": "pending"}]
+
+    def get_summary_overview(self, limit: int = 20) -> dict:
+        return {"count": 1, "latest_summary_type": "daily", "latest_title": "小安日报"}
+
+    def query_recent_summaries(self, limit: int = 5) -> list[dict]:
+        return [{"summary_type": "daily", "title": "小安日报"}]
+
 
 class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
     async def test_frontend_message_routes_to_openclaw_adapter(self) -> None:
@@ -184,6 +211,10 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
 
         context = openclaw_adapter.events[0].context
         self.assertNotIn("work", context)
+        self.assertNotIn("notes", context)
+        self.assertNotIn("tasks", context)
+        self.assertNotIn("reminders", context)
+        self.assertNotIn("summaries", context)
         self.assertFalse(context["context_policy"]["needs_work_context"])
 
     async def test_frontend_message_work_question_injects_work(self) -> None:
@@ -206,6 +237,68 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context["payload"]["text"], "我刚刚在做什么")
         self.assertEqual(context["work"]["recent_summary"]["latest_activity_type"], "coding")
         self.assertEqual(context["work"]["recent_activities"][0]["app_name"], "VS Code")
+
+
+    async def test_frontend_message_note_question_injects_notes(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "我刚刚记了什么"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertIn("notes", context)
+        self.assertEqual(context["notes"]["recent_notes"][0]["content"], "明天下午交报告")
+        self.assertNotIn("work", context)
+
+    async def test_frontend_message_task_question_injects_tasks(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "我今天还有什么任务"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertIn("tasks", context)
+        self.assertEqual(context["tasks"]["recent_tasks"][0]["title"], "完成 Step 24")
+
+    async def test_frontend_message_reminder_question_injects_reminders(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+            context_memory=FakeContextMemory(),
+        )
+
+        await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "刚才设了什么提醒"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertIn("reminders", context)
+        self.assertEqual(context["reminders"]["recent_reminders"][0]["message"], "休息一下")
 
 
 if __name__ == "__main__":

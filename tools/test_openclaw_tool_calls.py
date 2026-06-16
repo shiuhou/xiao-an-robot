@@ -42,7 +42,12 @@ class FakeRobotMotionSkill:
         return {"ok": True}
 
 
-def build_tool_call(tool: str, text: str, delay_seconds: int | None = None) -> OpenClawToolCall:
+def build_tool_call(
+    tool: str,
+    text: str,
+    delay_seconds: int | None = None,
+    task_id: int | None = None,
+) -> OpenClawToolCall:
     if tool == "note.add":
         return OpenClawToolCall(
             name="note.add",
@@ -70,6 +75,32 @@ def build_tool_call(tool: str, text: str, delay_seconds: int | None = None) -> O
         return OpenClawToolCall(
             name="reminder.cancel",
             arguments={"message_contains": text},
+        )
+    if tool == "task.add":
+        return OpenClawToolCall(
+            name="task.add",
+            arguments={"title": text},
+        )
+    if tool == "task.query":
+        return OpenClawToolCall(
+            name="task.query",
+            arguments={"include_done": True},
+        )
+    if tool == "task.complete":
+        arguments = {"title_contains": text}
+        if task_id is not None:
+            arguments["task_id"] = task_id
+        return OpenClawToolCall(
+            name="task.complete",
+            arguments=arguments,
+        )
+    if tool == "task.cancel":
+        arguments = {"title_contains": text}
+        if task_id is not None:
+            arguments["task_id"] = task_id
+        return OpenClawToolCall(
+            name="task.cancel",
+            arguments=arguments,
         )
     return OpenClawToolCall(
         name="summary.daily",
@@ -105,11 +136,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "reminder.add",
             "reminder.query",
             "reminder.cancel",
+            "task.add",
+            "task.query",
+            "task.complete",
+            "task.cancel",
         ],
         default="note.add",
         help="Fake OpenClaw tool_call to execute.",
     )
     parser.add_argument("--delay-seconds", type=int, default=None, help="Delay for reminder.add.")
+    parser.add_argument("--task-id", type=int, default=None, help="Task id for task.complete/task.cancel.")
     parser.add_argument("--verbose", action="store_true", help="Accepted for local debugging; output is always JSON.")
     parser.add_argument("--record-memory", action="store_true", help="Record tool calls into a test XiaoAnMemoryStore.")
     parser.add_argument("--db-path", default=None, help="Database path for --record-memory.")
@@ -196,6 +232,13 @@ def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dic
             limit=memory_limit,
             include_fired=True,
         ),
+        "recent_tasks": _safe_snapshot_call(
+            memory_store,
+            "query_tasks",
+            memory_errors,
+            limit=memory_limit,
+            include_done=True,
+        ),
         "tool_run_summary": _safe_snapshot_call(
             memory_store,
             "get_tool_run_summary",
@@ -216,6 +259,11 @@ def build_memory_snapshot(memory_store, db_path: Path, memory_limit: int) -> dic
             "get_reminders_summary",
             memory_errors,
         ),
+        "tasks_summary": _safe_snapshot_call(
+            memory_store,
+            "get_tasks_summary",
+            memory_errors,
+        ),
     }
     if memory_errors:
         snapshot["memory_errors"] = memory_errors
@@ -233,7 +281,7 @@ async def run(args: argparse.Namespace) -> dict:
         decision=OpenClawDecision(
             handled=True,
             reply_text="我已经帮你处理了。",
-            tool_calls=[build_tool_call(args.tool, args.text, args.delay_seconds)],
+            tool_calls=[build_tool_call(args.tool, args.text, args.delay_seconds, args.task_id)],
         ),
     )
     brain_kwargs = {

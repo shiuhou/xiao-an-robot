@@ -14,6 +14,7 @@ class FakeMemoryStore:
         self.summaries = []
         self.work_activities = []
         self.reminders = []
+        self.tasks = []
 
     def insert_note(self, **kwargs) -> dict:
         if self.raise_error:
@@ -59,6 +60,50 @@ class FakeMemoryStore:
             if reminder.get("status") == "pending" and (id_matches or text_matches):
                 reminder["status"] = "cancelled"
                 return {"ok": True, "event_id": 99, "reminder_id": reminder["id"], "message": reminder["message"]}
+        return {"ok": False, "reason": "not_found"}
+
+    def insert_task(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        task = dict(kwargs)
+        task["id"] = len(self.tasks) + 1
+        task["status"] = "pending"
+        self.tasks.append(task)
+        return {"event_id": len(self.tasks), "task_id": len(self.tasks)}
+
+    def query_tasks(
+        self,
+        limit: int = 20,
+        status: str | None = None,
+        project_hint: str | None = None,
+        include_done: bool = False,
+    ) -> list[dict]:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        tasks = self.tasks
+        if status is not None:
+            tasks = [item for item in tasks if item.get("status") == status]
+        elif not include_done:
+            tasks = [item for item in tasks if item.get("status") == "pending"]
+        if project_hint is not None:
+            tasks = [item for item in tasks if item.get("project_hint") == project_hint]
+        return tasks[:limit]
+
+    def complete_task(self, task_id=None, title_contains=None, **kwargs) -> dict:
+        return self._set_task_status("done", task_id=task_id, title_contains=title_contains)
+
+    def cancel_task(self, task_id=None, title_contains=None, **kwargs) -> dict:
+        return self._set_task_status("cancelled", task_id=task_id, title_contains=title_contains)
+
+    def _set_task_status(self, status: str, task_id=None, title_contains=None) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        for task in self.tasks:
+            id_matches = task_id is not None and task["id"] == int(task_id)
+            text_matches = title_contains and title_contains in task["title"]
+            if task.get("status") == "pending" and (id_matches or text_matches):
+                task["status"] = status
+                return {"ok": True, "event_id": 100, "task_id": task["id"], "title": task["title"]}
         return {"ok": False, "reason": "not_found"}
 
     def get_recent_work_summary(self) -> dict:
@@ -257,6 +302,75 @@ class LocalToolRegistryTest(unittest.TestCase):
         self.assertFalse(add_result["result"]["persisted"])
         self.assertTrue(query_result["ok"])
         self.assertEqual(query_result["reminders"], [])
+        self.assertTrue(cancel_result["ok"])
+        self.assertFalse(cancel_result["result"]["persisted"])
+
+    def test_task_add_with_memory_store_persists(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+
+        result = registry.execute("task.add", {"title": "write tests", "priority": "high"})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["result"]["persisted"])
+        self.assertEqual(result["result"]["task_result"]["task_id"], 1)
+        self.assertEqual(memory_store.tasks[0]["title"], "write tests")
+        self.assertEqual(memory_store.tasks[0]["priority"], "high")
+
+    def test_task_query_returns_pending_tasks(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+        registry.execute("task.add", {"title": "write tests"})
+
+        result = registry.execute("task.query", {})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["tasks"][0]["title"], "write tests")
+
+    def test_task_complete_completes_task(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+        registry.execute("task.add", {"title": "write tests"})
+
+        result = registry.execute("task.complete", {"title_contains": "tests"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(memory_store.tasks[0]["status"], "done")
+        self.assertEqual(result["result"]["task_result"]["task_id"], 1)
+
+    def test_task_cancel_cancels_task(self) -> None:
+        memory_store = FakeMemoryStore()
+        registry = LocalToolRegistry(memory_store=memory_store)
+        registry.execute("task.add", {"title": "write tests"})
+
+        result = registry.execute("task.cancel", {"title_contains": "tests"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(memory_store.tasks[0]["status"], "cancelled")
+
+    def test_task_complete_not_found_returns_ok_false(self) -> None:
+        registry = LocalToolRegistry(memory_store=FakeMemoryStore())
+
+        result = registry.execute("task.complete", {"title_contains": "missing"})
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "not_found")
+
+    def test_task_tools_without_memory_store_do_not_crash(self) -> None:
+        registry = LocalToolRegistry()
+
+        add_result = registry.execute("task.add", {"title": "write tests"})
+        query_result = registry.execute("task.query", {})
+        complete_result = registry.execute("task.complete", {"title_contains": "tests"})
+        cancel_result = registry.execute("task.cancel", {"title_contains": "tests"})
+
+        self.assertTrue(add_result["ok"])
+        self.assertFalse(add_result["result"]["persisted"])
+        self.assertTrue(query_result["ok"])
+        self.assertEqual(query_result["tasks"], [])
+        self.assertTrue(complete_result["ok"])
+        self.assertFalse(complete_result["result"]["persisted"])
         self.assertTrue(cancel_result["ok"])
         self.assertFalse(cancel_result["result"]["persisted"])
 

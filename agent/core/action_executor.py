@@ -19,6 +19,10 @@ class ActionExecutor:
         "reminder.add",
         "reminder.query",
         "reminder.cancel",
+        "task.add",
+        "task.query",
+        "task.complete",
+        "task.cancel",
     }
 
     def __init__(

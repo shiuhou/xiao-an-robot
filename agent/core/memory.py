@@ -846,6 +846,172 @@ class XiaoAnMemoryStore:
             "status_count": status_count,
         }
 
+    def insert_task(
+        self,
+        title: str,
+        description: str | None = None,
+        due_at_ms: int | None = None,
+        due_text: str | None = None,
+        priority: str = "normal",
+        source: str = "tool_call",
+        project_hint: str | None = None,
+        project_id: int | None = None,
+        metadata: dict[str, Any] | None = None,
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, int]:
+        if not title:
+            raise ValueError("title is required")
+        priority = priority if priority in {"low", "normal", "high"} else "normal"
+        now_ms = int(time.time() * 1000)
+        active_metadata = metadata or {}
+        payload = {
+            "title": title,
+            "description": description,
+            "due_at_ms": due_at_ms,
+            "due_text": due_text,
+            "priority": priority,
+            "project_hint": project_hint,
+            "project_id": project_id,
+            "metadata": active_metadata,
+        }
+        event_id = self.insert_event(
+            event_type="task.added",
+            source=source,
+            text=title,
+            payload=payload,
+            timestamp_ms=timestamp_ms,
+            project_id=project_id,
+            privacy_level=privacy_level,
+        )
+        metadata_json = json.dumps(active_metadata, ensure_ascii=False)
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO tasks (
+                    event_id, created_at_ms, updated_at_ms, title, description,
+                    due_at_ms, due_text, status, priority, source, project_hint,
+                    project_id, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id,
+                    now_ms,
+                    now_ms,
+                    title,
+                    description,
+                    due_at_ms,
+                    due_text,
+                    "pending",
+                    priority,
+                    source,
+                    project_hint,
+                    project_id,
+                    metadata_json,
+                ),
+            )
+        return {
+            "event_id": event_id,
+            "task_id": int(cursor.lastrowid),
+        }
+
+    def query_tasks(
+        self,
+        limit: int = 20,
+        status: str | None = None,
+        project_hint: str | None = None,
+        include_done: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        elif not include_done:
+            clauses.append("status = ?")
+            params.append("pending")
+        if project_hint is not None:
+            clauses.append("project_hint = ?")
+            params.append(project_hint)
+
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(int(limit))
+        cursor = self.conn.execute(
+            f"""
+            SELECT id, event_id, created_at_ms, updated_at_ms, title,
+                   description, due_at_ms, due_text, status, priority,
+                   source, project_hint, project_id, metadata_json
+            FROM tasks
+            {where_sql}
+            ORDER BY created_at_ms DESC, id DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [self._task_row_to_dict(row) for row in cursor.fetchall()]
+
+    def complete_task(
+        self,
+        task_id: int | None = None,
+        title_contains: str | None = None,
+        source: str = "tool_call",
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, Any]:
+        return self._update_task_status(
+            task_id=task_id,
+            title_contains=title_contains,
+            new_status="done",
+            event_type="task.completed",
+            source=source,
+            timestamp_ms=timestamp_ms,
+            privacy_level=privacy_level,
+        )
+
+    def cancel_task(
+        self,
+        task_id: int | None = None,
+        title_contains: str | None = None,
+        source: str = "tool_call",
+        timestamp_ms: int | None = None,
+        privacy_level: str = "normal",
+    ) -> dict[str, Any]:
+        return self._update_task_status(
+            task_id=task_id,
+            title_contains=title_contains,
+            new_status="cancelled",
+            event_type="task.cancelled",
+            source=source,
+            timestamp_ms=timestamp_ms,
+            privacy_level=privacy_level,
+        )
+
+    def get_tasks_summary(self, limit: int = 50) -> dict[str, Any]:
+        rows = self.query_tasks(limit=limit, include_done=True)
+        status_count: dict[str, int] = {}
+        priority_count: dict[str, int] = {}
+        project_hint_count: dict[str, int] = {}
+        for row in rows:
+            status = str(row["status"])
+            priority = str(row["priority"])
+            status_count[status] = status_count.get(status, 0) + 1
+            priority_count[priority] = priority_count.get(priority, 0) + 1
+            if row.get("project_hint") is not None:
+                project_key = str(row["project_hint"])
+                project_hint_count[project_key] = project_hint_count.get(project_key, 0) + 1
+        return {
+            "count": len(rows),
+            "pending_count": status_count.get("pending", 0),
+            "done_count": status_count.get("done", 0),
+            "cancelled_count": status_count.get("cancelled", 0),
+            "high_priority_count": priority_count.get("high", 0),
+            "latest_task_title": rows[0]["title"] if rows else None,
+            "status_count": status_count,
+            "priority_count": priority_count,
+            "project_hint_count": project_hint_count,
+        }
+
     def save_interaction(
         self,
         user_text: str,
@@ -988,6 +1154,15 @@ class XiaoAnMemoryStore:
         reminder["metadata"] = metadata if isinstance(metadata, dict) else {}
         return reminder
 
+    def _task_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        task = dict(row)
+        try:
+            metadata = json.loads(task.get("metadata_json") or "{}")
+        except json.JSONDecodeError:
+            metadata = {}
+        task["metadata"] = metadata if isinstance(metadata, dict) else {}
+        return task
+
     def _get_reminder_row(self, reminder_id: int, status: str | None = None) -> sqlite3.Row | None:
         clauses = ["id = ?"]
         params: list[Any] = [int(reminder_id)]
@@ -1004,6 +1179,89 @@ class XiaoAnMemoryStore:
             """,
             params,
         ).fetchone()
+
+    def _get_task_row(self, task_id: int, status: str | None = None) -> sqlite3.Row | None:
+        clauses = ["id = ?"]
+        params: list[Any] = [int(task_id)]
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        return self.conn.execute(
+            f"""
+            SELECT id, event_id, created_at_ms, updated_at_ms, title,
+                   description, due_at_ms, due_text, status, priority,
+                   source, project_hint, project_id, metadata_json
+            FROM tasks
+            WHERE {' AND '.join(clauses)}
+            """,
+            params,
+        ).fetchone()
+
+    def _find_pending_task_by_title(self, title_contains: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT id, event_id, created_at_ms, updated_at_ms, title,
+                   description, due_at_ms, due_text, status, priority,
+                   source, project_hint, project_id, metadata_json
+            FROM tasks
+            WHERE status = ? AND title LIKE ?
+            ORDER BY created_at_ms DESC, id DESC
+            LIMIT 1
+            """,
+            ("pending", f"%{title_contains}%"),
+        ).fetchone()
+
+    def _update_task_status(
+        self,
+        task_id: int | None,
+        title_contains: str | None,
+        new_status: str,
+        event_type: str,
+        source: str,
+        timestamp_ms: int | None,
+        privacy_level: str,
+    ) -> dict[str, Any]:
+        task = None
+        if task_id is not None:
+            task = self._get_task_row(int(task_id), status="pending")
+        elif title_contains:
+            task = self._find_pending_task_by_title(title_contains)
+
+        if task is None:
+            return {"ok": False, "reason": "not_found"}
+
+        now_ms = int(time.time() * 1000) if timestamp_ms is None else int(timestamp_ms)
+        previous_status = task["status"]
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE tasks
+                SET status = ?, updated_at_ms = ?
+                WHERE id = ?
+                """,
+                (new_status, now_ms, int(task["id"])),
+            )
+        payload = {
+            "task_id": int(task["id"]),
+            "title": task["title"],
+            "previous_status": previous_status,
+            "status": new_status,
+        }
+        event_id = self.insert_event(
+            event_type=event_type,
+            source=source,
+            text=task["title"],
+            payload=payload,
+            timestamp_ms=now_ms,
+            project_id=task["project_id"],
+            privacy_level=privacy_level,
+        )
+        return {
+            "ok": True,
+            "event_id": event_id,
+            "task_id": int(task["id"]),
+            "title": task["title"],
+        }
 
     def _top_count_key(self, counts: dict[str, int]) -> str | None:
         if not counts:

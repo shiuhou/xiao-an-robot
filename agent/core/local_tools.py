@@ -33,6 +33,18 @@ class LocalToolRegistry:
         if name == "reminder.cancel":
             return self._execute_reminder_cancel(active_arguments)
 
+        if name == "task.add":
+            return self._execute_task_add(active_arguments)
+
+        if name == "task.query":
+            return self._execute_task_query(active_arguments)
+
+        if name == "task.complete":
+            return self._execute_task_complete(active_arguments)
+
+        if name == "task.cancel":
+            return self._execute_task_cancel(active_arguments)
+
         return {
             "ok": False,
             "name": name,
@@ -274,6 +286,140 @@ class LocalToolRegistry:
             "result": {
                 "persisted": True,
                 "cancel_result": cancel_result,
+            },
+        }
+
+    def _execute_task_add(self, arguments: dict) -> dict:
+        title = arguments.get("title") or arguments.get("content") or arguments.get("text") or ""
+        result = {
+            "title": title,
+            "description": arguments.get("description"),
+            "due_at_ms": arguments.get("due_at_ms"),
+            "due_text": arguments.get("due_text"),
+            "priority": arguments.get("priority", "normal"),
+            "project_hint": arguments.get("project_hint"),
+            "persisted": False,
+        }
+        if not self._has_memory_method("insert_task"):
+            return {
+                "ok": True,
+                "name": "task.add",
+                "result": result,
+            }
+        if not title:
+            return {"ok": False, "name": "task.add", "error": "missing_title"}
+
+        try:
+            task_result = self.memory_store.insert_task(
+                title=title,
+                description=arguments.get("description"),
+                due_at_ms=arguments.get("due_at_ms"),
+                due_text=arguments.get("due_text"),
+                priority=arguments.get("priority", "normal"),
+                source="tool_call",
+                project_hint=arguments.get("project_hint"),
+                project_id=arguments.get("project_id"),
+                metadata=arguments.get("metadata") if isinstance(arguments.get("metadata"), dict) else None,
+            )
+        except Exception as exc:
+            return {"ok": False, "name": "task.add", "error": str(exc)}
+
+        result.update({
+            "persisted": True,
+            "task_result": task_result,
+        })
+        return {
+            "ok": True,
+            "name": "task.add",
+            "result": result,
+        }
+
+    def _execute_task_query(self, arguments: dict) -> dict:
+        limit = int(arguments.get("limit", 20) or 20)
+        status = arguments.get("status")
+        project_hint = arguments.get("project_hint")
+        include_done = bool(arguments.get("include_done", False))
+        if not self._has_memory_method("query_tasks"):
+            return {
+                "ok": True,
+                "name": "task.query",
+                "persisted": False,
+                "tasks": [],
+                "count": 0,
+            }
+
+        try:
+            tasks = self.memory_store.query_tasks(
+                limit=limit,
+                status=status,
+                project_hint=project_hint,
+                include_done=include_done,
+            )
+        except Exception as exc:
+            return {"ok": False, "name": "task.query", "error": str(exc)}
+
+        return {
+            "ok": True,
+            "name": "task.query",
+            "tasks": tasks,
+            "count": len(tasks),
+        }
+
+    def _execute_task_complete(self, arguments: dict) -> dict:
+        return self._execute_task_status_change(
+            name="task.complete",
+            method_name="complete_task",
+            arguments=arguments,
+        )
+
+    def _execute_task_cancel(self, arguments: dict) -> dict:
+        return self._execute_task_status_change(
+            name="task.cancel",
+            method_name="cancel_task",
+            arguments=arguments,
+        )
+
+    def _execute_task_status_change(self, name: str, method_name: str, arguments: dict) -> dict:
+        task_id = arguments.get("task_id")
+        title_contains = (
+            arguments.get("title_contains")
+            or arguments.get("content")
+            or arguments.get("text")
+            or arguments.get("title")
+        )
+        if not self._has_memory_method(method_name):
+            return {
+                "ok": True,
+                "name": name,
+                "result": {
+                    "persisted": False,
+                    "task_id": task_id,
+                    "title_contains": title_contains,
+                },
+            }
+
+        try:
+            task_result = getattr(self.memory_store, method_name)(
+                task_id=task_id,
+                title_contains=title_contains,
+                source="tool_call",
+            )
+        except Exception as exc:
+            return {"ok": False, "name": name, "error": str(exc)}
+
+        if not task_result.get("ok", False):
+            return {
+                "ok": False,
+                "name": name,
+                "reason": task_result.get("reason", "not_found"),
+                "result": task_result,
+            }
+        return {
+            "ok": True,
+            "name": name,
+            "result": {
+                "persisted": True,
+                "task_result": task_result,
             },
         }
 

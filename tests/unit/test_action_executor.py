@@ -81,6 +81,7 @@ class FakeMemoryStore:
         self.notes = []
         self.summaries = []
         self.reminders = []
+        self.tasks = []
 
     def insert_tool_run(self, **kwargs) -> dict:
         if self.raise_error:
@@ -124,6 +125,38 @@ class FakeMemoryStore:
             if reminder.get("status") == "pending" and (id_matches or text_matches):
                 reminder["status"] = "cancelled"
                 return {"ok": True, "event_id": 99, "reminder_id": reminder["id"], "message": reminder["message"]}
+        return {"ok": False, "reason": "not_found"}
+
+    def insert_task(self, **kwargs) -> dict:
+        if self.raise_error:
+            raise RuntimeError("memory unavailable")
+        task = dict(kwargs)
+        task["id"] = len(self.tasks) + 1
+        task["status"] = "pending"
+        self.tasks.append(task)
+        return {"event_id": len(self.tasks), "task_id": len(self.tasks)}
+
+    def query_tasks(self, limit: int = 20, status: str | None = None, project_hint=None, include_done: bool = False):
+        tasks = self.tasks
+        if status is not None:
+            tasks = [item for item in tasks if item.get("status") == status]
+        elif not include_done:
+            tasks = [item for item in tasks if item.get("status") == "pending"]
+        return tasks[:limit]
+
+    def complete_task(self, task_id=None, title_contains=None, **kwargs) -> dict:
+        return self._set_task_status("done", task_id=task_id, title_contains=title_contains)
+
+    def cancel_task(self, task_id=None, title_contains=None, **kwargs) -> dict:
+        return self._set_task_status("cancelled", task_id=task_id, title_contains=title_contains)
+
+    def _set_task_status(self, status: str, task_id=None, title_contains=None) -> dict:
+        for task in self.tasks:
+            id_matches = task_id is not None and task["id"] == int(task_id)
+            text_matches = title_contains and title_contains in task["title"]
+            if task.get("status") == "pending" and (id_matches or text_matches):
+                task["status"] = status
+                return {"ok": True, "event_id": 100, "task_id": task["id"], "title": task["title"]}
         return {"ok": False, "reason": "not_found"}
 
     def get_recent_work_summary(self) -> dict:
@@ -569,6 +602,68 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["executed_actions"][0]["name"], "reminder.cancel")
         self.assertEqual(memory_store.reminders[0]["status"], "cancelled")
         self.assertEqual(memory_store.tool_runs[0]["tool_name"], "reminder.cancel")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_task_add_executes_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="task.add",
+                    arguments={"title": "write tests"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "task.add")
+        self.assertEqual(memory_store.tasks[0]["title"], "write tests")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "task.add")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_task_complete_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        memory_store.insert_task(title="write tests")
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="task.complete",
+                    arguments={"title_contains": "tests"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "task.complete")
+        self.assertEqual(memory_store.tasks[0]["status"], "done")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "task.complete")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "success")
+
+    async def test_task_cancel_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        memory_store.insert_task(title="write tests")
+        executor = ActionExecutor(FakeRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="task.cancel",
+                    arguments={"title_contains": "tests"},
+                )
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["executed_actions"][0]["name"], "task.cancel")
+        self.assertEqual(memory_store.tasks[0]["status"], "cancelled")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "task.cancel")
         self.assertEqual(memory_store.tool_runs[0]["status"], "success")
 
 

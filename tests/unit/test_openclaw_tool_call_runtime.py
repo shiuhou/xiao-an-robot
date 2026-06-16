@@ -333,6 +333,110 @@ class OpenClawToolCallRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reminders[0]["message"], "wake me")
         self.assertEqual(reminders[0]["status"], "cancelled")
 
+    async def test_manual_script_record_memory_task_add_outputs_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.add",
+                "--text",
+                "write tests",
+            ])
+
+            output = await manual_tool_calls.run(args)
+
+        tasks = output["memory_snapshot"]["recent_tasks"]
+        self.assertEqual(tasks[0]["title"], "write tests")
+        self.assertEqual(tasks[0]["status"], "pending")
+
+    async def test_manual_script_record_memory_task_query_returns_tasks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            add_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.add",
+                "--text",
+                "write tests",
+            ])
+            await manual_tool_calls.run(add_args)
+
+            query_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.query",
+            ])
+            output = await manual_tool_calls.run(query_args)
+
+        query_action = next(action for action in output["result"]["executed_actions"] if action["name"] == "task.query")
+        self.assertEqual(query_action["result"]["count"], 1)
+        self.assertEqual(query_action["result"]["tasks"][0]["title"], "write tests")
+
+    async def test_manual_script_record_memory_task_complete_marks_done(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            add_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.add",
+                "--text",
+                "write tests",
+            ])
+            await manual_tool_calls.run(add_args)
+
+            complete_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.complete",
+                "--text",
+                "tests",
+            ])
+            output = await manual_tool_calls.run(complete_args)
+
+        tasks = output["memory_snapshot"]["recent_tasks"]
+        self.assertEqual(tasks[0]["title"], "write tests")
+        self.assertEqual(tasks[0]["status"], "done")
+
+    async def test_manual_script_record_memory_task_cancel_marks_cancelled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "manual.db"
+            add_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.add",
+                "--text",
+                "write tests",
+            ])
+            await manual_tool_calls.run(add_args)
+
+            cancel_args = manual_tool_calls.parse_args([
+                "--record-memory",
+                "--db-path",
+                str(db_path),
+                "--tool",
+                "task.cancel",
+                "--text",
+                "tests",
+            ])
+            output = await manual_tool_calls.run(cancel_args)
+
+        tasks = output["memory_snapshot"]["recent_tasks"]
+        self.assertEqual(tasks[0]["title"], "write tests")
+        self.assertEqual(tasks[0]["status"], "cancelled")
+
 
 if __name__ == "__main__":
     unittest.main()

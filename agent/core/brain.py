@@ -93,6 +93,15 @@ class XiaoAnBrain:
             emotion_result["openclaw_event_type"] = "emotion.intervention"
             trigger_context = trigger if isinstance(trigger, dict) else {}
             self._record_emotion_intervention(trigger_context, emotion_result)
+            self._record_robot_care_action(
+                route=emotion_result.get("route"),
+                source_event_type=emotion_result.get("openclaw_event_type"),
+                trigger=trigger_context,
+                result=emotion_result,
+                reply_text=emotion_result.get("message"),
+                timestamp_ms=trigger_context.get("timestamp_ms") or trigger_context.get("timestamp"),
+                session_id=trigger_context.get("session_id", "default"),
+            )
             openclaw_context = {
                 "event": event,
                 "trigger": trigger,
@@ -127,6 +136,15 @@ class XiaoAnBrain:
                 companion_result["route"] = "link_3_companion_fast_path"
                 companion_result["openclaw_event_type"] = "companion.request"
                 self._record_companion_request(payload, companion_result)
+                self._record_robot_care_action(
+                    route=companion_result.get("route"),
+                    source_event_type=companion_result.get("openclaw_event_type"),
+                    trigger=companion_result.get("trigger_result"),
+                    result=companion_result,
+                    reply_text=companion_result.get("reply_text"),
+                    timestamp_ms=payload.get("timestamp_ms"),
+                    session_id=payload.get("session_id", "default"),
+                )
                 companion_context = {
                     "payload": payload,
                     "companion_result": dict(companion_result),
@@ -259,6 +277,75 @@ class XiaoAnBrain:
             )
         except Exception:
             return
+
+    def _record_robot_care_action(
+        self,
+        *,
+        route: str | None,
+        source_event_type: str | None,
+        trigger: dict | None,
+        result: dict,
+        reply_text: str | None,
+        timestamp_ms: int | None,
+        session_id: str | None,
+    ) -> None:
+        care_result = result.get("actions")
+        if not care_result:
+            return
+
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_robot_care_action", None)
+        if not callable(record):
+            return
+
+        expression, motion, tts = self._split_care_result(care_result)
+        metadata = {
+            "route": route,
+            "source_event_type": source_event_type,
+            "robot_action_result": care_result,
+            "care_result": care_result,
+            "reply_text": reply_text,
+            "expression": expression,
+            "motion": motion,
+            "tts": tts,
+            "handled": result.get("handled"),
+            "success": self._care_result_success(care_result),
+        }
+        try:
+            record(
+                content="care_for_user",
+                route=route,
+                trigger=trigger if isinstance(trigger, dict) else None,
+                action_name="care_for_user",
+                reply_text=reply_text,
+                robot_action_result={"actions": care_result},
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=timestamp_ms,
+                session_id=session_id,
+            )
+        except Exception:
+            return
+
+    def _split_care_result(self, care_result: Any) -> tuple[Any | None, Any | None, Any | None]:
+        if not isinstance(care_result, list):
+            return None, None, None
+        expression = care_result[0] if len(care_result) > 0 else None
+        motion = care_result[1] if len(care_result) > 1 else None
+        tts = care_result[2] if len(care_result) > 2 else None
+        return expression, motion, tts
+
+    def _care_result_success(self, care_result: Any) -> bool:
+        if not isinstance(care_result, list) or not care_result:
+            return False
+        for item in care_result:
+            if isinstance(item, dict):
+                payload = item.get("payload")
+                if isinstance(payload, dict) and payload.get("ok") is False:
+                    return False
+                if item.get("ok") is False:
+                    return False
+        return True
 
     def _record_emotion_intervention(self, trigger: dict, emotion_result: dict) -> None:
         recorder = getattr(self, "memory_recorder", None)

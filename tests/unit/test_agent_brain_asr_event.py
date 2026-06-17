@@ -169,6 +169,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 })
 
                 events = context_memory.query_recent_events(event_type="companion.request")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
 
                 self.assertEqual(result["route"], "link_3_companion_fast_path")
                 self.assertEqual(len(events), 1)
@@ -187,6 +188,17 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(metadata["fatigue_score"], 0.8)
                 self.assertEqual(metadata["openclaw_event_type"], "companion.request")
                 self.assertTrue(metadata["handled"])
+                self.assertEqual(len(care_events), 1)
+                care_metadata = care_events[0]["payload"]["metadata"]
+                self.assertEqual(care_metadata["route"], "link_3_companion_fast_path")
+                self.assertEqual(care_metadata["source_event_type"], "companion.request")
+                self.assertIn("robot_action_result", care_metadata)
+                self.assertIn("care_result", care_metadata)
+                self.assertIsNotNone(care_metadata["expression"])
+                self.assertIsNotNone(care_metadata["motion"])
+                self.assertIsNotNone(care_metadata["tts"])
+                self.assertTrue(care_metadata["handled"])
+                self.assertTrue(care_metadata["success"])
 
     async def test_asr_transcript_triggers_robot_care_sequence(self) -> None:
         gateway = FakeGateway()

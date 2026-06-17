@@ -145,6 +145,7 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 })
 
                 events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
 
                 self.assertTrue(result["handled"])
                 self.assertEqual(len(events), 1)
@@ -169,6 +170,17 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(metadata["cv_sample"], {"face_detected": True})
                 self.assertEqual(metadata["openclaw_event_type"], "emotion.intervention")
                 self.assertTrue(metadata["handled"])
+                self.assertEqual(len(care_events), 1)
+                care_metadata = care_events[0]["payload"]["metadata"]
+                self.assertEqual(care_metadata["route"], "link_2_emotion_fast_path")
+                self.assertEqual(care_metadata["source_event_type"], "emotion.intervention")
+                self.assertIn("robot_action_result", care_metadata)
+                self.assertIn("care_result", care_metadata)
+                self.assertIsNotNone(care_metadata["expression"])
+                self.assertIsNotNone(care_metadata["motion"])
+                self.assertIsNotNone(care_metadata["tts"])
+                self.assertTrue(care_metadata["handled"])
+                self.assertTrue(care_metadata["success"])
 
     async def test_emotion_intervention_memory_keeps_false_vlm_triggered(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -301,9 +313,11 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 })
 
                 events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
 
                 self.assertFalse(result["handled"])
                 self.assertEqual(events, [])
+                self.assertEqual(care_events, [])
 
     async def test_cooldown_does_not_record_duplicate_intervention(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -336,11 +350,13 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 })
 
                 events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
 
                 self.assertTrue(first["handled"])
                 self.assertFalse(second["handled"])
                 self.assertEqual(second["reason"], "cooldown")
                 self.assertEqual(len(events), 1)
+                self.assertEqual(len(care_events), 1)
 
     async def test_emotion_fast_path_keeps_local_result_when_openclaw_raises(self) -> None:
         gateway = FakeGateway()

@@ -13,6 +13,7 @@ from agent.core.action_executor import ActionExecutor
 from agent.core.context_builder import ContextBuilder
 from agent.core.gateway import RobotGateway
 from agent.core.memory import XiaoAnMemoryStore
+from agent.core.memory_recorder import MemoryRecorder
 from agent.core.openclaw_adapter import OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.skills.companion_request import CompanionRequestSkill
@@ -40,6 +41,7 @@ class XiaoAnBrain:
         action_executor: Any | None = None,
         context_builder: Any | None = None,
         context_memory: Any | None = None,
+        memory_recorder: Any | None = None,
     ):
         self.gateway = gateway or RobotGateway(url=gateway_url)
         self.memory = memory or EmotionDB(db_path=db_path)
@@ -72,6 +74,12 @@ class XiaoAnBrain:
             if action_executor is not None
             else ActionExecutor(self.robot_motion, memory_store=self.context_memory)
         )
+        if memory_recorder is not None:
+            self.memory_recorder = memory_recorder
+        elif self.context_memory is not None:
+            self.memory_recorder = MemoryRecorder(memory_store=self.context_memory)
+        else:
+            self.memory_recorder = None
 
     async def handle_event(self, event: dict) -> dict:
         event_type = event.get("type")
@@ -117,6 +125,7 @@ class XiaoAnBrain:
             if companion_result.get("handled", False):
                 companion_result["route"] = "link_3_companion_fast_path"
                 companion_result["openclaw_event_type"] = "companion.request"
+                self._record_companion_request(payload, companion_result)
                 companion_context = {
                     "payload": payload,
                     "companion_result": dict(companion_result),
@@ -213,6 +222,42 @@ class XiaoAnBrain:
                 "error": str(exc),
             })
             return context
+
+    def _record_companion_request(self, payload: dict, companion_result: dict) -> None:
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_companion_request", None)
+        if not callable(record):
+            return
+
+        trigger_result = companion_result.get("trigger_result")
+        trigger = trigger_result if isinstance(trigger_result, dict) else {}
+        text = payload.get("text", "") or ""
+        metadata = {
+            "route": companion_result.get("route"),
+            "asr_text": text,
+            "user_text": text,
+            "trigger": trigger,
+            "matched_keyword": trigger.get("matched_keyword"),
+            "reason": companion_result.get("reason") or trigger.get("reason"),
+            "fatigue_score": trigger.get("fatigue_score"),
+            "emotion_tag": trigger.get("emotion_tag"),
+            "openclaw_event_type": companion_result.get("openclaw_event_type"),
+            "handled": companion_result.get("handled"),
+        }
+        try:
+            record(
+                content=text or "companion request",
+                route=companion_result.get("route"),
+                trigger=trigger,
+                asr_text=text,
+                companion_result=companion_result,
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=payload.get("timestamp_ms"),
+                session_id=payload.get("session_id", "default"),
+            )
+        except Exception:
+            return
 
     def close(self) -> None:
         close = getattr(self.memory, "close", None)

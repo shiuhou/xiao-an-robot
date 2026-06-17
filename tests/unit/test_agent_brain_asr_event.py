@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
+from agent.core.memory import XiaoAnMemoryStore
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 
 
@@ -140,6 +143,50 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["trigger_result"]["reason"], "fatigue_keyword")
         self.assertEqual(result["route"], "link_3_companion_fast_path")
         self.assertEqual(result["openclaw_event_type"], "companion.request")
+
+    async def test_asr_transcript_companion_fast_path_records_memory_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_companion_memory.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                gateway = FakeGateway()
+                openclaw_adapter = FakeOpenClawAdapter(
+                    decision=OpenClawDecision(handled=False),
+                )
+                brain = XiaoAnBrain(
+                    gateway=gateway,
+                    memory=FakeMemory(),
+                    openclaw_adapter=openclaw_adapter,
+                    context_memory=context_memory,
+                )
+
+                result = await brain.handle_event({
+                    "type": "asr.transcript",
+                    "payload": {
+                        "text": "我有点累",
+                        "session_id": "session-memory",
+                        "timestamp_ms": 123456,
+                    },
+                })
+
+                events = context_memory.query_recent_events(event_type="companion.request")
+
+                self.assertEqual(result["route"], "link_3_companion_fast_path")
+                self.assertEqual(len(events), 1)
+                event = events[0]
+                self.assertEqual(event["source"], "brain")
+                self.assertEqual(event["session_id"], "session-memory")
+                self.assertEqual(event["timestamp_ms"], 123456)
+                metadata = event["payload"]["metadata"]
+                self.assertEqual(metadata["route"], "link_3_companion_fast_path")
+                self.assertEqual(metadata["asr_text"], "我有点累")
+                self.assertEqual(metadata["user_text"], "我有点累")
+                self.assertEqual(metadata["reason"], "asr_emotion_triggered")
+                self.assertEqual(metadata["trigger"]["reason"], "fatigue_keyword")
+                self.assertEqual(metadata["matched_keyword"], "累")
+                self.assertEqual(metadata["emotion_tag"], "tired")
+                self.assertEqual(metadata["fatigue_score"], 0.8)
+                self.assertEqual(metadata["openclaw_event_type"], "companion.request")
+                self.assertTrue(metadata["handled"])
 
     async def test_asr_transcript_triggers_robot_care_sequence(self) -> None:
         gateway = FakeGateway()

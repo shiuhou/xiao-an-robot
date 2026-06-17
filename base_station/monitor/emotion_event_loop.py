@@ -11,6 +11,20 @@ from collections.abc import AsyncIterable, Iterable
 from typing import Any
 
 
+OPTIONAL_PAYLOAD_FIELDS = (
+    "frame_source",
+    "frame_id",
+    "timestamp_ms",
+    "session_id",
+    "project_id",
+    "vlm_triggered",
+    "vlm_trigger_reason",
+    "visual_reason",
+    "vlm_observation",
+    "cv_sample",
+)
+
+
 class EmotionEventLoop:
     """Forward base_station emotion samples to an AgentBrain-like object."""
 
@@ -24,8 +38,9 @@ class EmotionEventLoop:
             "confidence": float(sample.get("confidence", 0.0) or 0.0),
             "fatigue_score": float(sample.get("fatigue_score", 0.0) or 0.0),
         }
-        if "frame_source" in sample:
-            payload["frame_source"] = sample["frame_source"]
+        for field in OPTIONAL_PAYLOAD_FIELDS:
+            if field in sample:
+                payload[field] = sample[field]
         return {
             "type": "emotion.sample",
             "payload": payload,

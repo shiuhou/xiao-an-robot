@@ -92,6 +92,7 @@ class XiaoAnBrain:
             emotion_result["route"] = "link_2_emotion_fast_path"
             emotion_result["openclaw_event_type"] = "emotion.intervention"
             trigger_context = trigger if isinstance(trigger, dict) else {}
+            self._record_emotion_intervention(trigger_context, emotion_result)
             openclaw_context = {
                 "event": event,
                 "trigger": trigger,
@@ -255,6 +256,73 @@ class XiaoAnBrain:
                 source="brain",
                 timestamp_ms=payload.get("timestamp_ms"),
                 session_id=payload.get("session_id", "default"),
+            )
+        except Exception:
+            return
+
+    def _record_emotion_intervention(self, trigger: dict, emotion_result: dict) -> None:
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_emotion_intervention", None)
+        if not callable(record):
+            return
+
+        emotion_tag = trigger.get("emotion_tag") or trigger.get("emotion")
+        confidence = trigger.get("confidence")
+        fatigue_score = trigger.get("fatigue_score")
+        source = trigger.get("source")
+        frame_source = trigger.get("frame_source", source)
+        vlm_triggered = (
+            trigger["vlm_triggered"]
+            if "vlm_triggered" in trigger
+            else emotion_result.get("vlm_triggered")
+        )
+        vlm_trigger_reason = (
+            trigger["vlm_trigger_reason"]
+            if "vlm_trigger_reason" in trigger
+            else emotion_result.get("vlm_trigger_reason")
+        )
+        visual_reason = (
+            trigger["visual_reason"]
+            if "visual_reason" in trigger
+            else emotion_result.get("visual_reason")
+        )
+        timestamp_ms = (
+            trigger["timestamp_ms"]
+            if "timestamp_ms" in trigger
+            else trigger.get("timestamp")
+        )
+        metadata = {
+            "route": emotion_result.get("route"),
+            "emotion_tag": emotion_tag,
+            "confidence": confidence,
+            "fatigue_score": fatigue_score,
+            "source": source,
+            "frame_source": frame_source,
+            "frame_id": trigger.get("frame_id"),
+            "timestamp_ms": timestamp_ms,
+            "reason": emotion_result.get("reason"),
+            "trigger_reason": emotion_result.get("reason"),
+            "vlm_triggered": vlm_triggered,
+            "vlm_trigger_reason": vlm_trigger_reason,
+            "visual_reason": visual_reason,
+            "vlm_observation": trigger.get("vlm_observation"),
+            "cv_sample": trigger.get("cv_sample"),
+            "openclaw_event_type": emotion_result.get("openclaw_event_type"),
+            "handled": emotion_result.get("handled"),
+        }
+        try:
+            record(
+                content=emotion_result.get("message") or "emotion intervention",
+                route=emotion_result.get("route"),
+                trigger=trigger,
+                emotion_tag=emotion_tag,
+                confidence=confidence,
+                fatigue_score=fatigue_score,
+                intervention_result=emotion_result,
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=timestamp_ms,
+                session_id=trigger.get("session_id", "default"),
             )
         except Exception:
             return

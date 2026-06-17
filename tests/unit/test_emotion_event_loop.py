@@ -52,6 +52,55 @@ class EmotionEventLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["payload"]["confidence"], 0.0)
         self.assertEqual(event["payload"]["fatigue_score"], 0.0)
 
+    async def test_build_event_preserves_vlm_metadata(self) -> None:
+        loop = EmotionEventLoop(brain=FakeBrain())
+
+        event = loop.build_event({
+            "source": "face",
+            "emotion_tag": "tired",
+            "confidence": 0.9,
+            "fatigue_score": 0.85,
+            "frame_source": "fake_camera",
+            "frame_id": "frame-1",
+            "timestamp_ms": 123456,
+            "session_id": "session-1",
+            "project_id": 7,
+            "vlm_triggered": True,
+            "vlm_trigger_reason": "high_fatigue",
+            "visual_reason": "eyes look tired",
+            "vlm_observation": {"eyes": "tired"},
+            "cv_sample": {"face_detected": True},
+        })
+
+        payload = event["payload"]
+        self.assertEqual(event["type"], "emotion.sample")
+        self.assertEqual(payload["frame_source"], "fake_camera")
+        self.assertEqual(payload["frame_id"], "frame-1")
+        self.assertEqual(payload["timestamp_ms"], 123456)
+        self.assertEqual(payload["session_id"], "session-1")
+        self.assertEqual(payload["project_id"], 7)
+        self.assertEqual(payload["vlm_triggered"], True)
+        self.assertEqual(payload["vlm_trigger_reason"], "high_fatigue")
+        self.assertEqual(payload["visual_reason"], "eyes look tired")
+        self.assertEqual(payload["vlm_observation"], {"eyes": "tired"})
+        self.assertEqual(payload["cv_sample"], {"face_detected": True})
+
+    async def test_build_event_preserves_false_vlm_triggered(self) -> None:
+        loop = EmotionEventLoop(brain=FakeBrain())
+
+        event = loop.build_event({
+            "vlm_triggered": False,
+            "vlm_trigger_reason": None,
+            "visual_reason": "",
+        })
+
+        payload = event["payload"]
+        self.assertIn("vlm_triggered", payload)
+        self.assertFalse(payload["vlm_triggered"])
+        self.assertIn("vlm_trigger_reason", payload)
+        self.assertIsNone(payload["vlm_trigger_reason"])
+        self.assertEqual(payload["visual_reason"], "")
+
     async def test_handle_sample_calls_brain_handle_event(self) -> None:
         brain = FakeBrain()
         loop = EmotionEventLoop(brain=brain)

@@ -1,0 +1,130 @@
+{
+  "schema": "xiao-an-models/1",
+  "note": "Auto-generated. Big model weights live on Hugging Face, NOT in git. setup_models.py downloads them to the paths below and verifies sha256. OpenFace OV IR (openface_ov/) is tracked separately via git LFS.",
+  "repos": {
+    "qwen_vl": {
+      "repo_id": "ericzheng1/Qwen2.5-VL-3B-OV-int4",
+      "repo_type": "model",
+      "public": true,
+      "target_dir": "base_station/models/Qwen2.5-VL-3B-OV-int4",
+      "files": {
+        "added_tokens.json": {
+          "sha256": "f0acedf99e19ec0a5b797ffbd0b94328172ccd90f7f385bbc521cda2701b03ab",
+          "size": 629
+        },
+        "chat_template.jinja": {
+          "sha256": "6edff8eae4ef69923f937be5b1fcf91462227e7c827a0a936a98197f19642388",
+          "size": 1023
+        },
+        "config.json": {
+          "sha256": "7da2156f4c35a611b8816ee4134f19575c0a7bbed61d173595cc5c7a6e1c0d0c",
+          "size": 3405
+        },
+        "generation_config.json": {
+          "sha256": "4978f3cf86a8db84a817a96b5d8d9e25e141d1f8fd44c10eb19c8916858862a9",
+          "size": 226
+        },
+        "merges.txt": {
+          "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "size": 1671853
+        },
+        "openvino_config.json": {
+          "sha256": "10a7fb434524e12cf810f7e01d104e4b857ff7fa81f6802fa3dc30d882ea3535",
+          "size": 1192
+        },
+        "openvino_language_model.bin": {
+          "sha256": "aa4dbd79e2175a63d46b4456aff8cb1dd33c9ec33106db233d744a2e43ee8549",
+          "size": 1753859841
+        },
+        "openvino_language_model.xml": {
+          "sha256": "ff438713c1540892bfa4059e191db5fbe8f50cac0aa119d5a5f001eb29d2accd",
+          "size": 4229673
+        },
+        "openvino_text_embeddings_model.bin": {
+          "sha256": "88caee8d49f907967c729bc26b88ec66d519fe012b75357483b00dc3f811ac1b",
+          "size": 311468804
+        },
+        "openvino_text_embeddings_model.xml": {
+          "sha256": "5513b6d7378567b00277f32e926b124536fc49a787cd14e3ca104dfaa5aab235",
+          "size": 6070
+        },
+        "openvino_vision_embeddings_merger_model.bin": {
+          "sha256": "c69f81fa6c2884ddc4da666ea93124b2c603bf9100d897f1562c8364091a85d3",
+          "size": 668714496
+        },
+        "openvino_vision_embeddings_merger_model.xml": {
+          "sha256": "e233cb7f9ad53998051798fc9bda729399ab9ef6dbdc37834f538b531419e25e",
+          "size": 1971263
+        },
+        "openvino_vision_embeddings_model.bin": {
+          "sha256": "93c0a87d2410eb0333d655edc362cdaaef474c53ede90359fd67a71854df0efd",
+          "size": 1507896
+        },
+        "openvino_vision_embeddings_model.xml": {
+          "sha256": "d422155795b840c2a218de9cc20ddff506803df865bf23a1f69b23093159dd11",
+          "size": 7781
+        },
+        "preprocessor_config.json": {
+          "sha256": "1590f621b9afe161b89aa351aaafcda7e23492c1e0f2467e14dd1879f84f7317",
+          "size": 868
+        },
+        "special_tokens_map.json": {
+          "sha256": "57255613bbe23c9497211ca68561ff429a51e871dbaf5a59998fa4c8f7fe168a",
+          "size": 644
+        },
+        "tokenizer.json": {
+          "sha256": "9c5ae00e602b8860cbd784ba82a8aa14e8feecec692e7076590d014d7b7fdafa",
+          "size": 11421896
+        },
+        "tokenizer_config.json": {
+          "sha256": "3adcdf516241e848a928a51e1f9722c2c7400565baf4c850a8afa4bdb7b62c8f",
+          "size": 4938
+        },
+        "video_preprocessor_config.json": {
+          "sha256": "33d2e49d1383818058b74cb347ff55f47a9e2ee06540fc5fb58532c8642b3b95",
+          "size": 956
+        },
+        "vocab.json": {
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size": 2776833
+        }
+      }
+    },
+    "base_models": {
+      "repo_id": "ericzheng1/xiao-an-base-models",
+      "repo_type": "model",
+      "public": true,
+      "target_dir": "base_station/models",
+      "files": {
+        "intel/face-detection-0206/FP32/face-detection-0206.bin": {
+          "sha256": "af0f1885070fab06627e34c6dcfeea4cc3ccb5cf488ba912e32d9988f37de596",
+          "size": 254925040
+        },
+        "intel/face-detection-0206/FP32/face-detection-0206.xml": {
+          "sha256": "28c692b8b0b0b531b4da7209c9610ae8f616f57f23db21c8a005a8fc84a5663d",
+          "size": 1477458
+        },
+        "intel/facial-landmarks-35-adas-0002/FP32/facial-landmarks-35-adas-0002.bin": {
+          "sha256": "caf9b17a7dea89984f07a5c903bab256208c832a19b1cc2b3b675e2d534e24f5",
+          "size": 18381164
+        },
+        "intel/facial-landmarks-35-adas-0002/FP32/facial-landmarks-35-adas-0002.xml": {
+          "sha256": "85c5bbc71d0cdb4e815b64507ac5d0d5355f3d5faaca54b575743415a3df7ca4",
+          "size": 254460
+        },
+        "intel/head-pose-estimation-adas-0001/FP32/head-pose-estimation-adas-0001.bin": {
+          "sha256": "dda80461641b0bc1f2b8aea81f045179d0e89e8348850e49eb9cc8273dea0152",
+          "size": 7647616
+        },
+        "intel/head-pose-estimation-adas-0001/FP32/head-pose-estimation-adas-0001.xml": {
+          "sha256": "5e6764af6246d6ed48f35f5eda2088e470bf204d820b6ad63fcf7ba961976678",
+          "size": 53705
+        },
+        "hsemotion/emotion-ferplus-8.onnx": {
+          "sha256": "a2a2ba6a335a3b29c21acb6272f962bd3d47f84952aaffa03b60986e04efa61c",
+          "size": 35040571
+        }
+      }
+    }
+  }
+}

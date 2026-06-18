@@ -101,6 +101,27 @@ class FakeOpenVINOFaceEmotionModel:
         }
 
 
+class RecordingCV2:
+    FONT_HERSHEY_SIMPLEX = 0
+
+    def __init__(self) -> None:
+        self.texts = []
+        self.rectangles = []
+        self.circles = []
+
+    def putText(self, image, text, *args, **kwargs):
+        self.texts.append(text)
+        return image
+
+    def rectangle(self, image, pt1, pt2, color, thickness):
+        self.rectangles.append((pt1, pt2, color, thickness))
+        return image
+
+    def circle(self, image, center, radius, color, thickness):
+        self.circles.append((center, radius, color, thickness))
+        return image
+
+
 class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         FakeOpenCVCameraFrameSource.closed = False
@@ -149,7 +170,7 @@ class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([row["fatigue_score"] for row in rows], [0.85, 0.85])
         self.assertTrue(all(row["gate_triggered"] for row in rows))
-        self.assertEqual({row["gate_reason"] for row in rows}, {"high_fatigue"})
+        self.assertEqual({row["gate_reason"] for row in rows}, {"negative_emotion"})
 
     async def test_save_jsonl_writes_requested_lines_with_stable_keys(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -181,6 +202,50 @@ class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
             ])
 
         self.assertEqual(exit_code, 0)
+
+    async def test_default_count_runs_until_q_instead_of_stopping_at_ten(self) -> None:
+        args = probe_cv_gate.parse_args([
+            "--source",
+            "fake_camera",
+            "--model-backend",
+            "mock",
+            "--pattern",
+            "neutral",
+        ])
+        show_calls = []
+
+        def quit_on_twelfth_frame(frame: dict, row: dict) -> bool:
+            show_calls.append(row["frame_id"])
+            return len(show_calls) >= 12
+
+        with patch("tools.probe_cv_gate.show_frame", quit_on_twelfth_frame):
+            with patch("tools.probe_cv_gate.close_display"):
+                with redirect_stdout(io.StringIO()):
+                    rows = await probe_cv_gate.probe_cv_gate(args)
+
+        self.assertEqual(args.count, 0)
+        self.assertEqual(len(rows), 12)
+        self.assertEqual(show_calls, list(range(1, 13)))
+
+    async def test_count_limited_run_can_still_exit_on_q(self) -> None:
+        args = probe_cv_gate.parse_args([
+            "--source",
+            "fake_camera",
+            "--model-backend",
+            "mock",
+            "--pattern",
+            "neutral",
+            "--count",
+            "5",
+        ])
+
+        with patch("tools.probe_cv_gate.show_frame", return_value=True) as show_frame:
+            with patch("tools.probe_cv_gate.close_display"):
+                with redirect_stdout(io.StringIO()):
+                    rows = await probe_cv_gate.probe_cv_gate(args)
+
+        self.assertEqual(len(rows), 1)
+        show_frame.assert_called_once()
 
     def test_parser_accepts_opencv_camera_options(self) -> None:
         args = probe_cv_gate.parse_args([
@@ -227,6 +292,87 @@ class ProbeCVGateTest(unittest.IsolatedAsyncioTestCase):
         )
 
         result = probe_cv_gate.draw_overlay(frame, row, cv2_module=fake_cv2)
+
+        self.assertIs(result, frame["payload"])
+
+    def test_normalize_probe_row_preserves_debug_payload(self) -> None:
+        debug = {
+            "face_box": [10, 20, 110, 160],
+            "landmarks": [[15, 25], [30, 40]],
+            "ear": 0.24,
+            "mar": 0.42,
+            "head_pose": {"yaw": 1.0, "pitch": -2.0, "roll": None},
+        }
+        sample = {
+            "emotion_tag": "neutral",
+            "fatigue_score": 0.12,
+            "source": "openvino_face",
+            "debug": debug,
+        }
+
+        row = probe_cv_gate.normalize_probe_row(sample, None, latency_ms=1.0)
+
+        self.assertEqual(row["debug"], debug)
+
+    def test_draw_overlay_accepts_debug_and_draws_face_box_and_landmarks(self) -> None:
+        frame = {"payload": object(), "width": 640, "height": 480}
+        row = {key: None for key in STABLE_KEYS}
+        row.update({
+            "frame_id": 1,
+            "fatigue_score": 0.34,
+            "debug": {
+                "face_box": [10, 20, 110, 160],
+                "landmarks": [[15, 25], [30.8, 40.2]],
+                "ear": 0.24,
+                "mar": 0.42,
+                "head_pose": {"yaw": 1.1, "pitch": -2.2, "roll": None},
+            },
+        })
+        fake_cv2 = RecordingCV2()
+
+        result = probe_cv_gate.draw_overlay(frame, row, cv2_module=fake_cv2)
+
+        self.assertIs(result, frame["payload"])
+        self.assertEqual(fake_cv2.rectangles, [((10, 20), (110, 160), (255, 180, 0), 2)])
+        self.assertEqual([circle[0] for circle in fake_cv2.circles], [(15, 25), (31, 40)])
+        self.assertTrue(any("EAR: 0.24" in text for text in fake_cv2.texts))
+        self.assertTrue(any("yaw: 1.1" in text for text in fake_cv2.texts))
+
+    def test_draw_overlay_accepts_missing_debug(self) -> None:
+        frame = {"payload": object(), "width": 640, "height": 480}
+        row = {key: None for key in STABLE_KEYS}
+
+        result = probe_cv_gate.draw_overlay(frame, row, cv2_module=RecordingCV2())
+
+        self.assertIs(result, frame["payload"])
+
+    def test_draw_overlay_accepts_empty_landmarks(self) -> None:
+        frame = {"payload": object(), "width": 640, "height": 480}
+        row = {key: None for key in STABLE_KEYS}
+        row["debug"] = {
+            "face_box": [10, 20, 110, 160],
+            "landmarks": [],
+            "ear": 0.24,
+            "mar": 0.42,
+            "head_pose": {"yaw": 1.1, "pitch": -2.2, "roll": None},
+        }
+
+        result = probe_cv_gate.draw_overlay(frame, row, cv2_module=RecordingCV2())
+
+        self.assertIs(result, frame["payload"])
+
+    def test_draw_overlay_accepts_none_debug_values(self) -> None:
+        frame = {"payload": object(), "width": 640, "height": 480}
+        row = {key: None for key in STABLE_KEYS}
+        row["debug"] = {
+            "face_box": ["bad", None, 110],
+            "landmarks": [[None, 25], ["bad"], None],
+            "ear": None,
+            "mar": None,
+            "head_pose": {"yaw": None, "pitch": None, "roll": None},
+        }
+
+        result = probe_cv_gate.draw_overlay(frame, row, cv2_module=RecordingCV2())
 
         self.assertIs(result, frame["payload"])
 

@@ -32,6 +32,7 @@ OpenVINOFaceEmotionModel = None
 OpenVINOQwenVLEmotionModel = None
 QwenVLOpenVINORunner = None
 VLMFaceAnalyzer = None
+_build_openface_cv_pipeline = None
 
 
 class BaseStationEmotionRuntime:
@@ -262,10 +263,54 @@ def _load_vlm_face_analyzer():
     return VLMFaceAnalyzer
 
 
+def _load_openface_ov_adapter():
+    """Lazy import of the OpenFace OV adapter (pulls in torch/openvino only here)."""
+    global _build_openface_cv_pipeline
+    if _build_openface_cv_pipeline is None:
+        from base_station.perception.openface_ov_adapter import (
+            build_openface_cv_pipeline as loaded,
+        )
+
+        _build_openface_cv_pipeline = loaded
+    return _build_openface_cv_pipeline
+
+
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
     if model_backend in {"qwen_vl", "openvino_qwen_vl"}:
         return DirectModelEmotionPipeline(model=model)
     return FaceEmotionPipeline(pattern=pattern, model=model)
+
+
+def build_cv_pipeline(
+    model_backend: str,
+    pattern: str,
+    model_path: str | None,
+    device: str,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
+):
+    """Build the cv_pipeline (process_frame: frame -> cv_sample) for a camera source.
+
+    The ``openface_ov`` backend wires OpenFace's in-process OpenVINO perceive
+    (3 IR + host decode, from the OpenFace repo) into the OpenFaceCVPipeline that
+    emits the perception contract sample (route A / Gate 4). All other backends
+    keep the existing model + FaceEmotionPipeline/DirectModelEmotionPipeline path.
+    """
+    if model_backend == "openface_ov":
+        build = _load_openface_ov_adapter()
+        return build(
+            openface_repo=openface_repo,
+            models_dir=openface_models_dir,
+            device=device,
+        )
+
+    model = create_face_emotion_model(
+        model_backend=model_backend,
+        pattern=pattern,
+        model_path=model_path,
+        device=device,
+    )
+    return create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
 
 
 def create_emotion_source(
@@ -284,6 +329,8 @@ def create_emotion_source(
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
     history_memory: Any | None = None,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -297,13 +344,14 @@ def create_emotion_source(
             count=count,
             interval_seconds=interval_seconds,
         )
-        model = create_face_emotion_model(
+        pipeline = build_cv_pipeline(
             model_backend=model_backend,
             pattern=pattern,
             model_path=model_path,
             device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
         )
-        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         if enable_vlm_gate:
             vlm_model = create_vlm_emotion_model(
                 vlm_backend=vlm_backend,
@@ -328,13 +376,14 @@ def create_emotion_source(
             width=camera_width,
             height=camera_height,
         )
-        model = create_face_emotion_model(
+        pipeline = build_cv_pipeline(
             model_backend=model_backend,
             pattern=pattern,
             model_path=model_path,
             device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
         )
-        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         if enable_vlm_gate:
             vlm_model = create_vlm_emotion_model(
                 vlm_backend=vlm_backend,
@@ -381,6 +430,8 @@ def create_runtime(
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
     brain = XiaoAnBrain(
@@ -403,6 +454,8 @@ def create_runtime(
         vlm_model_path=vlm_model_path,
         force_vlm=force_vlm,
         history_memory=brain.memory,
+        openface_repo=openface_repo,
+        openface_models_dir=openface_models_dir,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
@@ -465,9 +518,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
     parser.add_argument(
         "--model-backend",
-        choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl"],
+        choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl", "openface_ov"],
         default="mock",
         help="Face emotion model backend for camera sources.",
+    )
+    parser.add_argument(
+        "--openface-repo",
+        default=None,
+        help="Path to the OpenFace 3.0 repo (for --model-backend openface_ov). "
+        "Defaults to the bundled xiao-an runtime, or OPENFACE_REPO when set.",
+    )
+    parser.add_argument(
+        "--openface-models-dir",
+        default=None,
+        help="Path to OpenFace OpenVINO IR models. Defaults to OPENFACE_OV_MODELS_DIR "
+        "or base_station/models/openface_ov.",
     )
     parser.add_argument("--model-path", default=None, help="OpenVINO face emotion model path.")
     parser.add_argument("--model-root", dest="model_path", help=argparse.SUPPRESS)
@@ -510,6 +575,8 @@ async def main(args: argparse.Namespace | None = None) -> None:
             vlm_backend=args.vlm_backend,
             vlm_model_path=args.vlm_model_path,
             force_vlm=args.force_vlm,
+            openface_repo=args.openface_repo,
+            openface_models_dir=args.openface_models_dir,
         )
         try:
             await runtime.run()

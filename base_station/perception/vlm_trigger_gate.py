@@ -13,7 +13,7 @@ class VLMTriggerGate:
 
     def __init__(
         self,
-        fatigue_threshold: float = 0.8,
+        fatigue_threshold: float = 67.0,
         negative_confidence_threshold: float = 0.75,
         window_size: int = 5,
         negative_count_threshold: int = 2,

@@ -37,6 +37,32 @@ STABLE_KEYS = (
 )
 
 
+def _number(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return None
+
+
+def _point(value):
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return None
+    x = _number(value[0])
+    y = _number(value[1])
+    if x is None or y is None:
+        return None
+    return int(round(x)), int(round(y))
+
+
+def _format_debug_value(value) -> str:
+    if value is None:
+        return "None"
+    if isinstance(value, float):
+        return f"{value:.3g}"
+    return str(value)
+
+
 class ProbeOpenCVCameraFrameSource(OpenCVCameraFrameSource):
     """Tool-local adapter that adds optional FPS configuration."""
 
@@ -79,7 +105,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="neutral",
         help="Mock emotion pattern.",
     )
-    parser.add_argument("--count", type=parse_count, default=10, help="Number of frames to process.")
+    parser.add_argument("--count", type=parse_count, default=0, help="Number of frames to process. 0 means unlimited.")
     parser.add_argument("--interval", type=float, default=0.0, help="Seconds between fake frames.")
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index.")
     parser.add_argument("--width", type=int, default=None, help="Optional OpenCV camera width.")
@@ -94,7 +120,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def build_frame_source(args: argparse.Namespace):
     if args.source == "fake_camera":
-        return FakeCameraFrameSource(count=args.count, interval_seconds=args.interval)
+        count = args.count if args.count > 0 else None
+        return FakeCameraFrameSource(count=count, interval_seconds=args.interval)
     if args.source == "opencv_camera":
         source_class = ProbeOpenCVCameraFrameSource if args.fps is not None else OpenCVCameraFrameSource
         kwargs = {
@@ -138,6 +165,8 @@ def normalize_probe_row(sample: dict, gate_result: dict | None, latency_ms: floa
         row["gate_triggered"] = bool(gate_result.get("should_trigger", False))
         row["gate_reason"] = gate_result.get("reason")
         row["gate_raw"] = gate_result.copy()
+    if "debug" in sample:
+        row["debug"] = sample.get("debug")
     return row
 
 
@@ -172,6 +201,45 @@ def draw_overlay(frame: dict, row: dict, cv2_module=None):
         f"gate: {row.get('gate_triggered')} reason: {row.get('gate_reason')}",
         f"latency_ms: {row.get('latency_ms')}",
     ]
+    debug = row.get("debug")
+    if isinstance(debug, dict):
+        face_box = debug.get("face_box")
+        if isinstance(face_box, (list, tuple)) and len(face_box) == 4 and hasattr(cv2, "rectangle"):
+            x1 = _number(face_box[0])
+            y1 = _number(face_box[1])
+            x2 = _number(face_box[2])
+            y2 = _number(face_box[3])
+            if None not in (x1, y1, x2, y2):
+                cv2.rectangle(
+                    payload,
+                    (int(round(x1)), int(round(y1))),
+                    (int(round(x2)), int(round(y2))),
+                    (255, 180, 0),
+                    2,
+                )
+
+        landmarks = debug.get("landmarks")
+        if isinstance(landmarks, (list, tuple)) and hasattr(cv2, "circle"):
+            for landmark in landmarks:
+                point = _point(landmark)
+                if point is not None:
+                    cv2.circle(payload, point, 2, (0, 200, 255), -1)
+
+        head_pose = debug.get("head_pose")
+        if not isinstance(head_pose, dict):
+            head_pose = {}
+        lines.extend([
+            "EAR: {ear} MAR: {mar} fatigue: {fatigue}".format(
+                ear=_format_debug_value(debug.get("ear")),
+                mar=_format_debug_value(debug.get("mar")),
+                fatigue=_format_debug_value(row.get("fatigue_score")),
+            ),
+            "yaw: {yaw} pitch: {pitch} roll: {roll}".format(
+                yaw=_format_debug_value(head_pose.get("yaw")),
+                pitch=_format_debug_value(head_pose.get("pitch")),
+                roll=_format_debug_value(head_pose.get("roll")),
+            ),
+        ])
     for index, text in enumerate(lines):
         cv2.putText(
             payload,
@@ -208,6 +276,7 @@ def close_display() -> None:
 async def probe_cv_gate(args: argparse.Namespace) -> list[dict]:
     frame_source = build_frame_source(args)
     model = build_model(args)
+    print(f"[probe] model_backend={args.model_backend}, model={type(model).__name__}")
     pipeline = FaceEmotionPipeline(pattern=args.pattern, model=model)
     gate = VLMTriggerGate() if args.enable_gate else None
     rows: list[dict] = []
@@ -223,6 +292,7 @@ async def probe_cv_gate(args: argparse.Namespace) -> list[dict]:
         async for frame in frame_source.frames():
             started = time.monotonic()
             sample = pipeline.process_frame(frame)
+            print(f"[probe] raw_sample={sample}")
             gate_result = gate.evaluate(sample, force_vlm=args.force_gate) if gate is not None else None
             row = normalize_probe_row(sample, gate_result, latency_ms=round((time.monotonic() - started) * 1000, 3))
             rows.append(row)
@@ -233,7 +303,7 @@ async def probe_cv_gate(args: argparse.Namespace) -> list[dict]:
             if not args.no_show:
                 if show_frame(frame, row):
                     break
-            if args.source == "opencv_camera" and processed >= args.count:
+            if args.count > 0 and processed >= args.count:
                 break
     finally:
         if jsonl_file is not None:

@@ -133,7 +133,7 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sample["source"], "fake_qwen_vl")
         self.assertEqual(sample["emotion_tag"], "tired")
         self.assertEqual(sample["vlm_triggered"], True)
-        self.assertEqual(sample["vlm_trigger_reason"], "high_fatigue")
+        self.assertEqual(sample["vlm_trigger_reason"], "negative_emotion")
         self.assertIn("visual_reason", sample)
         self.assertIn("vlm_observation", sample)
         self.assertEqual(sample["cv_sample"]["source"], "fake_face")

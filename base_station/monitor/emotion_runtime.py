@@ -27,6 +27,7 @@ from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
 from base_station.perception.vlm_trigger_gate import VLMTriggerGate
+from base_station.perception import valence_mapping as vm
 
 OpenVINOFaceEmotionModel = None
 OpenVINOQwenVLEmotionModel = None
@@ -109,6 +110,25 @@ class DirectModelEmotionPipeline:
         return self.model.predict(frame).copy()
 
 
+# Perception-only signals (the VLM does NOT produce these). On triggered frames
+# the top level is the VLM verdict and cv_sample is nested, so these would only
+# be reachable inside cv_sample; we promote them to the top level so the emitted
+# sample has the same shape whether or not the VLM ran. Deliberately EXCLUDES:
+#   - emotion_tag / confidence / fatigue_score: VLM owns these at the top level
+#     on triggered frames (the final verdict); never overwrite them.
+#   - au_json: AU semantics unconfirmed -> record-only, must not reach decisions.
+#   - frame_b64 / algorithm_version: bulky / debug-only, stay nested in cv_sample.
+#   - valence: on triggered frames polarity follows the VLM verdict tag (set
+#     below); CV's valence would describe a different (CV) label, so it stays
+#     nested in cv_sample as supporting evidence rather than top level.
+_PERCEPTION_PROMOTE_FIELDS = (
+    "fatigue_level",
+    "observation_quality",
+    "presence_state",
+    "evidence_codes",
+)
+
+
 class VLMGatedCameraEmotionSource:
     """Run a lightweight CV sample first, then call VLM only when the gate asks."""
 
@@ -148,6 +168,24 @@ class VLMGatedCameraEmotionSource:
                 final_sample["vlm_triggered"] = True
                 final_sample["vlm_trigger_reason"] = reason
                 final_sample["cv_sample"] = cv_sample.copy()
+                # The VLM reports fatigue_score on a 0-1 scale; CV / the DB column
+                # use 0-100. Normalize so the stored fatigue_score is single-scale
+                # regardless of whether the VLM ran.
+                vlm_fatigue = final_sample.get("fatigue_score")
+                if vlm_fatigue is not None:
+                    final_sample["fatigue_score"] = float(vlm_fatigue) * 100.0
+                # The VLM emits a gate-vocabulary emotion_tag but no polarity;
+                # derive polarity from the verdict tag (same negative set the gate
+                # uses) so triggered frames are not silently stored as 正面.
+                final_sample["polarity"] = vm.gate_tag_to_polarity(
+                    final_sample.get("emotion_tag", "")
+                )
+                # Promote perception-only signals to the top level without
+                # clobbering the VLM verdict, so the event shape matches the
+                # non-triggered branch (downstream reads these at the top level).
+                for key in _PERCEPTION_PROMOTE_FIELDS:
+                    if key in cv_sample and key not in final_sample:
+                        final_sample[key] = cv_sample[key]
             else:
                 final_sample = cv_sample.copy()
                 final_sample["vlm_triggered"] = False

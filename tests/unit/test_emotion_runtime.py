@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
+    VLMGatedCameraEmotionSource,
     create_emotion_source,
     create_face_emotion_model,
     create_vlm_emotion_model,
@@ -337,6 +338,102 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
     async def test_unsupported_backend_still_reports_clear_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported model backend"):
             create_face_emotion_model(model_backend="unknown", pattern="neutral")
+
+
+class _OneFrameSource:
+    def __init__(self, frame):
+        self._frame = frame
+
+    async def frames(self):
+        yield self._frame
+
+
+class _FixedCvPipeline:
+    def __init__(self, cv_sample):
+        self._cv = cv_sample
+
+    def process_frame(self, frame):
+        return dict(self._cv)
+
+
+class _AlwaysTriggerGate:
+    def evaluate(self, cv_sample, force_vlm=False):
+        return {"should_trigger": True, "reason": "test"}
+
+
+class _FixedContextBuilder:
+    def build(self, **kwargs):
+        return {}
+
+
+class _FixedVlm:
+    def __init__(self, prediction):
+        self._prediction = prediction
+
+    def predict(self, frame, context=None):
+        return dict(self._prediction)
+
+
+class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
+    async def _run_one(self, cv_sample, prediction):
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"payload": None}),
+            cv_pipeline=_FixedCvPipeline(cv_sample),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FixedVlm(prediction),
+        )
+        return [sample async for sample in source.samples()][0]
+
+    async def test_triggered_frame_normalizes_scale_and_derives_polarity(self):
+        cv_sample = {
+            "source": "openface",
+            "emotion_tag": "neutral",
+            "confidence": 0.5,
+            "fatigue_score": 42.0,
+            "polarity": "正面",
+            "fatigue_level": "medium",
+            "valence": "neutral",
+            "observation_quality": 0.99,
+            "presence_state": "present",
+            "evidence_codes": ["PERCLOS_HIGH"],
+            "au_json": {"AU01": 0.1},
+        }
+        prediction = {
+            "source": "openvino_qwen_vl",
+            "emotion_tag": "tired",
+            "confidence": 0.9,
+            "fatigue_score": 0.8,  # 0-1 VLM scale
+            "visual_reason": "eyes heavy",
+            "vlm_observation": "needs rest",
+        }
+        sample = await self._run_one(cv_sample, prediction)
+
+        # VLM verdict preserved (not overwritten by CV).
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertTrue(sample["vlm_triggered"])
+        # (3) fatigue_score normalized 0-1 -> 0-100 to match the DB/CV scale.
+        self.assertEqual(sample["fatigue_score"], 80.0)
+        # (4) polarity derived from the gate-vocab verdict tag (tired -> 负面).
+        self.assertEqual(sample["polarity"], "负面")
+        # fix #2: perception-only signals promoted to the top level.
+        self.assertEqual(sample["fatigue_level"], "medium")
+        self.assertEqual(sample["observation_quality"], 0.99)
+        self.assertEqual(sample["presence_state"], "present")
+        self.assertEqual(sample["evidence_codes"], ["PERCLOS_HIGH"])
+        # valence is NOT promoted (would contradict the VLM tag); stays nested.
+        self.assertNotIn("valence", sample)
+        self.assertEqual(sample["cv_sample"]["valence"], "neutral")
+        # au_json never reaches the top level (AU red line).
+        self.assertNotIn("au_json", sample)
+
+    async def test_triggered_positive_tag_maps_to_positive_polarity(self):
+        sample = await self._run_one(
+            {"source": "openface", "emotion_tag": "neutral", "fatigue_score": 10.0},
+            {"emotion_tag": "happy", "fatigue_score": 0.1},
+        )
+        self.assertEqual(sample["polarity"], "正面")
+        self.assertEqual(sample["fatigue_score"], 10.0)
 
 
 if __name__ == "__main__":

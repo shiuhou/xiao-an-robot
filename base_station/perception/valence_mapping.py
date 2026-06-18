@@ -38,9 +38,23 @@ _NEGATIVE_LABEL_TO_GATE_TAG = {
 }
 
 
+# Legacy gate negative vocabulary (mirrors VLMTriggerGate.NEGATIVE_EMOTIONS).
+# Used to derive polarity for frames whose emotion_tag is ALREADY gate vocab
+# (lowercase) but which carry no valence -- notably VLM-verdict frames, where the
+# VLM emits a gate-vocab tag + no polarity.
+GATE_NEGATIVE_TAGS = {"tired", "sad", "anxious", "stressed"}
+
+
 def classify_valence(emotion_label):
     """OpenFace label -> positive/negative/neutral; unknown -> uncertain."""
     return LABEL_VALENCE.get(emotion_label, "uncertain")
+
+
+def gate_tag_to_polarity(emotion_tag):
+    """Gate-vocab tag (lowercase) -> legacy polarity (负面 if in the gate's
+    negative set, else 正面). For tags already in gate vocabulary; does NOT go
+    through the capitalized OpenFace LABEL_VALENCE map."""
+    return "负面" if str(emotion_tag).lower() in GATE_NEGATIVE_TAGS else "正面"
 
 
 def valence_to_polarity(valence):

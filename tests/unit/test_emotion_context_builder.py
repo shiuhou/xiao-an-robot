@@ -189,6 +189,34 @@ class EmotionContextBuilderTest(unittest.TestCase):
         self.assertEqual(vlm_sample, original_vlm)
         self.assertEqual(history_summary, original_history)
 
+    def test_cv_new_engine_fields_are_picked(self) -> None:
+        sample = make_cv_sample()
+        sample.update({
+            "fatigue_level": "high",
+            "observation_quality": 0.81,
+            "evidence_codes": ["LONG_CLOSURE"],
+            "algorithm_version": "rule_v0",
+            "presence_state": "present",
+            "valence": "negative",
+            "au_json": {"AU45": 0.9},
+        })
+
+        context = EmotionContextBuilder().build(cv_sample=sample)
+
+        cv = context["cv"]
+        self.assertEqual(cv["fatigue_level"], "high")
+        self.assertEqual(cv["observation_quality"], 0.81)
+        self.assertEqual(cv["evidence_codes"], ["LONG_CLOSURE"])
+        self.assertEqual(cv["presence_state"], "present")
+        self.assertEqual(cv["valence"], "negative")
+        self.assertNotIn("extra", cv)
+
+    def test_cv_new_fields_default_none_for_legacy_sample(self) -> None:
+        context = EmotionContextBuilder().build(cv_sample={"emotion_tag": "neutral"})
+
+        self.assertIsNone(context["cv"]["fatigue_level"])
+        self.assertIsNone(context["cv"]["observation_quality"])
+
 
 if __name__ == "__main__":
     unittest.main()

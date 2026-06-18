@@ -22,7 +22,7 @@ class FaceEmotionPipeline:
     def process_frame(self, frame: dict) -> dict:
         sample = self.model.predict(frame).copy()
         sample.update({
-            "source": "fake_face",
+            "source": sample.get("source") or "fake_face",
             "frame_source": frame.get("source"),
             "frame_id": frame.get("frame_id"),
             "timestamp_ms": frame.get("timestamp_ms"),

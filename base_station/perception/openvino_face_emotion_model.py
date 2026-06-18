@@ -393,7 +393,12 @@ class OpenVINOFaceEmotionModel:
         res = self._head_pose_net([blob])
         yaw = res[self._head_pose_net.output(0)][0][0]
         pitch = res[self._head_pose_net.output(1)][0][0]
-        return float(yaw), float(pitch)
+        roll = None
+        try:
+            roll = float(res[self._head_pose_net.output(2)][0][0])
+        except (IndexError, KeyError, TypeError):
+            roll = None
+        return float(yaw), float(pitch), roll
 
     @staticmethod
     def _signal_quality(brightness, face_conf):
@@ -434,6 +439,20 @@ class OpenVINOFaceEmotionModel:
         fer_label = "neutral"
         emotion_conf = 0.0
         face_detected = False
+        debug = {
+            "face_box": None,
+            "landmarks": None,
+            "ear": None,
+            "mar": None,
+            "head_pose": {
+                "yaw": None,
+                "pitch": None,
+                "roll": None,
+            },
+            "perclos": None,
+            "blink_score": None,
+            "yawn_score": None,
+        }
 
         if rect is not None:
             x1, y1, x2, y2 = rect
@@ -443,7 +462,7 @@ class OpenVINOFaceEmotionModel:
                 self._face_lost_start = None
                 fh, fw = face.shape[:2]
                 lm = self._get_landmarks(face, cv2)
-                yaw, pitch = self._get_head_pose(face, cv2)
+                yaw, pitch, roll = self._get_head_pose(face, cv2)
                 fer_label, emotion_conf = self._get_emotion(face, cv2, yaw)
                 ear = _ear_with_yaw(lm.copy(), fw, fh, yaw)
                 mar = _mar(lm.copy(), fw, fh)
@@ -456,6 +475,21 @@ class OpenVINOFaceEmotionModel:
                     self._signal_quality(brightness, conf),
                     self._face_lost_duration(),
                 )
+                landmark_points = lm.reshape(-1, 2).copy()
+                landmark_points[:, 0] = landmark_points[:, 0] * fw + x1
+                landmark_points[:, 1] = landmark_points[:, 1] * fh + y1
+                debug.update({
+                    "face_box": [x1, y1, x2, y2],
+                    "landmarks": landmark_points.tolist(),
+                    "ear": float(ear),
+                    "mar": float(mar),
+                    "head_pose": {
+                        "yaw": yaw,
+                        "pitch": pitch,
+                        "roll": roll,
+                    },
+                    "perclos": float(self.fatigue.get_perclos()),
+                })
         else:
             if self._face_lost_start is None:
                 self._face_lost_start = time.time()
@@ -471,6 +505,7 @@ class OpenVINOFaceEmotionModel:
             "frame_source": frame.get("source"),
             "frame_id": frame.get("frame_id"),
             "timestamp_ms": frame.get("timestamp_ms"),
+            "debug": debug,
         }
 
     def _face_lost_duration(self) -> float:

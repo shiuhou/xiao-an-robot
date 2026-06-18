@@ -117,6 +117,46 @@ class EmotionEventLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(brain.events[0]["type"], "emotion.sample")
         self.assertEqual(brain.events[0]["payload"]["emotion_tag"], "sad")
 
+    async def test_build_event_passes_through_new_fields(self) -> None:
+        loop = EmotionEventLoop(brain=FakeBrain())
+
+        event = loop.build_event({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "Sad",
+            "confidence": 0.7,
+            "fatigue_score": 0.72,
+            "fatigue_level": "high",
+            "observation_quality": 0.81,
+            "evidence_codes": ["LONG_CLOSURE", "PERCLOS_HIGH"],
+            "algorithm_version": "rule_v0",
+            "presence_state": "present",
+            "valence": "negative",
+            "au_json": {"AU45": 0.9},
+        })
+
+        p = event["payload"]
+        self.assertEqual(p["fatigue_level"], "high")
+        self.assertEqual(p["observation_quality"], 0.81)
+        self.assertEqual(p["evidence_codes"], ["LONG_CLOSURE", "PERCLOS_HIGH"])
+        self.assertEqual(p["algorithm_version"], "rule_v0")
+        self.assertEqual(p["presence_state"], "present")
+        self.assertEqual(p["valence"], "negative")
+        self.assertEqual(p["au_json"], {"AU45": 0.9})
+
+    async def test_insufficient_evidence_preserves_none_fatigue_score(self) -> None:
+        loop = EmotionEventLoop(brain=FakeBrain())
+
+        event = loop.build_event({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "Neutral",
+            "confidence": 0.2,
+            "fatigue_score": None,
+            "fatigue_level": "insufficient_evidence",
+        })
+
+        self.assertIsNone(event["payload"]["fatigue_score"])
+        self.assertEqual(event["payload"]["fatigue_level"], "insufficient_evidence")
+
 
 if __name__ == "__main__":
     unittest.main()

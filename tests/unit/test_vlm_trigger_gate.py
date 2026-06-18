@@ -19,16 +19,22 @@ class VLMTriggerGateTest(unittest.TestCase):
 
         self.assertEqual(result, {"should_trigger": False, "reason": "normal"})
 
-    def test_high_fatigue_triggers_high_fatigue(self) -> None:
+    def test_high_fatigue_uses_openface_score_scale_by_default(self) -> None:
         gate = VLMTriggerGate()
 
-        result = gate.evaluate({
+        below_threshold = gate.evaluate({
             "emotion_tag": "neutral",
             "confidence": 0.2,
-            "fatigue_score": 0.85,
+            "fatigue_score": 66,
+        })
+        at_threshold = gate.evaluate({
+            "emotion_tag": "neutral",
+            "confidence": 0.2,
+            "fatigue_score": 67,
         })
 
-        self.assertEqual(result, {"should_trigger": True, "reason": "high_fatigue"})
+        self.assertEqual(below_threshold, {"should_trigger": False, "reason": "normal"})
+        self.assertEqual(at_threshold, {"should_trigger": True, "reason": "high_fatigue"})
 
     def test_negative_emotions_with_high_confidence_trigger(self) -> None:
         for emotion_tag in ["sad", "anxious", "tired", "stressed"]:

@@ -5,6 +5,17 @@ from __future__ import annotations
 from copy import deepcopy
 
 
+# New OpenFace engine fields appended; absent in legacy samples -> picked as None.
+_FATIGUE_FIELDS = (
+    "fatigue_level",
+    "observation_quality",
+    "evidence_codes",
+    "algorithm_version",
+    "presence_state",
+    "valence",
+    "au_json",
+)
+
 CV_FIELDS = (
     "emotion_tag",
     "confidence",
@@ -13,7 +24,7 @@ CV_FIELDS = (
     "frame_source",
     "frame_id",
     "timestamp_ms",
-)
+) + _FATIGUE_FIELDS
 
 VLM_FIELDS = (
     "emotion_tag",
@@ -25,7 +36,7 @@ VLM_FIELDS = (
     "frame_source",
     "frame_id",
     "timestamp_ms",
-)
+) + _FATIGUE_FIELDS
 
 DEFAULT_HISTORY = {
     "count": 0,

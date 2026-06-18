@@ -1,7 +1,11 @@
 # Model Files
 
-This directory is for local model files only. Model binaries are not committed
-to Git and should be copied manually to each deployment machine.
+This directory is mostly for local model files. Large model binaries are not
+committed to Git and should be copied manually to each deployment machine.
+
+Exception: `openface_ov/` contains the OpenFace OpenVINO IR files required for
+the single-repo Route A integration. Those `.xml` and `.bin` files are tracked
+with Git LFS.
 
 ## Expected Layout
 
@@ -68,3 +72,7 @@ manual_outputs/
 ```
 
 Only this README is intentionally tracked.
+
+Exception: `base_station/models/openface_ov/**/*.xml` and
+`base_station/models/openface_ov/**/*.bin` are intentionally tracked with Git
+LFS.

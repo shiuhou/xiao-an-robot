@@ -34,6 +34,11 @@ void WSClient::loop() {
 }
 
 void WSClient::sendControl(JsonDocument& doc) {
+    if (!_connected) {
+        Serial.println("[WSClient] Drop control message: not connected");
+        return;
+    }
+
     String out;
     serializeJson(doc, out);
     _ws.sendTXT(out);
@@ -58,6 +63,49 @@ void WSClient::sendHeartbeat() {
     payload["wifi_rssi"] = WiFi.RSSI();
     sendControl(doc);
     Serial.printf("[WSClient] Heartbeat sent (RSSI=%d dBm)\n", (int)WiFi.RSSI());
+}
+
+void WSClient::sendStatus(const char* expression, const char* motion, const char* camera, bool docked) {
+    auto doc     = buildMsg(MsgType::DEVICE_STATUS, _seq++);
+    auto payload = doc["payload"].as<JsonObject>();
+    payload["expression"] = expression ? expression : Expression::IDLE;
+    payload["motion"]     = motion ? motion : "idle";
+    payload["camera"]     = camera ? camera : "unknown";
+    payload["docked"]     = docked;
+    payload["wifi_rssi"]  = WiFi.RSSI();
+    sendControl(doc);
+    Serial.printf("[WSClient] Status sent: expr=%s motion=%s camera=%s docked=%s\n",
+                  payload["expression"].as<const char*>(),
+                  payload["motion"].as<const char*>(),
+                  payload["camera"].as<const char*>(),
+                  docked ? "true" : "false");
+}
+
+void WSClient::sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser) {
+    auto doc     = buildMsg(MsgType::MOTION_COMPLETED, _seq++);
+    auto payload = doc["payload"].as<JsonObject>();
+    payload["action_id"] = actionId ? actionId : "";
+    payload["result"]    = result ? result : "success";
+    auto finalState = payload["final_state"].to<JsonObject>();
+    finalState["position"]    = position ? position : "unknown";
+    finalState["facing_user"] = facingUser;
+    sendControl(doc);
+    Serial.printf("[WSClient] Motion completed sent: action_id=%s result=%s\n",
+                  payload["action_id"].as<const char*>(),
+                  payload["result"].as<const char*>());
+}
+
+void WSClient::sendError(const char* code, const char* severity, const char* message) {
+    auto doc     = buildMsg(MsgType::ERROR_REPORT, _seq++);
+    auto payload = doc["payload"].as<JsonObject>();
+    payload["code"]     = code ? code : "UNKNOWN";
+    payload["severity"] = severity ? severity : "error";
+    payload["message"]  = message ? message : "";
+    sendControl(doc);
+    Serial.printf("[WSClient] Error sent: code=%s severity=%s message=%s\n",
+                  payload["code"].as<const char*>(),
+                  payload["severity"].as<const char*>(),
+                  payload["message"].as<const char*>());
 }
 
 bool WSClient::isConnected() {

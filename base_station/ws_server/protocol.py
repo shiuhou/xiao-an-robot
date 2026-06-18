@@ -20,6 +20,7 @@ class MessageType(str, Enum):
     # Robot -> Base Station
     DEVICE_HELLO       = "device.hello"
     DEVICE_HEARTBEAT   = "device.heartbeat"
+    DEVICE_STATUS      = "device.status"
     SENSOR_BUTTON      = "sensor.button"
     SENSOR_DOCK_STATUS = "sensor.dock_status"
     MOTION_COMPLETED   = "motion.completed"

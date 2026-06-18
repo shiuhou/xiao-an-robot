@@ -12,6 +12,7 @@ namespace MsgType {
   // Robot -> Base Station
   constexpr const char* DEVICE_HELLO       = "device.hello";
   constexpr const char* DEVICE_HEARTBEAT   = "device.heartbeat";
+  constexpr const char* DEVICE_STATUS      = "device.status";
   constexpr const char* SENSOR_BUTTON      = "sensor.button";
   constexpr const char* SENSOR_DOCK_STATUS = "sensor.dock_status";
   constexpr const char* MOTION_COMPLETED   = "motion.completed";
@@ -60,6 +61,8 @@ namespace ErrorCode {
   constexpr const char* WIFI_WEAK      = "WIFI_WEAK";
   constexpr const char* CAM_INIT_FAIL  = "CAM_INIT_FAIL";
   constexpr const char* MIC_INIT_FAIL  = "MIC_INIT_FAIL";
+  constexpr const char* AUDIO_UNSUPPORTED = "AUDIO_UNSUPPORTED";
+  constexpr const char* UNSUPPORTED_COMMAND = "UNSUPPORTED_COMMAND";
 }
 
 // Helper: build base message envelope

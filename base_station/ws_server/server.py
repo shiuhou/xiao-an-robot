@@ -94,6 +94,18 @@ async def handle_control(websocket: ServerConnection):
                     sessions[device_id]["battery"] = payload.get("battery", 0)
                     logger.debug(f"Heartbeat from {device_id}, battery={payload.get('battery')}%")
 
+            elif msg_type == MessageType.DEVICE_STATUS:
+                if device_id and device_id in sessions:
+                    sessions[device_id]["last_hb"] = time.time()
+                    sessions[device_id]["status"] = payload
+                logger.info(
+                    "Robot status: expression=%s motion=%s camera=%s docked=%s",
+                    payload.get("expression"),
+                    payload.get("motion"),
+                    payload.get("camera"),
+                    payload.get("docked"),
+                )
+
             elif msg_type == MessageType.MOTION_COMPLETED:
                 action_id = payload.get("action_id")
                 result = payload.get("result")

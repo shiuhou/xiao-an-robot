@@ -1,0 +1,348 @@
+<title>小安机器人硬件最低闭环真跑路线图</title>
+
+<callout emoji="🏁" background-color="light-green" border-color="green">
+  <p><b>目标：</b>把当前项目从“软件模拟链路”推进到“真实硬件最低闭环”：ESP32-S3 机器人真实联网，基站真实下发指令，机器人真实显示表情并执行安全可控移动，摄像头或感知入口能产生触发证据，整条链路可重复演示、可录屏、可向英特尔杯评审说明。</p>
+</callout>
+
+<h1>一、最低闭环定义</h1>
+
+<p>本阶段不追求完整产品，只追求一条能真跑、稳定、可复现的竞赛主线。最低闭环必须包含真实机器人硬件、基站控制链路、至少一个感知触发入口、至少两个真实执行反馈。</p>
+
+<whiteboard type="mermaid">
+flowchart LR
+  A["ESP32-S3 Robot: camera display motor"] -- "hello heartbeat frame/status" --&gt; B["DK-2500/Base Station: WebSocket server"]
+  B -- "perception trigger" --&gt; C["Agent Brain + RobotMotionSkill"]
+  C -- "expression motion tts command" --&gt; B
+  B -- "JSON command over /control" --&gt; A
+  A -- "screen/motor/log evidence" --&gt; D["Demo evidence: video log checklist"]
+</whiteboard>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">闭环层级</th>
+      <th background-color="light-gray">必须做到</th>
+      <th background-color="light-gray">验收证据</th>
+      <th background-color="light-gray">当前判断</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>L0 硬件活着</td>
+      <td>ESP32-S3 可烧录、串口稳定、供电稳定、单个外设可独立运行</td>
+      <td>每个 PlatformIO env 有一次成功编译和串口日志</td>
+      <td>已有多个 bring-up env，仍需逐个实测记录</td>
+    </tr>
+    <tr>
+      <td>L1 单点外设</td>
+      <td>OV2640、TFT、DRV8833+N20、限位开关至少三项真机通过</td>
+      <td>照片/视频 + 日志 + pin 表</td>
+      <td>TFT/motor/camera 代码已有雏形，pin 与安全策略需确认</td>
+    </tr>
+    <tr>
+      <td>L2 控制闭环</td>
+      <td>ESP32 连接 /control，基站下发 display.expression 和 motion.execute，机器人响应</td>
+      <td>同一段视频拍到基站命令、TFT 变化、轮子动作</td>
+      <td>协议与 server 已具备，主固件还需把 cam/display/motor 状态串进主循环</td>
+    </tr>
+    <tr>
+      <td>L3 感知触发闭环</td>
+      <td>摄像头或麦克风触发一次 care_for_user：显示 caring、短距离移出、提示语或替代反馈</td>
+      <td>输入事件到机器人动作的完整日志和录屏</td>
+      <td>可先用 opencv_camera/mock model 做稳定版，再替换 OpenVINO</td>
+    </tr>
+    <tr>
+      <td>L4 竞赛展示闭环</td>
+      <td>Intel DK-2500/OpenVINO 有真实贡献，演示可重复 3 次不崩</td>
+      <td>推理耗时、设备选择、失败恢复、演示脚本</td>
+      <td>OpenVINO 真推理仍是最大缺口</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr/>
+
+<h1>二、需要达成的技术点</h1>
+
+<h2>1. 供电、烧录与安全基线</h2>
+
+<callout emoji="⚠️" background-color="light-red" border-color="red">
+  <p>马达和外设调试必须先做安全基线：轮子离地、限流电源或独立电池、所有运动命令都有超时和 stop，未确认方向前禁止装进外壳。</p>
+</callout>
+
+<checkbox done="false">确认 ESP32-S3 开发板型号、PSRAM、Flash 设置与 platformio.ini 匹配。</checkbox>
+<checkbox done="false">建立 pin 对照表：摄像头保留脚、TFT SPI 脚、马达脚、麦克风 I2S 脚、限位开关脚不得冲突。</checkbox>
+<checkbox done="false">每次烧录后串口必须输出板卡、env、版本、WiFi/外设状态。</checkbox>
+<checkbox done="false">马达默认上电低电平，所有动作结束进入 stop，异常断连必须 stop。</checkbox>
+
+<h2>2. OV2640 摄像头入口</h2>
+
+<p>最低闭环可以先不做 WebSocket 视频流，但必须证明机器人端摄像头能真实取图。当前 cam_stream.cpp 已按 GOOUUU ESP32-S3-CAM/OV2640 pin map 初始化 QVGA JPEG，并能打印帧长和分辨率；另外已有串口取帧 viewer 可用作 PC 侧验证。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">目标</th>
+      <th background-color="light-gray">做法</th>
+      <th background-color="light-gray">通过标准</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>摄像头初始化</td>
+      <td>跑 camtesting，确认 PSRAM、esp_camera_init、帧尺寸</td>
+      <td>连续 20 帧无重启，帧长合理</td>
+    </tr>
+    <tr>
+      <td>PC 可视化</td>
+      <td>用 serial_camera_viewer.py 通过 USB 串口请求帧</td>
+      <td>OpenCV 窗口可看到画面或 QR/红色目标框</td>
+    </tr>
+    <tr>
+      <td>闭环触发</td>
+      <td>先用 QR/红色目标或基站 OpenCV camera 触发 care_for_user</td>
+      <td>目标出现后 2 秒内触发表情/运动</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>3. TFT 表情显示</h2>
+
+<p>TFT 是现场最直观的硬件反馈。最低闭环必须让 display.expression 能改变实体屏幕，而不是只打印串口。</p>
+
+<checkbox done="false">跑 display_test/tfttest，确认背光、方向、颜色、边框、表情绘制正常。</checkbox>
+<checkbox done="false">主固件收到 display.expression 后调用 display_emotion，并更新状态栏。</checkbox>
+<checkbox done="false">准备 idle、caring、tired、speaking、error 五个演示表情。</checkbox>
+
+<h2>4. DRV8833 + N20 马达与限位安全</h2>
+
+<p>最低闭环只要求短距离、低速、可控移动，不要求完整 Dock 自动回充。当前 motor_ctrl.h 使用 GPIO1/GPIO2/GPIO47/GPIO38，并已把限位开关临时禁用；下一步必须先确认方向，再引入限位开关。</p>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">阶段</th>
+      <th background-color="light-gray">测试项</th>
+      <th background-color="light-gray">验收标准</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>M1</td>
+      <td>motor_bench_once：单轮、短脉冲、轮子离地</td>
+      <td>每个 GPIO 控制的物理轮子和方向记录清楚</td>
+    </tr>
+    <tr>
+      <td>M2</td>
+      <td>motor_manual：键盘/串口手动控制前后左右停</td>
+      <td>3 分钟内无失控，无过热，无重启</td>
+    </tr>
+    <tr>
+      <td>M3</td>
+      <td>短距离 move_out_of_dock</td>
+      <td>机器人离开 Dock 5-10 cm 后自动停</td>
+    </tr>
+    <tr>
+      <td>M4</td>
+      <td>后限位 return_to_dock</td>
+      <td>触发限位后 200 ms 内 stop</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. WiFi 与 WebSocket 控制链路</h2>
+
+<p>竞赛展示时，机器人必须以 Client 连接基站 /control，基站负责接收 device.hello/heartbeat，并能从 /agent 转发命令到实体机器人。</p>
+
+<checkbox done="false">把 WiFi SSID、密码、基站 IP 从硬编码迁移到本地配置或 NVS，避免提交真实网络信息。</checkbox>
+<checkbox done="false">ESP32 启动后稳定发送 device.hello 和 device.heartbeat。</checkbox>
+<checkbox done="false">基站 server.py 能看到 online robot session。</checkbox>
+<checkbox done="false">tools/send_robot_command.py 或 RobotMotionSkill 能实际改变 TFT 与马达。</checkbox>
+
+<h2>6. 感知触发与 Intel AI 证明</h2>
+
+<p>短期闭环优先保证可演示：先用 OpenCV/规则触发，随后替换成 OpenVINO。评审关注的是 Intel 平台有没有真实贡献，所以最终至少要把一个模型或一个推理环节跑在 DK-2500 上。</p>
+
+<grid>
+  <column width-ratio="0.5">
+    <callout emoji="✅" background-color="light-green" border-color="green">
+      <p><b>推荐主线：</b>摄像头/USB camera → OpenCV/Mock fatigue trigger → Agent → TFT + motor。先保证闭环稳定。</p>
+    </callout>
+  </column>
+  <column width-ratio="0.5">
+    <callout emoji="⭐" background-color="light-blue" border-color="blue">
+      <p><b>加分主线：</b>OpenVINO face emotion/head pose → fatigue score → 同一条 Agent/robot 控制链路。用推理耗时和设备日志证明 Intel 价值。</p>
+    </callout>
+  </column>
+</grid>
+
+<checkbox done="false">基站 Python 环境重建并可运行 unittest；当前 .venv 不应作为唯一依赖。</checkbox>
+<checkbox done="false">opencv_camera + mock model 能触发 emotion_runtime。</checkbox>
+<checkbox done="false">OpenVINO 模型路径、设备选择、推理耗时和输出格式确定。</checkbox>
+<checkbox done="false">OpenVINO 推理失败时自动降级为 mock/opencv trigger，保证现场 demo 不崩。</checkbox>
+
+<h2>7. 音频与语音反馈</h2>
+
+<p>音频不是最低闭环的硬门槛，但可以作为展示加分。当前 voice_recognition_test 已有 INMP441 I2S RMS/阈值检测，TTS 播放和 MAX98357A 仍是风险项。</p>
+
+<checkbox done="false">INMP441 先只做 voice/silence 检测，不急着接 ASR。</checkbox>
+<checkbox done="false">MAX98357A 先播放本地短音效或提示音，不急着下载 mp3。</checkbox>
+<checkbox done="false">若音频不稳定，最低闭环允许用 TFT 文本 + 串口日志替代 TTS。</checkbox>
+
+<hr/>
+
+<h1>三、完整路线</h1>
+
+<h2>Phase 0：整理环境与冻结目标</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">任务</th>
+      <th background-color="light-gray">产出</th>
+      <th background-color="light-gray">不通过就不能进入下一步</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>确定最低闭环脚本</td>
+      <td>演示顺序：用户疲劳/目标出现 → caring 表情 → 移出 5-10 cm → 提示 → 停止</td>
+      <td>团队不能再临时加功能</td>
+    </tr>
+    <tr>
+      <td>重建 Python 环境</td>
+      <td>可运行 server、emotion_runtime、unittest</td>
+      <td>测试命令不可依赖坏掉的 .venv</td>
+    </tr>
+    <tr>
+      <td>清理 pin 表</td>
+      <td>一张最终 GPIO 表，标出 camera 占用脚</td>
+      <td>camera/TFT/motor/mic 不得冲突</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Phase 1：单点硬件真跑</h2>
+
+<pre lang="powershell" caption="固件单点编译入口"><code>pio run -e camtesting
+pio run -e display_test
+pio run -e motor_bench_once
+pio run -e motor_manual
+pio run -e voice_recognition_test</code></pre>
+
+<p>验收顺序必须是：先 TFT，再 camera，再 motor，再 mic/speaker。马达调试始终轮子离地；确认方向后再落地短距离。</p>
+
+<h2>Phase 2：机器人本体控制闭环</h2>
+
+<ol>
+  <li seq="auto">启动基站 WebSocket server。</li>
+  <li seq="auto">ESP32 主固件连接 WiFi 和 /control。</li>
+  <li seq="auto">基站收到 device.hello，回 system.welcome。</li>
+  <li seq="auto">从工具或 Agent 发 display.expression，TFT 变 caring。</li>
+  <li seq="auto">发 motion.execute move_out_of_dock，马达短距离移动后 stop。</li>
+  <li seq="auto">断开 WiFi 或基站，机器人进入安全 stop。</li>
+</ol>
+
+<pre lang="powershell" caption="基站与命令入口"><code>python -m base_station.ws_server.server
+python tools/send_robot_command.py expression caring
+python tools/send_robot_command.py motion move_out_of_dock</code></pre>
+
+<h2>Phase 3：感知到动作的闭环</h2>
+
+<p>先选一个稳定触发源，不要同时做三种感知。推荐顺序：fake_camera → opencv_camera/mock model → ESP32 camera serial viewer → OpenVINO model。</p>
+
+<pre lang="powershell" caption="稳定版感知触发入口"><code>python -m base_station.monitor.emotion_runtime --source fake_camera --model-backend mock --pattern tired --count 3 --fresh-db --verbose
+python -m base_station.monitor.emotion_runtime --source opencv_camera --model-backend mock --camera-index 0 --count 5 --verbose</code></pre>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">版本</th>
+      <th background-color="light-gray">触发源</th>
+      <th background-color="light-gray">评审说法</th>
+      <th background-color="light-gray">风险</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Demo A 稳定版</td>
+      <td>fake/opencv trigger</td>
+      <td>证明机器人控制闭环和 Agent 流程</td>
+      <td>AI 说服力弱</td>
+    </tr>
+    <tr>
+      <td>Demo B 硬件版</td>
+      <td>ESP32 OV2640 串口/后续 WebSocket JPEG</td>
+      <td>证明机器人端真实视觉输入</td>
+      <td>画面质量和串口带宽</td>
+    </tr>
+    <tr>
+      <td>Demo C Intel 加分版</td>
+      <td>OpenVINO emotion/head pose</td>
+      <td>证明 DK-2500 本地 AI 推理</td>
+      <td>模型部署和依赖</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Phase 4：现场展示封装</h2>
+
+<checkbox done="false">准备一键启动脚本：启动 server、启动感知 runtime、打开串口监视。</checkbox>
+<checkbox done="false">准备演示素材：疲劳/红色目标/QR target，保证现场光线下可识别。</checkbox>
+<checkbox done="false">准备 3 次连续演示流程，每次结束后能 reset 到 idle。</checkbox>
+<checkbox done="false">准备失败备选：OpenVINO 失败用 mock trigger，摄像头失败用 USB camera，音频失败用 TFT 文字提示。</checkbox>
+<checkbox done="false">录制一条完整备用视频，现场真机失败时仍能解释工程证据。</checkbox>
+
+<hr/>
+
+<h1>四、验收标准</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th background-color="light-gray">验收项</th>
+      <th background-color="light-gray">最低标准</th>
+      <th background-color="light-gray">优秀标准</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>可重复性</td>
+      <td>连续 3 次 demo 成功 2 次</td>
+      <td>连续 5 次 demo 成功 5 次</td>
+    </tr>
+    <tr>
+      <td>响应时间</td>
+      <td>触发后 5 秒内机器人有动作</td>
+      <td>触发后 2 秒内 TFT 反馈，5 秒内完成移动</td>
+    </tr>
+    <tr>
+      <td>安全</td>
+      <td>所有动作 5 秒内自动 stop</td>
+      <td>断网、断 server、限位触发都能 stop</td>
+    </tr>
+    <tr>
+      <td>Intel 价值</td>
+      <td>基站负责感知/决策，机器人只执行</td>
+      <td>OpenVINO 真模型在 DK-2500 上输出结果和耗时</td>
+    </tr>
+    <tr>
+      <td>展示证据</td>
+      <td>日志 + 视频 + pin 表</td>
+      <td>完整技术报告：架构、推理、硬件、安全、失败恢复</td>
+    </tr>
+  </tbody>
+</table>
+
+<h1>五、立即行动清单</h1>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p>接下来不要先做外壳，不要先追完整语音助手。先把 TFT、camera、motor、WebSocket 四件事串起来，形成一个低风险真机闭环。</p>
+</callout>
+
+<checkbox done="false">今天：跑通 display_test，并拍摄 TFT 表情视频。</checkbox>
+<checkbox done="false">今天：跑通 camtesting 或 serial camera viewer，确认 OV2640 真能取图。</checkbox>
+<checkbox done="false">今天：轮子离地跑 motor_bench_once，记录 GPIO 到物理轮子的映射。</checkbox>
+<checkbox done="false">明天：主固件连接 /control，基站下发 expression 和 motion。</checkbox>
+<checkbox done="false">明天：emotion_runtime 触发 care_for_user，完成第一版闭环录屏。</checkbox>
+<checkbox done="false">后天：替换或补充 OpenVINO 真推理，记录 DK-2500/CPU/GPU/NPU 设备与耗时。</checkbox>

@@ -19,6 +19,9 @@ public:
     void sendControl(JsonDocument& doc);
     void sendHello();
     void sendHeartbeat();
+    void sendStatus(const char* expression, const char* motion, const char* camera, bool docked);
+    void sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser);
+    void sendError(const char* code, const char* severity, const char* message);
     bool isConnected();
 
 private:

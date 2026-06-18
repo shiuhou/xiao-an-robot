@@ -5,14 +5,27 @@
 
 #include <Arduino.h>
 
-// ── Pin assignments ──────────────────────────────────────────────────────────
-// TODO: adjust to match your actual wiring on ESP32-S3
-constexpr uint8_t PIN_MOTOR_L_IN1  = 15;   // Left  motor, channel A IN1 (PWM fwd)
-constexpr uint8_t PIN_MOTOR_L_IN2  = 16;   // Left  motor, channel A IN2 (PWM bwd)
-constexpr uint8_t PIN_MOTOR_R_IN1  = 17;   // Right motor, channel B IN1 (PWM fwd)
-constexpr uint8_t PIN_MOTOR_R_IN2  = 18;   // Right motor, channel B IN2 (PWM bwd)
-constexpr uint8_t PIN_LIMIT_FRONT  = 19;   // Front limit switch, active-LOW
-constexpr uint8_t PIN_LIMIT_BACK   = 20;   // Back  limit switch, active-LOW (dock sensor)
+// ── Motor bring-up wiring map ────────────────────────────────────────────────
+// Bench assumption for the current harness:
+//   GPIO1  -> left  driver IN1
+//   GPIO2  -> left  driver IN2
+//   GPIO47 -> right driver IN1
+//   GPIO38 -> right driver IN2
+//
+// If the one-pin raw test shows a GPIO moves the wrong physical wheel, change
+// the PIN_MOTOR_* mapping below. If the correct wheel spins but forward is
+// reversed, flip that side's *_FORWARD_USES_IN1 constant instead of rewiring.
+constexpr int8_t PIN_MOTOR_L_IN1  = 1;
+constexpr int8_t PIN_MOTOR_L_IN2  = 2;
+constexpr int8_t PIN_MOTOR_R_IN1  = 47;
+constexpr int8_t PIN_MOTOR_R_IN2  = 38;
+constexpr bool MOTOR_LEFT_FORWARD_USES_IN1  = true;
+constexpr bool MOTOR_RIGHT_FORWARD_USES_IN1 = true;
+
+// Limit switches are disabled during bench motor bring-up. Set real GPIOs only
+// after motor direction is confirmed.
+constexpr int8_t PIN_LIMIT_FRONT  = -1;
+constexpr int8_t PIN_LIMIT_BACK   = -1;
 
 // ── LEDC PWM settings ────────────────────────────────────────────────────────
 constexpr uint32_t MOTOR_PWM_FREQ_HZ  = 20000;  // 20 kHz — above hearing range
@@ -45,6 +58,7 @@ public:
     void backward(int speed);
     void turnLeft(int speed);
     void turnRight(int speed);
+    void debugDriveRaw(int lIn1, int lIn2, int rIn1, int rIn2, uint32_t durationMs);
 
     // Protocol action dispatcher (maps MotionAction strings to above calls)
     void execute(const char* action, float param = 0.0f);

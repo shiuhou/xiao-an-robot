@@ -114,7 +114,33 @@
 
 如果基站连续 30 秒没收到心跳，认为机器人掉线，停止下发指令。
 
-### 3.3 `sensor.button` —— 物理按键事件
+### 3.3 `device.status` —— 当前执行状态
+
+机器人在上线、收到表情/动作指令、动作结束后上报当前状态。它不是高频心跳，而是给基站和 Agent 做状态同步。
+
+```json
+{
+  "type": "device.status",
+  "ts": 1714190415000,
+  "seq": 3,
+  "payload": {
+    "expression": "caring",
+    "motion": "idle",
+    "camera": "cam_ok",
+    "docked": false,
+    "wifi_rssi": -52
+  }
+}
+```
+
+| 字段 | 取值 |
+|------|------|
+| `expression` | 当前表情，例如 `"idle"` / `"caring"` / `"tired"` |
+| `motion` | 当前动作或 `"idle"` |
+| `camera` | `"cam_ok"` / `"cam_off"` / `"cam_err"` |
+| `docked` | 是否处于 Dock / 后限位触发状态 |
+
+### 3.4 `sensor.button` —— 物理按键事件
 
 机器人头顶或身体上的物理按键（如有）。
 
@@ -135,7 +161,7 @@
 | `button` | `"head"` / `"chest"` / `"back"` |
 | `action` | `"click"` / `"long_press"` / `"double_click"` |
 
-### 3.4 `sensor.dock_status` —— 充电桩状态
+### 3.5 `sensor.dock_status` —— 充电桩状态
 
 机器人在 dock 上 / 离开 dock 时上报。
 
@@ -151,7 +177,7 @@
 }
 ```
 
-### 3.5 `motion.completed` —— 动作执行完成回报
+### 3.6 `motion.completed` —— 动作执行完成回报
 
 机器人执行完一个动作后回报状态。**这个非常重要**——基站需要知道动作完成了才能下发下一个动作，否则会指令打架。
 
@@ -177,7 +203,7 @@
 | `result` | `"success"` / `"failed"` / `"interrupted"` |
 | `final_state.position` | `"in_dock"` / `"out_of_dock"` / `"moving"` |
 
-### 3.6 `error.report` —— 错误上报
+### 3.7 `error.report` —— 错误上报
 
 机器人本地出错时上报。
 

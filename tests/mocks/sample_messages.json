@@ -42,9 +42,21 @@
     }
   },
   {
+    "type": "device.status",
+    "ts": 1714536014000,
+    "seq": 5,
+    "payload": {
+      "expression": "idle",
+      "motion": "idle",
+      "camera": "cam_off",
+      "docked": false,
+      "wifi_rssi": -52
+    }
+  },
+  {
     "type": "display.expression",
     "ts": 1714536015000,
-    "seq": 5,
+    "seq": 6,
     "payload": {
       "expression": "caring",
       "duration_ms": 3000,
@@ -54,7 +66,7 @@
   {
     "type": "error.report",
     "ts": 1714536020000,
-    "seq": 6,
+    "seq": 7,
     "payload": {
       "code": "motor_stall",
       "message": "Left wheel stalled during motion test.",

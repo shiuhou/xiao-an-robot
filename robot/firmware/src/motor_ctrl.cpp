@@ -5,12 +5,45 @@
 static volatile bool _frontLimitHit = false;
 static volatile bool _backLimitHit  = false;
 
+constexpr uint8_t MOTOR_CH_L_IN1 = 0;
+constexpr uint8_t MOTOR_CH_L_IN2 = 1;
+constexpr uint8_t MOTOR_CH_R_IN1 = 2;
+constexpr uint8_t MOTOR_CH_R_IN2 = 3;
+
+static const char* motorName(uint8_t motor) {
+    return motor == 0 ? "left" : "right";
+}
+
+static uint8_t motorForwardChannel(uint8_t motor) {
+    if (motor == 0) {
+        return MOTOR_LEFT_FORWARD_USES_IN1 ? MOTOR_CH_L_IN1 : MOTOR_CH_L_IN2;
+    }
+    return MOTOR_RIGHT_FORWARD_USES_IN1 ? MOTOR_CH_R_IN1 : MOTOR_CH_R_IN2;
+}
+
+static uint8_t motorReverseChannel(uint8_t motor) {
+    if (motor == 0) {
+        return MOTOR_LEFT_FORWARD_USES_IN1 ? MOTOR_CH_L_IN2 : MOTOR_CH_L_IN1;
+    }
+    return MOTOR_RIGHT_FORWARD_USES_IN1 ? MOTOR_CH_R_IN2 : MOTOR_CH_R_IN1;
+}
+
 void IRAM_ATTR onFrontLimit() { _frontLimitHit = true; }
 void IRAM_ATTR onBackLimit()  { _backLimitHit  = true; }
 
 // ── begin() ──────────────────────────────────────────────────────────────────
 
 void MotorController::begin() {
+    Serial.println("[Motor] begin()");
+    Serial.printf("[Motor] pins: L_IN1=%d L_IN2=%d R_IN1=%d R_IN2=%d\n",
+                  PIN_MOTOR_L_IN1,
+                  PIN_MOTOR_L_IN2,
+                  PIN_MOTOR_R_IN1,
+                  PIN_MOTOR_R_IN2);
+    Serial.printf("[Motor] forward map: left uses %s, right uses %s\n",
+                  MOTOR_LEFT_FORWARD_USES_IN1 ? "L_IN1/GPIO1" : "L_IN2/GPIO2",
+                  MOTOR_RIGHT_FORWARD_USES_IN1 ? "R_IN1/GPIO47" : "R_IN2/GPIO38");
+
     // Motor output pins
     pinMode(PIN_MOTOR_L_IN1, OUTPUT);
     pinMode(PIN_MOTOR_L_IN2, OUTPUT);
@@ -20,48 +53,89 @@ void MotorController::begin() {
     // Attach all four motor pins to individual LEDC channels so we can PWM
     // both IN1 and IN2 independently — needed for variable speed in reverse.
     // ledcAttach(pin, freq_hz, resolution_bits) — Arduino ESP32 3.x API
-    ledcAttach(PIN_MOTOR_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcAttach(PIN_MOTOR_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcAttach(PIN_MOTOR_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcAttach(PIN_MOTOR_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    ledcSetup(MOTOR_CH_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    ledcSetup(MOTOR_CH_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    ledcSetup(MOTOR_CH_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    ledcSetup(MOTOR_CH_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    ledcAttachPin(PIN_MOTOR_L_IN1, MOTOR_CH_L_IN1);
+    ledcAttachPin(PIN_MOTOR_L_IN2, MOTOR_CH_L_IN2);
+    ledcAttachPin(PIN_MOTOR_R_IN1, MOTOR_CH_R_IN1);
+    ledcAttachPin(PIN_MOTOR_R_IN2, MOTOR_CH_R_IN2);
+    Serial.println("[Motor] PWM channels attached");
 
-    // Limit switches: active-LOW (switch connects pin to GND when triggered)
-    pinMode(PIN_LIMIT_FRONT, INPUT_PULLUP);
-    pinMode(PIN_LIMIT_BACK,  INPUT_PULLUP);
+    if (PIN_LIMIT_FRONT >= 0) {
+        pinMode(PIN_LIMIT_FRONT, INPUT_PULLUP);
+        _frontLimitHit = (digitalRead(PIN_LIMIT_FRONT) == LOW);
+        attachInterrupt(digitalPinToInterrupt(PIN_LIMIT_FRONT), onFrontLimit, FALLING);
+        Serial.printf("[Motor] front limit enabled on GPIO%d\n", PIN_LIMIT_FRONT);
+    } else {
+        Serial.println("[Motor] front limit disabled");
+    }
 
-    // Sync ISR flags with current pin state at startup
-    _frontLimitHit = (digitalRead(PIN_LIMIT_FRONT) == LOW);
-    _backLimitHit  = (digitalRead(PIN_LIMIT_BACK)  == LOW);
-
-    attachInterrupt(digitalPinToInterrupt(PIN_LIMIT_FRONT), onFrontLimit, FALLING);
-    attachInterrupt(digitalPinToInterrupt(PIN_LIMIT_BACK),  onBackLimit,  FALLING);
+    if (PIN_LIMIT_BACK >= 0) {
+        pinMode(PIN_LIMIT_BACK, INPUT_PULLUP);
+        _backLimitHit = (digitalRead(PIN_LIMIT_BACK) == LOW);
+        attachInterrupt(digitalPinToInterrupt(PIN_LIMIT_BACK), onBackLimit, FALLING);
+        Serial.printf("[Motor] back limit enabled on GPIO%d\n", PIN_LIMIT_BACK);
+    } else {
+        Serial.println("[Motor] back limit disabled");
+    }
 
     stop();
     Serial.println("[Motor] begin() — pins ready, LEDC attached, interrupts armed");
 }
 
 // ── setMotor() ───────────────────────────────────────────────────────────────
-// DRV8833 truth table:
-//   IN1=PWM  IN2=0    → forward  (speed via IN1)
-//   IN1=0    IN2=PWM  → reverse  (speed via IN2)
-//   IN1=255  IN2=255  → brake    (both outputs LOW)
-//   IN1=0    IN2=0    → coast    (both outputs high-Z)
+// DRV8833-style phase/enable test mode:
+//   forward channel = PWM, reverse channel = 0 -> forward
+//   forward channel = 0, reverse channel = PWM -> reverse
+//   both channels = 0 -> coast/stop for safe bench bring-up
 
 void MotorController::setMotor(uint8_t motor, int dir, int speed) {
-    uint8_t pinIn1 = (motor == 0) ? PIN_MOTOR_L_IN1 : PIN_MOTOR_R_IN1;
-    uint8_t pinIn2 = (motor == 0) ? PIN_MOTOR_L_IN2 : PIN_MOTOR_R_IN2;
-    int     duty   = constrain(speed, 0, 255);
+    const uint8_t chForward = motorForwardChannel(motor);
+    const uint8_t chReverse = motorReverseChannel(motor);
+    const int duty = constrain(speed, 0, 255);
+    int dutyForward = 0;
+    int dutyReverse = 0;
 
-    if (dir == 1) {                    // forward
-        ledcWrite(pinIn1, duty);
-        ledcWrite(pinIn2, 0);
-    } else if (dir == -1) {            // reverse
-        ledcWrite(pinIn1, 0);
-        ledcWrite(pinIn2, duty);
-    } else {                           // brake
-        ledcWrite(pinIn1, 255);
-        ledcWrite(pinIn2, 255);
+    if (dir == 1) {
+        dutyForward = duty;
+    } else if (dir == -1) {
+        dutyReverse = duty;
     }
+
+    ledcWrite(chForward, dutyForward);
+    ledcWrite(chReverse, dutyReverse);
+
+    Serial.printf("[Motor] motor=%s dir=%d speed=%d -> forward_ch%d=%d reverse_ch%d=%d\n",
+                  motorName(motor),
+                  dir,
+                  speed,
+                  chForward,
+                  dutyForward,
+                  chReverse,
+                  dutyReverse);
+}
+
+void MotorController::debugDriveRaw(int lIn1, int lIn2, int rIn1, int rIn2, uint32_t durationMs) {
+    lIn1 = constrain(lIn1, 0, 255);
+    lIn2 = constrain(lIn2, 0, 255);
+    rIn1 = constrain(rIn1, 0, 255);
+    rIn2 = constrain(rIn2, 0, 255);
+
+    Serial.printf("[MotorRaw] GPIO1/L_IN1=%d GPIO2/L_IN2=%d GPIO47/R_IN1=%d GPIO38/R_IN2=%d for %lu ms\n",
+                  lIn1,
+                  lIn2,
+                  rIn1,
+                  rIn2,
+                  static_cast<unsigned long>(durationMs));
+
+    ledcWrite(MOTOR_CH_L_IN1, lIn1);
+    ledcWrite(MOTOR_CH_L_IN2, lIn2);
+    ledcWrite(MOTOR_CH_R_IN1, rIn1);
+    ledcWrite(MOTOR_CH_R_IN2, rIn2);
+    delay(durationMs);
+    stop();
 }
 
 // ── stop() ───────────────────────────────────────────────────────────────────
@@ -193,6 +267,10 @@ void MotorController::turn(float angle_deg) {
 // Returns true if the back limit switch is currently pressed (active-LOW).
 
 bool MotorController::isDocked() {
+    if (PIN_LIMIT_BACK < 0) {
+        return false;
+    }
+
     return digitalRead(PIN_LIMIT_BACK) == LOW;
 }
 

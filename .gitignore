@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.vision-venv/
 venv/
 **/.venv/
 **/venv/
@@ -43,3 +44,5 @@ Thumbs.db
 .pio/
 .pioenvs/
 .piolibdeps/
+robot/firmware/compile_commands.json
+.agents/

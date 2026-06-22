@@ -5,6 +5,8 @@ The project is still in staged integration: local simulation is runnable now,
 while real ASR/VAD/VLM model execution is intentionally represented by
 interfaces and placeholders.
 
+Updated status: 2026-06-22. For the repo-wide handoff, see [project_status_2026-06-22.md](project_status_2026-06-22.md).
+
 ## Local Simulation vs DK-2500
 
 Windows local development currently uses deterministic fake sources:
@@ -24,6 +26,14 @@ DK-2500 deployment will replace those pieces with real sources:
 The Qwen2.5-VL-3B deployment route is Optimum Intel / OpenVINO /
 OpenVINO GenAI. Do not plan to run it through direct PyTorch Transformers
 in production on DK-2500.
+
+The first integrated hardware demo should still prioritize `/control`:
+
+```text
+ESP32 device.hello -> DK-2500 system.welcome -> display.expression/motion.execute -> motion.completed/error.report
+```
+
+Do not block this route on real ASR/VAD/VLM model deployment.
 
 ## Environment Check
 
@@ -60,6 +70,8 @@ base_station/models/qwen2_5_vl_openvino
 
 The checker does not create these directories. Create or mount them during
 deployment setup, and do not commit downloaded model files.
+
+Model placement notes are maintained in [model_download.md](model_download.md).
 
 ## Local Commands
 

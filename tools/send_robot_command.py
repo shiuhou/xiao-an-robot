@@ -32,6 +32,11 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
             "command": "audio.play_tts",
             "text": args.text,
         }
+    elif args.command_name == "local":
+        payload = {
+            "command": "audio.play_local",
+            "sound": args.sound,
+        }
     else:
         raise ValueError(f"Unsupported command: {args.command_name}")
 
@@ -87,6 +92,9 @@ def parse_args() -> argparse.Namespace:
 
     tts = subparsers.add_parser("tts", help="Forward an audio.play_tts command.")
     tts.add_argument("--text", required=True, help="Text preview to send with the mock TTS command.")
+
+    local = subparsers.add_parser("local", help="Forward an audio.play_local command.")
+    local.add_argument("--sound", default="care_01", help="Local sound id, for example care_01.")
 
     return parser.parse_args()
 

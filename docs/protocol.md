@@ -1,8 +1,8 @@
 # WebSocket 通信协议 v0.1
 
-> **状态**：草案，待团队确认后冻结
+> **状态**：草案，当前 `/control` 最小闭环已部分实现，`/audio` 与 `/video` 仍处于 staged integration
 > **维护者**：张子尧（统筹）
-> **最后更新**：2026-04-27
+> **最后更新**：2026-06-22
 
 ---
 
@@ -490,26 +490,30 @@
 
 ### 机器人端（施宇灏）
 
-- [ ] 实现 WebSocket Client（推荐 ArduinoWebsockets 库）
-- [ ] 实现 JSON 序列化/反序列化（ArduinoJson 库）
-- [ ] 实现指数退避重连
-- [ ] 实现心跳定时器
-- [ ] 实现 `protocol.h`，定义所有 type 常量
-- [ ] 实现 9 种表情资源烧录
-- [ ] 实现 4 种本地音效烧录
-- [ ] 实现 7 种 motion action 的执行函数
-- [ ] 实现音频 PCM 采集与推流
-- [ ] 实现视频 JPEG 抓帧与推流
+- [x] 实现 `/control` WebSocket Client（当前在 `robot/firmware/src/ws_client.cpp`）
+- [x] 实现 JSON 序列化/反序列化（ArduinoJson）
+- [x] 实现指数退避重连
+- [x] 实现心跳定时器
+- [x] 实现 `protocol.h`，定义主要 type 常量
+- [x] 实现 `device.hello` / `device.heartbeat` / `device.status` / `motion.completed` / `error.report`
+- [x] 实现 `display.expression` 与 `motion.execute` 的最小分发
+- [x] 实现马达控制的 isolated bring-up env
+- [x] 实现相机、TFT、INMP441、MAX98357A 的 isolated bring-up env
+- [ ] 将 9 种表情资源整合进主 firmware loop
+- [ ] 实现 4 种本地音效烧录与播放
+- [ ] 将音频 PCM 采集接入主 `/audio` 推流
+- [ ] 将视频 JPEG 抓帧接入主 `/video` 推流
 
 ### 基站端（郑斯悦 + 张子尧）
 
-- [ ] 实现 WebSocket Server（推荐 `websockets` Python 库）
-- [ ] 实现三通道路由（`/control` `/audio` `/video`）
-- [ ] 实现机器人会话管理（device_id → session 映射）
-- [ ] 实现心跳超时检测
-- [ ] 实现 `protocol.py`，定义所有消息 dataclass
-- [ ] 实现 TTS 合成 + HTTP 文件服务
-- [ ] 实现指令下发的统一接口（供 Agent 调用）
+- [x] 实现 WebSocket Server（Python `websockets`）
+- [x] 实现通道路由（`/control` `/audio` `/video` `/agent`）
+- [x] 实现 `/agent` 到在线机器人 session 的命令转发
+- [x] 实现 mock robot 与 unit/integration tests
+- [x] 实现 Agent 侧 `RobotGateway` / `RobotMotionSkill` 最小命令接口
+- [ ] 完成真实机器人会话状态与心跳超时策略的硬件联调
+- [ ] 冻结 `protocol.py` / schema 与 firmware constants 的版本对应关系
+- [ ] 实现 TTS 合成 + HTTP 文件服务并接入真实播放
 
 ---
 

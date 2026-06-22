@@ -115,6 +115,32 @@ async def handle_control(websocket: ServerConnection):
             elif msg_type == MessageType.ERROR_REPORT:
                 logger.warning(f"Robot error [{payload.get('code')}]: {payload.get('message')}")
 
+            elif raw.get("type") == "command.ack":
+                logger.info(
+                    "Command ack: type=%s status=%s",
+                    payload.get("command_type"),
+                    payload.get("status"),
+                )
+
+            elif raw.get("type") == "video.frame_meta":
+                logger.info(
+                    "Video meta: frame_id=%s %sx%s",
+                    payload.get("frame_id"),
+                    payload.get("width"),
+                    payload.get("height"),
+                )
+
+            elif raw.get("type") == "video.frame":
+                data = payload.get("data", "")
+                logger.info(
+                    "Video frame base64: frame_id=%s bytes=%s",
+                    payload.get("frame_id"),
+                    len(data) if isinstance(data, str) else 0,
+                )
+
+            elif raw.get("type") == "asr.transcript.mock":
+                logger.info("ASR mock transcript: %s", payload.get("text"))
+
     except ConnectionClosed:
         logger.info(f"Robot disconnected: {device_id}")
     finally:
@@ -260,15 +286,23 @@ async def handle_audio(websocket: ServerConnection):
 async def handle_video(websocket: ServerConnection):
     """Handle /video channel: receive JPEG frames from robot."""
     logger.info("Video stream connected")
+    latest_path = None
+    try:
+        from pathlib import Path
+        latest_path = Path("runtime") / "latest.jpg"
+        latest_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        latest_path = None
+
     try:
         async for frame in websocket:
             if isinstance(frame, bytes) and len(frame) > 8:
-                # Parse 8-byte header: 4B length + 4B timestamp
                 length = int.from_bytes(frame[0:4], "big")
                 timestamp = int.from_bytes(frame[4:8], "big")
                 jpeg_data = frame[8:8 + length]
-                # TODO: pipe jpeg_data to face emotion detection pipeline
-                logger.debug(f"Video frame: {length} bytes, ts={timestamp}")
+                logger.info(f"Video frame: {length} bytes, ts={timestamp}")
+                if latest_path and jpeg_data:
+                    latest_path.write_bytes(jpeg_data)
     except ConnectionClosed:
         logger.info("Video stream disconnected")
 

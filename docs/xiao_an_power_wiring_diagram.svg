@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900">
+  <defs>
+    <style>
+      .title { font: 700 34px Arial, sans-serif; fill: #111827; }
+      .subtitle { font: 18px Arial, sans-serif; fill: #374151; }
+      .box-title { font: 700 22px Arial, sans-serif; fill: #111827; }
+      .text { font: 17px Arial, sans-serif; fill: #111827; }
+      .small { font: 15px Arial, sans-serif; fill: #374151; }
+      .warn { font: 700 17px Arial, sans-serif; fill: #b91c1c; }
+      .box { fill: #ffffff; stroke: #374151; stroke-width: 2.2; rx: 14; }
+      .green { fill: #dcfce7; stroke: #15803d; }
+      .black { fill: #111827; stroke: #111827; }
+      .blackText { fill: #f9fafb; }
+      .battery { fill: #fef3c7; stroke: #b45309; }
+      .bus5 { fill: #fee2e2; stroke: #dc2626; }
+      .busg { fill: #e5e7eb; stroke: #374151; }
+      .bus3 { fill: #dbeafe; stroke: #2563eb; }
+      .cap { fill: #f3e8ff; stroke: #7e22ce; }
+      .red { stroke: #dc2626; stroke-width: 5; fill: none; marker-end: url(#arrowRed); }
+      .blackLine { stroke: #111827; stroke-width: 5; fill: none; marker-end: url(#arrowBlack); }
+      .orange { stroke: #f97316; stroke-width: 5; fill: none; marker-end: url(#arrowOrange); }
+      .blue { stroke: #2563eb; stroke-width: 4; fill: none; marker-end: url(#arrowBlue); }
+      .dash { stroke-dasharray: 9 7; }
+      .no { stroke: #b91c1c; stroke-width: 5; fill: none; }
+    </style>
+    <marker id="arrowRed" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowBlack" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#111827"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#f97316"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2563eb"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="900" fill="#f8fafc"/>
+  <text x="55" y="60" class="title">小安供電接線圖：無線充電 + 充放電管理 + 5V/GND 分電</text>
+  <text x="55" y="92" class="subtitle">原則：綠色板只當無線接收輸入；黑色板負責電池充放電與升壓；黑色板 OUT 5V/GND 才是全機主 5V 輸出。</text>
+
+  <rect x="70" y="155" width="210" height="140" class="box"/>
+  <text x="105" y="195" class="box-title">Dock 發射端</text>
+  <text x="105" y="230" class="text">5V USB/適配器</text>
+  <text x="105" y="260" class="small">只在底座上</text>
+
+  <rect x="370" y="145" width="245" height="160" class="box green"/>
+  <text x="405" y="185" class="box-title">綠色無線接收板</text>
+  <text x="405" y="220" class="text">線圈輸入</text>
+  <text x="405" y="250" class="text">WOUT+ / WOUT-</text>
+  <text x="405" y="280" class="warn">BAT+ / BAT- 先不要接</text>
+
+  <rect x="735" y="125" width="280" height="205" class="box black"/>
+  <text x="775" y="168" class="box-title blackText">黑色 Charge &amp; DisCharge</text>
+  <text x="775" y="205" class="text blackText">VIN / GND：接 WOUT</text>
+  <text x="775" y="238" class="text blackText">BAT / GND：接電池</text>
+  <text x="775" y="271" class="text blackText">OUT 5V / GND：輸出</text>
+  <text x="775" y="302" class="small blackText">內含充電 + 升壓 5V</text>
+
+  <rect x="1110" y="145" width="210" height="160" class="box battery"/>
+  <text x="1155" y="190" class="box-title">鋰電池</text>
+  <text x="1155" y="225" class="text">3.7V 單節</text>
+  <text x="1155" y="255" class="small">BAT+ / BAT-</text>
+
+  <path d="M280 225 C315 225 330 225 370 225" class="orange"/>
+  <text x="300" y="205" class="small">磁耦合</text>
+
+  <path d="M615 220 C675 220 690 205 735 205" class="red"/>
+  <text x="635" y="195" class="small">WOUT+ → VIN</text>
+  <path d="M615 265 C675 265 690 242 735 242" class="blackLine"/>
+  <text x="635" y="290" class="small">WOUT- → GND</text>
+
+  <path d="M1015 218 C1055 218 1068 210 1110 210" class="red"/>
+  <text x="1035" y="193" class="small">BAT → 電池 +</text>
+  <path d="M1015 258 C1055 258 1068 252 1110 252" class="blackLine"/>
+  <text x="1035" y="285" class="small">GND → 電池 -</text>
+
+  <rect x="250" y="470" width="250" height="105" class="box bus5"/>
+  <text x="300" y="510" class="box-title">5V 主分電</text>
+  <text x="290" y="545" class="text">麵包板紅 rail / 洞洞板 5V bus</text>
+
+  <rect x="560" y="470" width="250" height="105" class="box busg"/>
+  <text x="615" y="510" class="box-title">GND 主分電</text>
+  <text x="595" y="545" class="text">麵包板藍 rail / 洞洞板 GND bus</text>
+
+  <rect x="880" y="470" width="230" height="105" class="box bus3"/>
+  <text x="940" y="510" class="box-title">3V3 小母線</text>
+  <text x="915" y="545" class="text">只接小電流 logic</text>
+
+  <path d="M875 330 C760 415 520 400 430 470" class="red"/>
+  <text x="570" y="422" class="small">OUT 5V → 5V 主分電</text>
+  <path d="M900 330 C830 435 755 430 710 470" class="blackLine"/>
+  <text x="770" y="452" class="small">OUT GND → GND 主分電</text>
+
+  <rect x="80" y="665" width="180" height="105" class="box"/>
+  <text x="115" y="705" class="box-title">ESP32-S3-CAM</text>
+  <text x="115" y="738" class="text">5V + GND</text>
+
+  <rect x="310" y="665" width="170" height="105" class="box"/>
+  <text x="350" y="705" class="box-title">ST7789V TFT</text>
+  <text x="342" y="738" class="text">VCC + LED + GND</text>
+
+  <rect x="530" y="665" width="185" height="105" class="box"/>
+  <text x="568" y="705" class="box-title">DRV8833</text>
+  <text x="565" y="738" class="text">VM + GND</text>
+
+  <rect x="760" y="665" width="210" height="105" class="box"/>
+  <text x="800" y="705" class="box-title">INMP441 / I2C</text>
+  <text x="795" y="738" class="text">3V3 + GND</text>
+
+  <rect x="1020" y="665" width="210" height="105" class="box"/>
+  <text x="1055" y="705" class="box-title">MAX98357A</text>
+  <text x="1052" y="738" class="text">VIN + GND</text>
+
+  <path d="M310 575 C270 620 205 620 170 665" class="red"/>
+  <path d="M620 575 C525 620 250 620 170 665" class="blackLine"/>
+  <path d="M355 575 C365 620 390 620 395 665" class="red"/>
+  <path d="M660 575 C590 622 460 625 395 665" class="blackLine"/>
+  <path d="M400 575 C455 610 575 620 622 665" class="red"/>
+  <path d="M690 575 C675 610 642 625 622 665" class="blackLine"/>
+  <path d="M995 575 C945 625 885 625 865 665" class="blue"/>
+  <path d="M705 575 C748 620 825 625 865 665" class="blackLine"/>
+  <path d="M450 575 C620 618 990 625 1125 665" class="red"/>
+  <path d="M750 575 C845 620 1040 625 1125 665" class="blackLine"/>
+
+  <rect x="80" y="805" width="460" height="60" class="box cap"/>
+  <text x="105" y="842" class="text">5V/GND 主分電：1000uF 電解 + 0.1uF 陶瓷</text>
+  <rect x="585" y="805" width="380" height="60" class="box cap"/>
+  <text x="610" y="842" class="text">ESP32 旁：100uF 或 470uF 電解</text>
+  <rect x="1005" y="805" width="310" height="60" class="box cap"/>
+  <text x="1030" y="842" class="text">DRV8833 旁：470uF 或 1000uF</text>
+
+  <line x1="414" y1="279" x2="555" y2="279" class="no"/>
+  <line x1="555" y1="279" x2="555" y2="295" class="no"/>
+  <text x="405" y="337" class="warn">綠色板 BAT 不要再接電池，避免雙充電路並聯</text>
+</svg>

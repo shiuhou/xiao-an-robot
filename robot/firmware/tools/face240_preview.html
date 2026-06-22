@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Face240 Preview</title>
+  <style>
+    body { margin:0; min-height:100vh; display:grid; place-items:center; gap:12px;
+      background:#101214; color:#cbd5e1; font-family:system-ui,sans-serif; }
+    canvas { width:min(96vw,960px); aspect-ratio:4/3; background:#00070d; border:1px solid #27313a;
+      image-rendering:pixelated; }
+    .bar { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; max-width:960px; padding:0 16px; }
+    button { border:1px solid #334155; background:#0f172a; color:#e2e8f0; padding:8px 11px;
+      border-radius:6px; cursor:pointer; }
+    button.active { border-color:#7efff2; color:#7efff2; }
+    .hint { font-size:13px; color:#64748b; text-align:center; max-width:720px; padding:0 16px 18px; }
+  </style>
+</head>
+<body>
+  <canvas id="screen" width="320" height="240"></canvas>
+  <p class="hint">统一 SAD 式 pill 眼 + 眼皮遮罩，放大全屏，粗圆弧线。与 face240_roboeyes 一致。</p>
+  <div class="bar" id="buttons"></div>
+<script>
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+const names = ["HAPPY","SAD","SURPRISED","ANGRY","CONTENT","WINK","DOTS","QUESTION","ALERT"];
+const C = { bg:"#00070d", cyanSoft:"#b0ecff", red:"#ff3a44", yellow:"#ffe537" };
+const FCX=160, FCY=108, EYL=92, EYR=228, EYC=102, EW=66, EH=58, MCY=174;
+const SM=10, SB=8, SR=10;
+let expression=0, start=performance.now(), auto=true, current=null, target=null;
+
+document.getElementById("buttons").append(...names.map((n,i)=>{
+  const b=document.createElement("button"); b.textContent=n;
+  b.onclick=()=>{ expression=i; auto=false; start=performance.now(); setTarget(i,false); }; return b;
+}));
+
+function makeEye(cx,cy,w,h,lid){ return {cx,cy,w,h,lid}; }
+function makeMouth(cx,cy,w,h,mode){ return {cx,cy,w,h,mode}; }
+
+function poseFor(i){
+  const p={ color:C.cyanSoft, symbolOnly:false, eyebrows:false,
+    left:makeEye(EYL,EYC,EW,EH,"none"), right:makeEye(EYR,EYC,EW,EH,"none"),
+    mouth:makeMouth(FCX,MCY-8,48,24,"smile") };
+  if(i===0) p.mouth=makeMouth(FCX,MCY-10,56,34,"dshape");
+  else if(i===1){ p.left.lid=p.right.lid="tired"; p.mouth=makeMouth(FCX,MCY,50,22,"frown"); }
+  else if(i===2){ p.left.h=p.right.h=EH+4; p.mouth=makeMouth(FCX,MCY-4,36,36,"round"); p.eyebrows=true; }
+  else if(i===3){ p.left.lid=p.right.lid="angry"; p.mouth=makeMouth(FCX,MCY+2,48,22,"frown"); p.color=C.red; }
+  else if(i===4){ p.left.lid=p.right.lid="happy"; p.mouth=makeMouth(FCX,MCY-6,58,24,"smileWide"); }
+  else if(i===5){ p.right.w=58; p.right.h=10; p.mouth=makeMouth(FCX,MCY-4,46,22,"smile"); }
+  else { p.symbolOnly=true; p.color=(i===7)?C.yellow:C.red; p.mouth=makeMouth(FCX,FCY,2,2,"hidden"); }
+  return p;
+}
+
+function setTarget(i,imm){ target=poseFor(i); if(!current||imm){ current=JSON.parse(JSON.stringify(target)); return; }
+  Object.assign(current,{color:target.color,symbolOnly:target.symbolOnly,eyebrows:target.eyebrows});
+  ["left","right"].forEach(k=>{ current[k].lid=target[k].lid; });
+  current.mouth.mode=target.mouth.mode;
+}
+function morph(kE=0.24,kM=0.26){
+  ["left","right"].forEach(k=>["cx","cy","w","h"].forEach(f=>{ current[k][f]+=(target[k][f]-current[k][f])*kE; }));
+  ["cx","cy","w","h"].forEach(f=>{ current.mouth[f]+=(target.mouth[f]-current.mouth[f])*kM; });
+}
+function blink(t,on){ if(!on)return 1; const ph=t%3800; if(ph>120)return 1; const d=ph<60?ph:120-ph; return Math.max(0.08,1-d*0.92/60); }
+function arc(cx,cy,r,a0,a1,w,col){ ctx.strokeStyle=col; ctx.lineWidth=w; ctx.lineCap="round"; ctx.beginPath(); ctx.arc(cx,cy,r,a0,a1); ctx.stroke(); }
+function pill(cx,cy,w,h,col){
+  ctx.fillStyle=col; ctx.beginPath(); ctx.roundRect(cx-w/2,cy-h/2,w,h,Math.min(w,h)/2); ctx.fill();
+}
+function lids(x,y,w,h,lid,left){
+  if(lid==="none")return; ctx.fillStyle=C.bg; const lh=Math.max(2,h/2); ctx.beginPath();
+  if(lid==="tired"){ if(left){ ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x,y+lh-1); }
+    else { ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x+w,y+lh-1); } }
+  else if(lid==="angry"){ if(left){ ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x+w,y+lh-1); }
+    else { ctx.moveTo(x,y-1); ctx.lineTo(x+w,y-1); ctx.lineTo(x,y+lh-1); } }
+  else if(lid==="happy"){ ctx.roundRect(x-1,y+h-lh+1,w+2,h,Math.min(w,h)/2); }
+  ctx.fill();
+}
+function drawEye(e,t,col,left,expr){
+  const cx=e.cx+Math.sin(t/1600)*1.5, cy=e.cy+Math.sin(t/1900);
+  const wink=expr===5&&!left;
+  const b=blink(t,!current.symbolOnly&&expr!==2&&!wink);
+  const w=Math.max(6,e.w), fh=Math.max(6,e.h), h=Math.max(wink?6:8,fh*(wink?1:b));
+  const dcy=cy+(fh-h)/2, x=cx-w/2, y=dcy-h/2;
+  pill(cx,dcy,w,h,col); lids(x,y,w,h,wink?"none":e.lid,left);
+}
+function drawMouth(m,col){
+  if(m.mode==="hidden")return;
+  const {cx,cy,w,h}=m;
+  if(m.mode==="smile") arc(cx,cy-h/3,Math.max(20,w/2),Math.PI*0.2,Math.PI*0.8,SM-1,col);
+  else if(m.mode==="smileWide") arc(cx,cy-h/3,Math.max(28,w/2),Math.PI*0.18,Math.PI*0.82,SM,col);
+  else if(m.mode==="frown") arc(cx,cy+h/3,Math.max(22,w/2),Math.PI*1.17,Math.PI*1.83,SM,col);
+  else if(m.mode==="round"){ ctx.strokeStyle=col; ctx.lineWidth=SR; ctx.beginPath(); ctx.arc(cx,cy,w/2,0,Math.PI*2); ctx.stroke(); }
+  else if(m.mode==="dshape"){ ctx.fillStyle=col; ctx.beginPath(); ctx.roundRect(cx-w/2,cy-h/2,w,h,h/2); ctx.fill();
+    ctx.fillStyle=C.bg; ctx.beginPath(); ctx.arc(cx,cy-h/2,w/2+2,Math.PI,0); ctx.fill(); }
+}
+function symbols(i,t){
+  if(i===6){ const a=Math.floor(t/300)%3; for(let j=0;j<3;j++){ const r=j===a?15:11;
+    ctx.fillStyle=C.red; ctx.beginPath(); ctx.arc(96+j*64,FCY+8,r,0,Math.PI*2); ctx.fill(); } }
+  else if(i===7){
+    const p=Math.sin(t/450)*1.0, cx=FCX+4;
+    arc(cx-8,68,48+p/2,Math.PI*1.10,Math.PI*1.90,14,C.yellow);
+    ctx.fillStyle=C.yellow; ctx.beginPath(); ctx.roundRect(cx-9,128,18,32,9); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx,182,13+(p>0?1:0),0,Math.PI*2); ctx.fill();
+  }
+  else if(i===8){ const p=Math.sin(t/240)*2;
+    ctx.fillStyle=C.red; ctx.beginPath(); ctx.roundRect(FCX-14-p/2,52,28+p,108,14); ctx.fill();
+    ctx.beginPath(); ctx.arc(FCX,184,16+(p>0?1:0),0,Math.PI*2); ctx.fill(); }
+}
+function render(now){
+  if(auto){ const ni=Math.floor((now-start)/3500)%9; if(ni!==expression){ expression=ni; setTarget(ni,false); } }
+  [...document.getElementById("buttons").children].forEach((b,i)=>b.classList.toggle("active",i===expression));
+  morph(); const t=now-start;
+  ctx.fillStyle=C.bg; ctx.fillRect(0,0,320,240);
+  if(current.symbolOnly) symbols(expression,t);
+  else {
+    if(current.eyebrows){ const w=Math.sin(t/650); arc(EYL,72+w,24,Math.PI*1.22,Math.PI*1.78,SB,C.cyanSoft);
+      arc(EYR,72+w,24,Math.PI*1.22,Math.PI*1.78,SB,C.cyanSoft); }
+    drawEye(current.left,t,current.color,true,expression);
+    drawEye(current.right,t,current.color,false,expression);
+    drawMouth(current.mouth,current.color);
+  }
+  requestAnimationFrame(render);
+}
+setTarget(0,true); requestAnimationFrame(render);
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+# Xiao An Project Status - 2026-06-22
+
+This is the current repository snapshot after the firmware bring-up envs and hardware notes were consolidated.
+
+## Git / Workspace State
+
+- Current branch: `main`.
+- Local `main` is tracking `origin/main`.
+- The working tree already contains local firmware changes that should be treated as active work, not reverted:
+  - `robot/firmware/platformio.ini` has new envs for WiFi motor control, camera+motor+QR overlay, 2.4 inch face display tests, and ST7789 probe variants.
+  - `robot/firmware/testing/` has been removed from the working tree.
+  - New firmware source files exist for `motor_wifi_manual`, `motor_cam_wifi_manual`, `face240_*`, and `tft_espi_probe`.
+  - `robot/firmware/tools/face240_preview.html` exists for browser preview of the 320x240 face design.
+  - `robot/firmware/tools/test_face240_raw_dirty_rect.py` exists as a lightweight structural check for the `face240_raw_design_test.cpp` dirty-rect renderer.
+- `docs/xiao_an_power_wiring_diagram.svg` and the root-level `docs\xiao_an_power_wiring_diagram.svg` path appear as the same tracked file on Windows path display; keep only the repository `docs/` asset path in documentation.
+
+## Current Repo Shape
+
+| Area | Role |
+| --- | --- |
+| `robot/firmware` | ESP32-S3 main firmware plus isolated PlatformIO hardware bring-up envs |
+| `base_station` | DK-2500 WebSocket server, local perception runtime, emotion/ASR monitoring |
+| `agent` | Agent brain, OpenClaw adapter path, local tools, memory/context shell, robot skills |
+| `shared` | Protocol constants, schemas, and example messages |
+| `tests` | Unit/integration tests and mock robot |
+| `tools` | Runtime probes and command senders |
+| `docs` | Architecture, protocol, deployment, hardware, status, troubleshooting |
+| `hardware` | BOM, wiring, DK-2500, shell, dock, and power notes |
+| `frontend` | Early desktop UI placeholder |
+
+Generated/private items that should stay out of commits:
+
+- `.venv/`, `.vision-venv/`, `.agents/`
+- `.pio/`, `.pioenvs/`, `.piolibdeps/`
+- `robot/firmware/compile_commands.json`
+- model binaries, local SQLite databases, real logs, local `.env` files
+
+## What Is Working Now
+
+### Base Station / Agent
+
+- `/control`, `/agent`, `/audio`, and `/video` WebSocket routes exist.
+- `/agent` can forward local Agent commands to an online robot session.
+- `RobotGateway` and `RobotMotionSkill` can send expression, motion, and TTS command messages.
+- `care_for_user()` produces the core active-care command sequence.
+- `XiaoAnBrain` has MVP routing for emotion, ASR, frontend, and OpenClaw/tool-call style events.
+- `CompanionRequestSkill`, `asr_runtime`, and `asr_emotion_trigger` are covered by tests.
+- `EmotionDB`, `EmotionEventLoop`, and `emotion_runtime` support fake/mock/OpenCV-source active-care simulation.
+- Qwen/VLM trigger and wrapper paths exist. Real OpenVINO Qwen generation is still staged.
+
+### ESP32-S3 Main Firmware
+
+- Main `/control` WebSocket client exists in `ws_client.cpp/.h`.
+- Firmware sends:
+  - `device.hello`
+  - `device.heartbeat`
+  - `device.status`
+  - `motion.completed`
+  - `error.report`
+- Firmware receives and dispatches:
+  - `system.welcome`
+  - `display.expression`
+  - `motion.execute`
+  - `audio.play_tts`
+  - `audio.play_local`
+  - `config.update`
+  - `system.shutdown`
+- `motion.execute` accepts legacy `payload.param` and nested `payload.params`.
+- ESP32 echoes `action_id` back in `motion.completed`.
+- Audio commands intentionally return `AUDIO_UNSUPPORTED` until MAX98357A/TTS playback is implemented.
+
+## Firmware Env Matrix
+
+Dedicated PlatformIO envs now cover the current hardware experiments:
+
+| Env | Status | Purpose |
+| --- | --- | --- |
+| `esp32-s3-devkitc-1` | Main integration path | `/control` firmware build |
+| `camtesting` | Test-ready | OV2640 capture and AP stream path |
+| `motor_bench_once` | Test-ready | One-shot motor direction and safety validation |
+| `motor_manual` | Test-ready | Serial WASD motor control |
+| `motor_wifi_manual` | New / test-ready | Browser WASD motor control over ESP32 AP |
+| `keepfacecenter` | Test-ready | Camera + motor target-centering pulse demo |
+| `serialqrservo` | Test-ready | Serial JPEG stream plus PC-side QR visual servo |
+| `motor_cam_wifi_manual` | New / current integrated demo env | Browser motor control, camera stream, on-device QR decode, stream overlay |
+| `redtracker` | Experimental | On-device red target tracking |
+| `serialredtracker` | Experimental | Serial red target tracking |
+| `display_test` / `tfttest` | Test-ready | 128x160 ST7735 TFT bring-up |
+| `face240` | New / test-ready | Raw 2.4 inch 320x240 ST7789 face design |
+| `face240_wiretest` | New / test-ready | Raw ST7789 color/wiring test |
+| `face240_espi` | New / experimental | TFT_eSPI sprite face test |
+| `tftprobe_*` | New / diagnostic | ST7789 driver, RGB/BGR, inversion, and raw-init probe variants |
+| `voice_recognition_test` | Test-ready | INMP441 I2S RMS/voice activity test |
+| `speaker_amp_test` | Test-ready | MAX98357A I2S tone playback test |
+
+Related face display tools:
+
+- `robot/firmware/tools/face240_preview.html`
+- `robot/firmware/tools/test_face240_raw_dirty_rect.py`
+
+Validate with targeted commands:
+
+```powershell
+cd robot\firmware
+pio run -e esp32-s3-devkitc-1
+pio run -e motor_cam_wifi_manual
+pio run -e face240_wiretest
+pio run -e voice_recognition_test
+pio run -e speaker_amp_test
+```
+
+If PlatformIO state looks stale, clean the target env first:
+
+```powershell
+pio run -e motor_cam_wifi_manual -t clean
+pio run -e motor_cam_wifi_manual
+```
+
+## Hardware Wiring Assumptions
+
+Current firmware pin assumptions are captured in [hardware/wiring/esp32_pinout.md](../hardware/wiring/esp32_pinout.md).
+
+High-risk wiring notes:
+
+- Motor pins are currently `GPIO1/GPIO2` for the left DRV8833 channel and `GPIO47/GPIO38` for the right channel.
+- Limit switches are disabled in firmware (`-1`) until final GPIOs are assigned.
+- OV2640 and TFT test wiring overlap on GPIO9/10/11/12. These tests are isolated envs unless the integrated board wiring is repinned.
+- `motor_cam_wifi_manual` uses ESP32 AP mode with SSID `XiaoAn-Motor`, password `12345678`, control UI at `http://192.168.4.1/`, and MJPEG stream at `http://192.168.4.1:81/stream`.
+
+## Main Gaps
+
+### Hardware Integration
+
+- Full-body hardware integration is not proven yet.
+- Main firmware still does not stream `/video` or `/audio` into the base station loop.
+- Camera, TFT, motor, mic, and speaker tests exist as isolated envs; each still needs bench validation on the final wiring.
+- Limit switch GPIOs and dock behavior still need final assignment and validation.
+- WiFi credentials and base-station IP are still firmware-level placeholders and should move to local config/NVS before deployment.
+
+### AI / DK-2500
+
+- Real OpenVINO face emotion postprocessing is still staged.
+- Qwen2.5-VL OpenVINO generation is still not fully wired.
+- Real ASR/VAD/TTS model execution still needs deployment wiring.
+- Remote perception/memory branches need controlled review before merge.
+
+### Product / Demo
+
+- Frontend remains early.
+- Dock mechanical behavior and wireless charging remain hardware-stage tasks.
+- Audio playback should follow the visible control loop; do not make it a blocker for the first demo.
+
+## Recommended Next Route
+
+1. Keep validating hardware one env at a time.
+2. Flash and test the main `/control` path:
+   - ESP32 sends `device.hello`.
+   - DK-2500 replies `system.welcome`.
+   - ESP32 sends `device.status`.
+   - `display.expression` changes visible state.
+   - `motion.execute` moves briefly and returns `motion.completed`.
+   - unsupported audio or unknown command returns `error.report`.
+3. Use `motor_cam_wifi_manual` for the visible QR/camera/motor demo when the QR box and coordinates need to appear in the live stream itself.
+4. Add low-rate `/video` only after `/control` is stable.
+5. Use mock/OpenCV perception first, then swap in OpenVINO/OpenFace/Qwen paths.
+6. Keep the Intel Cup story bounded:
+
+```text
+Perception trigger -> Agent decision -> caring expression -> short safe movement -> robot feedback
+```

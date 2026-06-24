@@ -52,7 +52,7 @@ constexpr int8_t CAM_PIN_PCLK = 13;
 #define TFT_RST 44
 #endif
 #ifndef TFT_BL
-#define TFT_BL 48
+#define TFT_BL -1
 #endif
 #ifndef TFT_BACKLIGHT_ON
 #define TFT_BACKLIGHT_ON HIGH

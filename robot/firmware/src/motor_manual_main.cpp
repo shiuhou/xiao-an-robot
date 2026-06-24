@@ -123,8 +123,8 @@ void runMotorSelfTest() {
     Serial.println("[MotorTest] Wiring under test:");
     Serial.println("[MotorTest]   GPIO1  -> left  driver IN1");
     Serial.println("[MotorTest]   GPIO2  -> left  driver IN2");
-    Serial.println("[MotorTest]   GPIO47 -> right driver IN1");
-    Serial.println("[MotorTest]   GPIO38 -> right driver IN2");
+    Serial.println("[MotorTest]   GPIO3 -> right driver IN1");
+    Serial.println("[MotorTest]   GPIO48 -> right driver IN2");
     Serial.println("[MotorTest] If a raw GPIO moves the wrong wheel, edit PIN_MOTOR_* in motor_ctrl.h.");
     Serial.println("[MotorTest] If the wheel is correct but direction is wrong, flip MOTOR_*_FORWARD_USES_IN1.");
     Serial.println("[MotorTest] Manual stop is 'x' or space after this test returns.");
@@ -140,11 +140,11 @@ void runMotorSelfTest() {
     motor.debugDriveRaw(0, TEST_SPEED, 0, 0, RAW_MS);
     delay(PAUSE_MS);
 
-    Serial.println("[MotorTest] EXPECT: GPIO47/R_IN1 moves RIGHT motor one direction.");
+    Serial.println("[MotorTest] EXPECT: GPIO3/R_IN1 moves RIGHT motor one direction.");
     motor.debugDriveRaw(0, 0, TEST_SPEED, 0, RAW_MS);
     delay(PAUSE_MS);
 
-    Serial.println("[MotorTest] EXPECT: GPIO38/R_IN2 moves RIGHT motor opposite direction.");
+    Serial.println("[MotorTest] EXPECT: GPIO48/R_IN2 moves RIGHT motor opposite direction.");
     motor.debugDriveRaw(0, 0, 0, TEST_SPEED, RAW_MS);
     delay(PAUSE_MS);
 

@@ -127,7 +127,7 @@ Current firmware pin assumptions are captured in [hardware/wiring/esp32_pinout.m
 
 High-risk wiring notes:
 
-- Motor pins are currently `GPIO1/GPIO2` for the left DRV8833 channel and `GPIO47/GPIO38` for the right channel.
+- Motor pins are currently `GPIO1/GPIO2` for the left DRV8833 channel and `GPIO3/GPIO48` for the right channel.
 - Limit switches are disabled in firmware (`-1`) until final GPIOs are assigned.
 - Default firmware TFT/camera/audio pins live in `robot/firmware/src/board_pins.h` (integrated harness).
 - Legacy GPIO9/10/11/12 TFT wiring is isolated to `face240_legacy` and `display_test_legacy` only.

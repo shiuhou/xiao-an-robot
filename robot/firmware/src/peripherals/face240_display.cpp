@@ -190,10 +190,12 @@ static void initDisplayRaw() {
     pinMode(TFT_CS, OUTPUT);
     pinMode(TFT_DC, OUTPUT);
     pinMode(TFT_RST, OUTPUT);
-    pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_CS, HIGH);
     digitalWrite(TFT_DC, HIGH);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
 
     SPI.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
 
@@ -791,8 +793,10 @@ void face240_init() {
                   TFT_SCLK, TFT_MOSI, TFT_CS, TFT_DC, TFT_RST, TFT_BL);
 
     randomSeed(static_cast<uint32_t>(esp_random()));
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
     initDisplayRaw();
 
     const uint32_t now = millis();

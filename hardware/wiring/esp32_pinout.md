@@ -16,7 +16,7 @@ Hardware target:
 ## Wiring Strategy
 
 - **Camera pins are fixed** by the GOOUUU FPC layout. Do not repin OV2640 DVP signals.
-- **TFT SPI uses the integrated map** (GPIO14/21/42/43/44/48) as the default in firmware and PlatformIO envs.
+- **TFT SPI uses the integrated map** (GPIO14/21/42/43/44, LED tied to 3V3) as the default in firmware and PlatformIO envs.
 - **Legacy TFT bench map** (GPIO9/10/11/12) remains only for explicit `face240_legacy` / `display_test_legacy` envs on old harnesses.
 - **Motor VM** comes from the battery rail, not the 5V distribution bus.
 
@@ -73,7 +73,7 @@ Hardware target:
 | CS | 42 | Right row | `TFT_CS=42` |
 | DC | 43 | Right row | `TFT_DC=43` |
 | RESET | 44 | Right row | `TFT_RST=44` |
-| LED (BL) | 48 or 3V3 | Right row / 3V3 | `TFT_BL=48`; tie LED to 3V3 for always-on |
+| LED (BL) | 3V3 | 3V3 | Always-on backlight; `TFT_BL=-1` |
 | VCC | Distribution 5V | Left row 5V | |
 | GND | Distribution GND | Right row GND | |
 | SDO (MISO) | Not connected | — | `TFT_MISO=-1` |
@@ -126,8 +126,8 @@ Used by older `face240_*`, `display_test`, and `tftprobe_*` envs on pre-integrat
 | nSLEEP / STBY | Enable | Tie to 3V3 or leave high per module |
 | AIN1 | Left motor | GPIO1 |
 | AIN2 | Left motor | GPIO2 |
-| BIN1 | Right motor | GPIO47 |
-| BIN2 | Right motor | GPIO38 |
+| BIN1 | Right motor | GPIO3 |
+| BIN2 | Right motor | GPIO48 |
 | AOUT1 / AOUT2 | Left N20 motor | |
 | BOUT1 / BOUT2 | Right N20 motor | |
 
@@ -137,8 +137,8 @@ Direction fix: if the correct wheel spins backward, flip `MOTOR_LEFT_FORWARD_USE
 | --- | ---: | --- |
 | Left motor IN1 | 1 | `PIN_MOTOR_L_IN1` |
 | Left motor IN2 | 2 | `PIN_MOTOR_L_IN2` |
-| Right motor IN1 | 47 | `PIN_MOTOR_R_IN1` |
-| Right motor IN2 | 38 | `PIN_MOTOR_R_IN2` |
+| Right motor IN1 | 3 | `PIN_MOTOR_R_IN1` |
+| Right motor IN2 | 48 | `PIN_MOTOR_R_IN2` |
 | Front limit switch | Unassigned | `PIN_LIMIT_FRONT = -1` |
 | Back / dock limit switch | Unassigned | `PIN_LIMIT_BACK = -1` |
 
@@ -184,12 +184,13 @@ GPIO    Function
 16–18     Camera D7, D6, D5
 21        TFT MOSI (integrated map)
 35–37     Speaker I2S
-38, 47    Right motor IN2 / IN1
+3         Right motor IN1
+38        Previously right motor IN2; avoid for motor after reset-spin issue
 39–41     Microphone I2S
 42–44     TFT CS / DC / RST (integrated map)
-48        TFT backlight (integrated map; or tie LED to 3V3)
+48        Right motor IN2
 ──────────────────────────────────
-Unused    0, 3, 19, 20, 45, 46, … (strapping / spare — leave unconnected for now)
+Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for now)
 ```
 
 ## Wire Count Checklist

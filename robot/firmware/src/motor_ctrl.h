@@ -10,16 +10,16 @@
 // Bench assumption for the current harness:
 //   GPIO1  -> left  driver IN1
 //   GPIO2  -> left  driver IN2
-//   GPIO47 -> right driver IN1
-//   GPIO38 -> right driver IN2
+//   GPIO3  -> right driver IN1
+//   GPIO48 -> right driver IN2
 //
 // If the one-pin raw test shows a GPIO moves the wrong physical wheel, change
 // the PIN_MOTOR_* mapping below. If the correct wheel spins but forward is
 // reversed, flip that side's *_FORWARD_USES_IN1 constant instead of rewiring.
 constexpr int8_t PIN_MOTOR_L_IN1  = 1;
 constexpr int8_t PIN_MOTOR_L_IN2  = 2;
-constexpr int8_t PIN_MOTOR_R_IN1  = 47;
-constexpr int8_t PIN_MOTOR_R_IN2  = 38;
+constexpr int8_t PIN_MOTOR_R_IN1  = 3;
+constexpr int8_t PIN_MOTOR_R_IN2  = 48;
 constexpr bool MOTOR_LEFT_FORWARD_USES_IN1  = true;
 constexpr bool MOTOR_RIGHT_FORWARD_USES_IN1 = true;
 

@@ -33,7 +33,9 @@ static void waitForSerialWindow() {
 }
 
 static void runPreTftDiagnostics() {
-    pinMode(TFT_BL, OUTPUT);
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+    }
 
     const uint32_t start = millis();
     uint32_t lastPrint = 0;
@@ -44,7 +46,9 @@ static void runPreTftDiagnostics() {
         if (now - lastPrint >= 500) {
             lastPrint = now;
             backlightOn = !backlightOn;
-            digitalWrite(TFT_BL, backlightOn ? TFT_BACKLIGHT_ON : !TFT_BACKLIGHT_ON);
+            if (TFT_BL >= 0) {
+                digitalWrite(TFT_BL, backlightOn ? TFT_BACKLIGHT_ON : !TFT_BACKLIGHT_ON);
+            }
             Serial.printf("[TFT] pre-init heartbeat uptime=%lu ms bl=%d\n",
                           static_cast<unsigned long>(now),
                           backlightOn ? 1 : 0);
@@ -52,7 +56,9 @@ static void runPreTftDiagnostics() {
         delay(10);
     }
 
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    if (TFT_BL >= 0) {
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
 }
 
 static void selectDisplay() {
@@ -251,10 +257,14 @@ static void initDisplayRaw() {
     pinMode(TFT_CS, OUTPUT);
     pinMode(TFT_DC, OUTPUT);
     pinMode(TFT_RST, OUTPUT);
-    pinMode(TFT_BL, OUTPUT);
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+    }
     digitalWrite(TFT_CS, HIGH);
     digitalWrite(TFT_DC, HIGH);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    if (TFT_BL >= 0) {
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
 
     SPI.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
 

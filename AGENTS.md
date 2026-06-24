@@ -54,10 +54,10 @@ Current important envs:
 
 ## Hardware Assumptions
 
-- Current motor wiring is DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO47/GPIO38.
+- Current motor wiring is DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO3/GPIO48.
 - Fix motor direction with `MOTOR_LEFT_FORWARD_USES_IN1` and `MOTOR_RIGHT_FORWARD_USES_IN1` before rewiring.
 - Limit switch GPIOs are not final.
-- Integrated TFT map (default): SCK=14, MOSI=21, CS=42, DC=43, RST=44, BL=48 via `board_pins.h`.
+- Integrated TFT map (default): SCK=14, MOSI=21, CS=42, DC=43, RST=44, BL tied to 3V3 (`TFT_BL=-1`) via `board_pins.h`.
 - Legacy bench TFT (`face240_legacy`, `display_test_legacy`): GPIO9/10/11/12 — camera must stay disconnected.
 - `motor_cam_wifi_manual` uses SSID `XiaoAn-Motor`, UI `http://192.168.4.1/`, and stream `http://192.168.4.1:81/stream`.
 

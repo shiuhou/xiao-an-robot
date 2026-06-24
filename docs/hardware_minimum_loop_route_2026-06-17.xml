@@ -116,7 +116,7 @@ flowchart LR
 
 <h2>4. DRV8833 + N20 马达与限位安全</h2>
 
-<p>最低闭环只要求短距离、低速、可控移动，不要求完整 Dock 自动回充。当前 motor_ctrl.h 使用 GPIO1/GPIO2/GPIO47/GPIO38，并已把限位开关临时禁用；下一步必须先确认方向，再引入限位开关。</p>
+<p>最低闭环只要求短距离、低速、可控移动，不要求完整 Dock 自动回充。当前 motor_ctrl.h 使用 GPIO1/GPIO2/GPIO3/GPIO48，并已把限位开关临时禁用；下一步必须先确认方向，再引入限位开关。</p>
 
 <table>
   <thead>

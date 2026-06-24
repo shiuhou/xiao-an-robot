@@ -8,8 +8,8 @@ Current motor driver target: **DRV8833 dual H-bridge** driving two N20 gear moto
 | --- | --- | ---: | --- |
 | Left | IN1 | GPIO1 | `PIN_MOTOR_L_IN1` |
 | Left | IN2 | GPIO2 | `PIN_MOTOR_L_IN2` |
-| Right | IN1 | GPIO47 | `PIN_MOTOR_R_IN1` |
-| Right | IN2 | GPIO38 | `PIN_MOTOR_R_IN2` |
+| Right | IN1 | GPIO3 | `PIN_MOTOR_R_IN1` |
+| Right | IN2 | GPIO48 | `PIN_MOTOR_R_IN2` |
 
 Limit switches are intentionally disabled during bench bring-up:
 
@@ -34,7 +34,7 @@ pio run -e motor_cam_wifi_manual
 ## Test Checklist
 
 - Raise the chassis or remove wheels before the first powered test.
-- Confirm GPIO1/GPIO2 move the left wheel and GPIO47/GPIO38 move the right wheel.
+- Confirm GPIO1/GPIO2 move the left wheel and GPIO3/GPIO48 move the right wheel.
 - Confirm forward and backward direction for both wheels.
 - Confirm `stop` cuts all four motor outputs.
 - Confirm browser control deadman timeout stops the robot if commands stop arriving.

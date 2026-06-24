@@ -42,7 +42,7 @@ void MotorController::begin() {
                   PIN_MOTOR_R_IN2);
     Serial.printf("[Motor] forward map: left uses %s, right uses %s\n",
                   MOTOR_LEFT_FORWARD_USES_IN1 ? "L_IN1/GPIO1" : "L_IN2/GPIO2",
-                  MOTOR_RIGHT_FORWARD_USES_IN1 ? "R_IN1/GPIO47" : "R_IN2/GPIO38");
+                  MOTOR_RIGHT_FORWARD_USES_IN1 ? "R_IN1/GPIO3" : "R_IN2/GPIO48");
 
     // Motor output pins
     pinMode(PIN_MOTOR_L_IN1, OUTPUT);
@@ -123,7 +123,7 @@ void MotorController::debugDriveRaw(int lIn1, int lIn2, int rIn1, int rIn2, uint
     rIn1 = constrain(rIn1, 0, 255);
     rIn2 = constrain(rIn2, 0, 255);
 
-    Serial.printf("[MotorRaw] GPIO1/L_IN1=%d GPIO2/L_IN2=%d GPIO47/R_IN1=%d GPIO38/R_IN2=%d for %lu ms\n",
+    Serial.printf("[MotorRaw] GPIO1/L_IN1=%d GPIO2/L_IN2=%d GPIO3/R_IN1=%d GPIO48/R_IN2=%d for %lu ms\n",
                   lIn1,
                   lIn2,
                   rIn1,

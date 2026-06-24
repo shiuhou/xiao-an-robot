@@ -2,6 +2,7 @@
 #include <SPI.h>
 
 #include "board_pins.h"
+#include "motor_ctrl.h"
 
 static constexpr int16_t TFT_W = 320;
 static constexpr int16_t TFT_H = 240;
@@ -13,6 +14,24 @@ static void selectDisplay() {
 
 static void unselectDisplay() {
     digitalWrite(TFT_CS, HIGH);
+}
+
+static void forceMotorStopPinsLow() {
+    pinMode(PIN_MOTOR_L_IN1, OUTPUT);
+    pinMode(PIN_MOTOR_L_IN2, OUTPUT);
+    pinMode(PIN_MOTOR_R_IN1, OUTPUT);
+    pinMode(PIN_MOTOR_R_IN2, OUTPUT);
+    digitalWrite(PIN_MOTOR_L_IN1, LOW);
+    digitalWrite(PIN_MOTOR_L_IN2, LOW);
+    digitalWrite(PIN_MOTOR_R_IN1, LOW);
+    digitalWrite(PIN_MOTOR_R_IN2, LOW);
+}
+
+static void setBacklightOn() {
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
 }
 
 static void writeCommand(uint8_t command) {
@@ -73,10 +92,9 @@ static void initSt7789Raw() {
     pinMode(TFT_CS, OUTPUT);
     pinMode(TFT_DC, OUTPUT);
     pinMode(TFT_RST, OUTPUT);
-    pinMode(TFT_BL, OUTPUT);
     digitalWrite(TFT_CS, HIGH);
     digitalWrite(TFT_DC, HIGH);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    setBacklightOn();
 
     SPI.begin(TFT_SCLK, TFT_MISO, TFT_MOSI, TFT_CS);
 
@@ -125,18 +143,22 @@ void setup() {
     delay(800);
     Serial.println();
     Serial.println("[WIRETEST] 2.4 inch ST7789 raw wiring test");
+    forceMotorStopPinsLow();
+    Serial.printf("[WIRETEST] motor pins forced LOW: L=%d/%d R=%d/%d\n",
+                  PIN_MOTOR_L_IN1, PIN_MOTOR_L_IN2, PIN_MOTOR_R_IN1, PIN_MOTOR_R_IN2);
     Serial.printf("[WIRETEST] SCLK=%d MOSI=%d CS=%d DC=%d RST=%d BL=%d\n",
                   TFT_SCLK, TFT_MOSI, TFT_CS, TFT_DC, TFT_RST, TFT_BL);
     initSt7789Raw();
 }
 
 void loop() {
+    forceMotorStopPinsLow();
     static uint8_t index = 0;
     const ColorStep &step = STEPS[index];
     Serial.printf("[WIRETEST] fill %s 0x%04X\n", step.name, step.color);
     fillScreen(step.color);
 
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    setBacklightOn();
     delay(900);
     index = (index + 1) % (sizeof(STEPS) / sizeof(STEPS[0]));
 }

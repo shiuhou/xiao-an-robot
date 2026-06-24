@@ -43,7 +43,7 @@ For quick prototypes, start from an open 2WD N20 chassis model and edit mounting
 
 Canonical pin table: [hardware/wiring/esp32_pinout.md](../hardware/wiring/esp32_pinout.md).
 
-Integrated harness (2026-06-22): TFT SPI defaults to GPIO14/21/42/43/44/48 via `robot/firmware/src/board_pins.h` and PlatformIO `tft_integrated_pins`. Legacy GPIO9–12 remains only on `face240_legacy` / `display_test_legacy`.
+Integrated harness (2026-06-24): TFT SPI defaults to GPIO14/21/42/43/44 with LED/BL tied to 3V3 (`TFT_BL=-1`) via `robot/firmware/src/board_pins.h` and PlatformIO `tft_integrated_pins`. Legacy GPIO9–12 remains only on `face240_legacy` / `display_test_legacy`.
 
 ## DRV8833 Motor Driver
 
@@ -53,8 +53,8 @@ Current firmware mapping:
 | --- | ---: |
 | Left IN1 | GPIO1 |
 | Left IN2 | GPIO2 |
-| Right IN1 | GPIO47 |
-| Right IN2 | GPIO38 |
+| Right IN1 | GPIO3 |
+| Right IN2 | GPIO48 |
 
 Initial tests:
 
@@ -125,7 +125,7 @@ Use this wiring on the full robot harness. Constants also live in `robot/firmwar
 | CS | GPIO42 |
 | DC | GPIO43 |
 | RESET | GPIO44 |
-| LED (BL) | GPIO48 or 3V3 |
+| LED (BL) | 3V3 (`TFT_BL=-1`) |
 | VCC | Distribution 5V |
 | GND | Distribution GND |
 | MISO | not connected |

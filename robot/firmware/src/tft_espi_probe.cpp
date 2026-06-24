@@ -70,8 +70,10 @@ void setup() {
     Serial.println("[TFT_PROBE] boot");
     Serial.printf("[TFT_PROBE] name=%s\n", PROBE_NAME);
 
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    if (TFT_BL >= 0) {
+        pinMode(TFT_BL, OUTPUT);
+        digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
+    }
 
     tft.init();
 #ifdef PROBE_RAW_INIT_AFTER_TFT

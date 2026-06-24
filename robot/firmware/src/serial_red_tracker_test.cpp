@@ -18,7 +18,7 @@
 // linking motor control code into the serial camera firmware.
 #define MOTOR_PIN_L_IN1 1
 #define MOTOR_PIN_L_IN2 2
-#define MOTOR_PIN_R_IN1 47
+#define MOTOR_PIN_R_IN1 3
 #define MOTOR_PIN_R_IN2 38
 
 static constexpr uint32_t SERIAL_BAUD = 2000000;

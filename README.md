@@ -141,9 +141,9 @@ Current firmware pin assumptions are documented in [hardware/wiring/esp32_pinout
 
 Important notes:
 
-- Motor bring-up uses DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO47/GPIO38.
+- Motor bring-up uses DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO3/GPIO48.
 - OV2640 uses the GOOUUU ESP32-S3-CAM v1.5 pin map in `cam_stream.cpp` and camera test files.
-- Integrated TFT wiring (default): SCK=GPIO14, MOSI=GPIO21, CS=GPIO42, DC=GPIO43, RST=GPIO44, BL=GPIO48. Source: `board_pins.h`, [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md).
+- Integrated TFT wiring (default): SCK=GPIO14, MOSI=GPIO21, CS=GPIO42, DC=GPIO43, RST=GPIO44, LED/BL tied to 3V3 (`TFT_BL=-1`). Source: `board_pins.h`, [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md).
 - Legacy TFT bench (`face240_legacy`, `display_test_legacy`) uses GPIO9/10/11/12 and must not share a harness with OV2640.
 - INMP441 test uses BCLK GPIO39, WS GPIO40, DIN GPIO41.
 - MAX98357A test uses BCLK GPIO35, LRC GPIO36, DIN GPIO37.

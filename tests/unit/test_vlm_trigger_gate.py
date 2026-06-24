@@ -19,16 +19,22 @@ class VLMTriggerGateTest(unittest.TestCase):
 
         self.assertEqual(result, {"should_trigger": False, "reason": "normal"})
 
-    def test_high_fatigue_triggers_high_fatigue(self) -> None:
+    def test_high_fatigue_uses_openface_score_scale_by_default(self) -> None:
         gate = VLMTriggerGate()
 
-        result = gate.evaluate({
+        below_threshold = gate.evaluate({
             "emotion_tag": "neutral",
             "confidence": 0.2,
-            "fatigue_score": 0.85,
+            "fatigue_score": 66,
+        })
+        at_threshold = gate.evaluate({
+            "emotion_tag": "neutral",
+            "confidence": 0.2,
+            "fatigue_score": 67,
         })
 
-        self.assertEqual(result, {"should_trigger": True, "reason": "high_fatigue"})
+        self.assertEqual(below_threshold, {"should_trigger": False, "reason": "normal"})
+        self.assertEqual(at_threshold, {"should_trigger": True, "reason": "high_fatigue"})
 
     def test_negative_emotions_with_high_confidence_trigger(self) -> None:
         for emotion_tag in ["sad", "anxious", "tired", "stressed"]:
@@ -54,8 +60,8 @@ class VLMTriggerGateTest(unittest.TestCase):
 
         self.assertEqual(result, {"should_trigger": False, "reason": "normal"})
 
-    def test_consecutive_negative_emotions_trigger_window(self) -> None:
-        gate = VLMTriggerGate(negative_count_threshold=2)
+    def test_two_negative_emotions_do_not_trigger_window(self) -> None:
+        gate = VLMTriggerGate()
 
         first = gate.evaluate({
             "emotion_tag": "sad",
@@ -69,15 +75,35 @@ class VLMTriggerGateTest(unittest.TestCase):
         })
 
         self.assertEqual(first, {"should_trigger": False, "reason": "normal"})
-        self.assertEqual(second, {"should_trigger": True, "reason": "negative_emotion_window"})
+        self.assertEqual(second, {"should_trigger": False, "reason": "normal"})
 
     def test_negative_emotion_window_counts_negative_history(self) -> None:
-        gate = VLMTriggerGate(negative_confidence_threshold=0.95, negative_count_threshold=2)
+        gate = VLMTriggerGate(negative_confidence_threshold=0.95)
 
-        gate.evaluate({"emotion_tag": "sad", "confidence": 0.5, "fatigue_score": 0.1})
-        result = gate.evaluate({"emotion_tag": "anxious", "confidence": 0.5, "fatigue_score": 0.1})
+        for emotion_tag in ["sad", "anxious", "tired"]:
+            gate.evaluate({"emotion_tag": emotion_tag, "confidence": 0.5, "fatigue_score": 0.1})
+        result = gate.evaluate({"emotion_tag": "stressed", "confidence": 0.5, "fatigue_score": 0.1})
 
         self.assertEqual(result, {"should_trigger": True, "reason": "negative_emotion_window"})
+
+    def test_negative_emotion_window_requires_confidence_sum(self) -> None:
+        gate = VLMTriggerGate(negative_confidence_threshold=0.95)
+
+        for emotion_tag in ["sad", "anxious", "tired"]:
+            gate.evaluate({"emotion_tag": emotion_tag, "confidence": 0.5, "fatigue_score": 0.1})
+        result = gate.evaluate({"emotion_tag": "stressed", "confidence": 0.4, "fatigue_score": 0.1})
+
+        self.assertEqual(result, {"should_trigger": False, "reason": "normal"})
+
+    def test_negative_emotion_window_requires_negative_count(self) -> None:
+        gate = VLMTriggerGate(negative_confidence_threshold=2.0)
+
+        gate.evaluate({"emotion_tag": "sad", "confidence": 0.8, "fatigue_score": 0.1})
+        gate.evaluate({"emotion_tag": "neutral", "confidence": 0.9, "fatigue_score": 0.1})
+        gate.evaluate({"emotion_tag": "anxious", "confidence": 0.8, "fatigue_score": 0.1})
+        result = gate.evaluate({"emotion_tag": "tired", "confidence": 0.8, "fatigue_score": 0.1})
+
+        self.assertEqual(result, {"should_trigger": False, "reason": "normal"})
 
     def test_force_vlm_triggers_force(self) -> None:
         gate = VLMTriggerGate()

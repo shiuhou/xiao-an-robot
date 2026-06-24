@@ -42,6 +42,28 @@ class VLMFaceAnalyzerParseTest(unittest.TestCase):
         self.assertIn("正面或无需干预，必须为空字符串", vfa.PROMPT)
         self.assertIn("如果 polarity 是负面，生成一句自然简短的中文关怀话", vfa.PROMPT)
 
+    def test_context_prompt_includes_safe_context_without_au_json(self) -> None:
+        prompt = vfa._context_prompt({
+            "cv": {
+                "emotion_tag": "tired",
+                "confidence": 0.8,
+                "au_json": {"AU45": 0.9},
+            },
+            "asr": {"text": ""},
+            "history": {"count": 2, "top_emotion": "tired"},
+        })
+
+        self.assertIn("Auxiliary context", prompt)
+        self.assertIn('"emotion_tag": "tired"', prompt)
+        self.assertIn('"top_emotion": "tired"', prompt)
+        self.assertNotIn("au_json", prompt)
+
+    def test_context_prompt_truncates_long_context(self) -> None:
+        prompt = vfa._context_prompt({"cv": {"emotion_tag": "tired", "notes": "x" * 4000}})
+
+        self.assertIn("...<truncated>", prompt)
+        self.assertLessEqual(len(prompt), vfa.MAX_CONTEXT_PROMPT_CHARS + 220)
+
     def test_missing_model_dir_raises_before_heavy_imports(self) -> None:
         with patch.dict(
             sys.modules,

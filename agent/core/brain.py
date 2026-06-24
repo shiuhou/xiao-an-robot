@@ -10,7 +10,10 @@ from __future__ import annotations
 from typing import Any
 
 from agent.core.action_executor import ActionExecutor
+from agent.core.context_builder import ContextBuilder
 from agent.core.gateway import RobotGateway
+from agent.core.memory import XiaoAnMemoryStore
+from agent.core.memory_recorder import MemoryRecorder
 from agent.core.openclaw_adapter import OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.skills.companion_request import CompanionRequestSkill
@@ -36,9 +39,22 @@ class XiaoAnBrain:
         window_seconds: int = 300,
         openclaw_adapter: Any | None = None,
         action_executor: Any | None = None,
+        context_builder: Any | None = None,
+        context_memory: Any | None = None,
+        memory_recorder: Any | None = None,
     ):
         self.gateway = gateway or RobotGateway(url=gateway_url)
         self.memory = memory or EmotionDB(db_path=db_path)
+        self._owns_context_memory = False
+        if context_builder is not None:
+            self.context_builder = context_builder
+            self.context_memory = context_memory
+        else:
+            if context_memory is None:
+                context_memory = XiaoAnMemoryStore(db_path=db_path)
+                self._owns_context_memory = True
+            self.context_memory = context_memory
+            self.context_builder = ContextBuilder(memory_store=context_memory)
         self.robot_motion = RobotMotionSkill(gateway=self.gateway)
         self.emotion_monitor = EmotionMonitorSkill(
             gateway=self.gateway,
@@ -56,8 +72,14 @@ class XiaoAnBrain:
         self.action_executor = (
             action_executor
             if action_executor is not None
-            else ActionExecutor(self.robot_motion)
+            else ActionExecutor(self.robot_motion, memory_store=self.context_memory)
         )
+        if memory_recorder is not None:
+            self.memory_recorder = memory_recorder
+        elif self.context_memory is not None:
+            self.memory_recorder = MemoryRecorder(memory_store=self.context_memory)
+        else:
+            self.memory_recorder = None
 
     async def handle_event(self, event: dict) -> dict:
         event_type = event.get("type")
@@ -70,6 +92,16 @@ class XiaoAnBrain:
             emotion_result["route"] = "link_2_emotion_fast_path"
             emotion_result["openclaw_event_type"] = "emotion.intervention"
             trigger_context = trigger if isinstance(trigger, dict) else {}
+            self._record_emotion_intervention(trigger_context, emotion_result)
+            self._record_robot_care_action(
+                route=emotion_result.get("route"),
+                source_event_type=emotion_result.get("openclaw_event_type"),
+                trigger=trigger_context,
+                result=emotion_result,
+                reply_text=emotion_result.get("message"),
+                timestamp_ms=trigger_context.get("timestamp_ms") or trigger_context.get("timestamp"),
+                session_id=trigger_context.get("session_id", "default"),
+            )
             openclaw_context = {
                 "event": event,
                 "trigger": trigger,
@@ -103,6 +135,16 @@ class XiaoAnBrain:
             if companion_result.get("handled", False):
                 companion_result["route"] = "link_3_companion_fast_path"
                 companion_result["openclaw_event_type"] = "companion.request"
+                self._record_companion_request(payload, companion_result)
+                self._record_robot_care_action(
+                    route=companion_result.get("route"),
+                    source_event_type=companion_result.get("openclaw_event_type"),
+                    trigger=companion_result.get("trigger_result"),
+                    result=companion_result,
+                    reply_text=companion_result.get("reply_text"),
+                    timestamp_ms=payload.get("timestamp_ms"),
+                    session_id=payload.get("session_id", "default"),
+                )
                 companion_context = {
                     "payload": payload,
                     "companion_result": dict(companion_result),
@@ -124,15 +166,22 @@ class XiaoAnBrain:
                     companion_result["openclaw_error"] = str(exc)
                 return companion_result
 
+            base_context = {
+                "payload": payload,
+                "companion_result": companion_result,
+            }
+            openclaw_context = self._build_openclaw_context(
+                text=text,
+                base_context=base_context,
+                event_type=ASR_TRANSCRIPT_EVENT,
+                source="asr",
+            )
             openclaw_event = OpenClawEvent(
                 type=ASR_TRANSCRIPT_EVENT,
                 text=text,
                 source="asr",
                 session_id=payload.get("session_id", "default"),
-                context={
-                    "payload": payload,
-                    "companion_result": companion_result,
-                },
+                context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
             execution_result = await self.action_executor.execute(decision)
@@ -143,14 +192,21 @@ class XiaoAnBrain:
 
         if event_type == FRONTEND_MESSAGE_EVENT:
             payload = event.get("payload") or {}
+            base_context = {
+                "payload": payload,
+            }
+            openclaw_context = self._build_openclaw_context(
+                text=payload.get("text", ""),
+                base_context=base_context,
+                event_type=FRONTEND_MESSAGE_EVENT,
+                source="frontend",
+            )
             openclaw_event = OpenClawEvent(
                 type=FRONTEND_MESSAGE_EVENT,
                 text=payload.get("text", ""),
                 source="frontend",
                 session_id=payload.get("session_id", "default"),
-                context={
-                    "payload": payload,
-                },
+                context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
             execution_result = await self.action_executor.execute(decision)
@@ -164,10 +220,208 @@ class XiaoAnBrain:
             "message": f"Unsupported event type: {event_type}",
         }
 
+    def _build_openclaw_context(
+        self,
+        text: str | None,
+        base_context: dict,
+        event_type: str,
+        source: str,
+    ) -> dict:
+        try:
+            return self.context_builder.build_for_text(
+                text,
+                base_context=base_context,
+                event_type=event_type,
+                source=source,
+            )
+        except Exception as exc:
+            context = dict(base_context)
+            context.setdefault("context_errors", []).append({
+                "scope": "context_builder",
+                "error": str(exc),
+            })
+            return context
+
+    def _record_companion_request(self, payload: dict, companion_result: dict) -> None:
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_companion_request", None)
+        if not callable(record):
+            return
+
+        trigger_result = companion_result.get("trigger_result")
+        trigger = trigger_result if isinstance(trigger_result, dict) else {}
+        text = payload.get("text", "") or ""
+        metadata = {
+            "route": companion_result.get("route"),
+            "asr_text": text,
+            "user_text": text,
+            "trigger": trigger,
+            "matched_keyword": trigger.get("matched_keyword"),
+            "reason": companion_result.get("reason") or trigger.get("reason"),
+            "fatigue_score": trigger.get("fatigue_score"),
+            "emotion_tag": trigger.get("emotion_tag"),
+            "openclaw_event_type": companion_result.get("openclaw_event_type"),
+            "handled": companion_result.get("handled"),
+        }
+        try:
+            record(
+                content=text or "companion request",
+                route=companion_result.get("route"),
+                trigger=trigger,
+                asr_text=text,
+                companion_result=companion_result,
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=payload.get("timestamp_ms"),
+                session_id=payload.get("session_id", "default"),
+            )
+        except Exception:
+            return
+
+    def _record_robot_care_action(
+        self,
+        *,
+        route: str | None,
+        source_event_type: str | None,
+        trigger: dict | None,
+        result: dict,
+        reply_text: str | None,
+        timestamp_ms: int | None,
+        session_id: str | None,
+    ) -> None:
+        care_result = result.get("actions")
+        if not care_result:
+            return
+
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_robot_care_action", None)
+        if not callable(record):
+            return
+
+        expression, motion, tts = self._split_care_result(care_result)
+        metadata = {
+            "route": route,
+            "source_event_type": source_event_type,
+            "robot_action_result": care_result,
+            "care_result": care_result,
+            "reply_text": reply_text,
+            "expression": expression,
+            "motion": motion,
+            "tts": tts,
+            "handled": result.get("handled"),
+            "success": self._care_result_success(care_result),
+        }
+        try:
+            record(
+                content="care_for_user",
+                route=route,
+                trigger=trigger if isinstance(trigger, dict) else None,
+                action_name="care_for_user",
+                reply_text=reply_text,
+                robot_action_result={"actions": care_result},
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=timestamp_ms,
+                session_id=session_id,
+            )
+        except Exception:
+            return
+
+    def _split_care_result(self, care_result: Any) -> tuple[Any | None, Any | None, Any | None]:
+        if not isinstance(care_result, list):
+            return None, None, None
+        expression = care_result[0] if len(care_result) > 0 else None
+        motion = care_result[1] if len(care_result) > 1 else None
+        tts = care_result[2] if len(care_result) > 2 else None
+        return expression, motion, tts
+
+    def _care_result_success(self, care_result: Any) -> bool:
+        if not isinstance(care_result, list) or not care_result:
+            return False
+        for item in care_result:
+            if isinstance(item, dict):
+                payload = item.get("payload")
+                if isinstance(payload, dict) and payload.get("ok") is False:
+                    return False
+                if item.get("ok") is False:
+                    return False
+        return True
+
+    def _record_emotion_intervention(self, trigger: dict, emotion_result: dict) -> None:
+        recorder = getattr(self, "memory_recorder", None)
+        record = getattr(recorder, "record_emotion_intervention", None)
+        if not callable(record):
+            return
+
+        emotion_tag = trigger.get("emotion_tag") or trigger.get("emotion")
+        confidence = trigger.get("confidence")
+        fatigue_score = trigger.get("fatigue_score")
+        source = trigger.get("source")
+        frame_source = trigger.get("frame_source", source)
+        vlm_triggered = (
+            trigger["vlm_triggered"]
+            if "vlm_triggered" in trigger
+            else emotion_result.get("vlm_triggered")
+        )
+        vlm_trigger_reason = (
+            trigger["vlm_trigger_reason"]
+            if "vlm_trigger_reason" in trigger
+            else emotion_result.get("vlm_trigger_reason")
+        )
+        visual_reason = (
+            trigger["visual_reason"]
+            if "visual_reason" in trigger
+            else emotion_result.get("visual_reason")
+        )
+        timestamp_ms = (
+            trigger["timestamp_ms"]
+            if "timestamp_ms" in trigger
+            else trigger.get("timestamp")
+        )
+        metadata = {
+            "route": emotion_result.get("route"),
+            "emotion_tag": emotion_tag,
+            "confidence": confidence,
+            "fatigue_score": fatigue_score,
+            "source": source,
+            "frame_source": frame_source,
+            "frame_id": trigger.get("frame_id"),
+            "timestamp_ms": timestamp_ms,
+            "reason": emotion_result.get("reason"),
+            "trigger_reason": emotion_result.get("reason"),
+            "vlm_triggered": vlm_triggered,
+            "vlm_trigger_reason": vlm_trigger_reason,
+            "visual_reason": visual_reason,
+            "vlm_observation": trigger.get("vlm_observation"),
+            "cv_sample": trigger.get("cv_sample"),
+            "openclaw_event_type": emotion_result.get("openclaw_event_type"),
+            "handled": emotion_result.get("handled"),
+        }
+        try:
+            record(
+                content=emotion_result.get("message") or "emotion intervention",
+                route=emotion_result.get("route"),
+                trigger=trigger,
+                emotion_tag=emotion_tag,
+                confidence=confidence,
+                fatigue_score=fatigue_score,
+                intervention_result=emotion_result,
+                metadata=metadata,
+                source="brain",
+                timestamp_ms=timestamp_ms,
+                session_id=trigger.get("session_id", "default"),
+            )
+        except Exception:
+            return
+
     def close(self) -> None:
         close = getattr(self.memory, "close", None)
         if callable(close):
             close()
+        if self._owns_context_memory:
+            close = getattr(self.context_memory, "close", None)
+            if callable(close):
+                close()
 
 
 # Backward-compatible alias for older imports.

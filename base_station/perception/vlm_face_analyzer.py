@@ -14,6 +14,7 @@ _DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "Qwen2.5-V
 
 MAX_PIXELS = 147456
 MAX_NEW_TOKENS = 160
+MAX_CONTEXT_PROMPT_CHARS = 3000
 
 PROMPT = """请观察图中人物，只根据画面中确实可见的面部和姿态线索判断，只返回 JSON：
 - polarity：必须是以下之一（正面 / 负面）
@@ -25,6 +26,47 @@ PROMPT = """请观察图中人物，只根据画面中确实可见的面部和�
 原样返回：
 {"polarity":"","emotion":"","fatigue_score":0.0,"confidence":0.0,"message":""}
 只返回 JSON。"""
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return str(value)
+
+
+def _context_prompt(context: dict | None) -> str:
+    if not isinstance(context, dict) or not context:
+        return ""
+
+    import json
+
+    safe_context = {
+        key: _json_safe(context.get(key))
+        for key in ("cv", "asr", "history")
+        if key in context
+    }
+    cv_context = safe_context.get("cv")
+    if isinstance(cv_context, dict):
+        cv_context = dict(cv_context)
+        cv_context.pop("au_json", None)
+        safe_context["cv"] = cv_context
+
+    if not safe_context:
+        return ""
+
+    text = json.dumps(safe_context, ensure_ascii=False, sort_keys=True)
+    if len(text) > MAX_CONTEXT_PROMPT_CHARS:
+        text = text[:MAX_CONTEXT_PROMPT_CHARS] + "...<truncated>"
+    return (
+        "\n\nAuxiliary context for this frame. Use it only as reference; "
+        "the image is the primary evidence. If context conflicts with visible "
+        "image evidence, trust the image. Do not infer facts outside the image.\n"
+        f"{text}"
+    )
 
 
 class VLMFaceAnalyzer:
@@ -85,7 +127,7 @@ class VLMFaceAnalyzer:
             True,
         )
 
-    def analyze_image(self, bgr_image) -> dict:
+    def analyze_image(self, bgr_image, context: dict | None = None) -> dict:
         """Analyze a single BGR ndarray and return parsed VLM fields."""
 
         from PIL import Image
@@ -101,7 +143,7 @@ class VLMFaceAnalyzer:
             "role": "user",
             "content": [
                 {"type": "image", "image": pil},
-                {"type": "text", "text": PROMPT},
+                {"type": "text", "text": PROMPT + _context_prompt(context)},
             ],
         }]
         text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -125,7 +167,7 @@ class VLMFaceAnalyzer:
         result["face_found"] = found
         return result
 
-    def analyze_frame(self, frame: dict) -> dict:
+    def analyze_frame(self, frame: dict, context: dict | None = None) -> dict:
         if not isinstance(frame, dict) or frame.get("payload") is None:
             raise ValueError("VLMFaceAnalyzer.analyze_frame requires frame['payload'] image.")
         import numpy as np
@@ -133,10 +175,10 @@ class VLMFaceAnalyzer:
         payload = frame["payload"]
         if not isinstance(payload, np.ndarray):
             payload = np.asarray(payload)
-        return self.analyze_image(payload)
+        return self.analyze_image(payload, context=context)
 
     def predict(self, frame: dict, context: dict | None = None) -> dict:
-        parsed = self.analyze_frame(frame)
+        parsed = self.analyze_frame(frame, context=context)
         return {
             "polarity": parsed["polarity"],
             "emotion_tag": parsed["emotion"],

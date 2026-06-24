@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import tempfile
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
@@ -292,6 +292,56 @@ class EmotionRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(FakeRuntime.instances[0].ran)
         self.assertTrue(FakeRuntime.instances[0].event_loop.brain.closed)
+
+    def test_cli_no_agent_arg_reaches_runtime_factory(self) -> None:
+        captured = {}
+
+        def fake_create_runtime(**kwargs):
+            captured.update(kwargs)
+            return FakeRuntime()
+
+        with patch("base_station.monitor.emotion_runtime.create_runtime", side_effect=fake_create_runtime):
+            exit_code = run_cli([
+                "--no-agent",
+                "--source",
+                "fake_camera",
+                "--model-backend",
+                "mock",
+                "--pattern",
+                "neutral",
+                "--count",
+                "1",
+                "--interval",
+                "0",
+                "--fresh-db",
+            ])
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(captured["no_agent"])
+
+    async def test_no_agent_runtime_prints_event_without_calling_brain(self) -> None:
+        class FailingBrain:
+            async def handle_event(self, event: dict) -> dict:
+                raise AssertionError("no-agent mode must not call brain.handle_event")
+
+        brain = FailingBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+        source = FakeFaceEmotionSource(pattern="neutral", count=1, interval_seconds=0)
+        runtime = BaseStationEmotionRuntime(
+            source=source,
+            event_loop=event_loop,
+            verbose=False,
+            no_agent=True,
+        )
+        stdout = io.StringIO()
+
+        with redirect_stdout(stdout):
+            results = await runtime.run()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["type"], "emotion.sample")
+        self.assertIn("[emotion.sample]", stdout.getvalue())
+        self.assertIn('"type": "emotion.sample"', stdout.getvalue())
 
     async def test_fresh_db_does_not_use_default_db_path(self) -> None:
         default_path = "agent/data/xiao_an.db"

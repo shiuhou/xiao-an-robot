@@ -12,7 +12,7 @@
 | WiFi 模式 | STA（连局域网，非 SoftAP） |
 | 基站地址 | `ws://<DK2500_IP>:8765` |
 
-**烧录前在 `src/config.h` 填写实际 WiFi SSID/密码与基站 IP。**
+**烧录前复制 `src/config.local.example.h` 为 `src/config.local.h`，再在 `config.local.h` 填写实际 WiFi SSID/密码与基站 IP。`config.local.h` 已被忽略，不要提交真实密钥。**
 
 ## WebSocket 通道
 

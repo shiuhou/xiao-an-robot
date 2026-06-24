@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
+from agent.core.memory import XiaoAnMemoryStore
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 
 
@@ -107,6 +110,112 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["openclaw_event_type"], "emotion.intervention")
         self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
 
+    async def test_tired_emotion_sample_records_intervention_memory_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_emotion_memory.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                gateway = FakeGateway()
+                openclaw_adapter = FakeOpenClawAdapter(
+                    decision=OpenClawDecision(handled=False),
+                )
+                brain = XiaoAnBrain(
+                    gateway=gateway,
+                    memory=FakeMemory(tired_summary()),
+                    openclaw_adapter=openclaw_adapter,
+                    context_memory=context_memory,
+                )
+
+                result = await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "frame_source": "fake_camera",
+                        "emotion_tag": "tired",
+                        "confidence": 0.9,
+                        "fatigue_score": 0.85,
+                        "session_id": "emotion-memory",
+                        "timestamp_ms": 222333,
+                        "frame_id": "frame-42",
+                        "vlm_triggered": True,
+                        "vlm_trigger_reason": "high_fatigue",
+                        "visual_reason": "eyes look tired",
+                        "vlm_observation": {"eyes": "tired"},
+                        "cv_sample": {"face_detected": True},
+                    },
+                })
+
+                events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
+
+                self.assertTrue(result["handled"])
+                self.assertEqual(len(events), 1)
+                event = events[0]
+                self.assertEqual(event["source"], "brain")
+                self.assertEqual(event["session_id"], "emotion-memory")
+                self.assertEqual(event["timestamp_ms"], 222333)
+                metadata = event["payload"]["metadata"]
+                self.assertEqual(metadata["route"], "link_2_emotion_fast_path")
+                self.assertEqual(metadata["emotion_tag"], "tired")
+                self.assertEqual(metadata["confidence"], 0.9)
+                self.assertEqual(metadata["fatigue_score"], 0.85)
+                self.assertEqual(metadata["source"], "face")
+                self.assertEqual(metadata["frame_source"], "fake_camera")
+                self.assertEqual(metadata["frame_id"], "frame-42")
+                self.assertEqual(metadata["timestamp_ms"], 222333)
+                self.assertEqual(metadata["trigger_reason"], "fatigue_window")
+                self.assertEqual(metadata["vlm_triggered"], True)
+                self.assertEqual(metadata["vlm_trigger_reason"], "high_fatigue")
+                self.assertEqual(metadata["visual_reason"], "eyes look tired")
+                self.assertEqual(metadata["vlm_observation"], {"eyes": "tired"})
+                self.assertEqual(metadata["cv_sample"], {"face_detected": True})
+                self.assertEqual(metadata["openclaw_event_type"], "emotion.intervention")
+                self.assertTrue(metadata["handled"])
+                self.assertEqual(len(care_events), 1)
+                care_metadata = care_events[0]["payload"]["metadata"]
+                self.assertEqual(care_metadata["route"], "link_2_emotion_fast_path")
+                self.assertEqual(care_metadata["source_event_type"], "emotion.intervention")
+                self.assertIn("robot_action_result", care_metadata)
+                self.assertIn("care_result", care_metadata)
+                self.assertIsNotNone(care_metadata["expression"])
+                self.assertIsNotNone(care_metadata["motion"])
+                self.assertIsNotNone(care_metadata["tts"])
+                self.assertTrue(care_metadata["handled"])
+                self.assertTrue(care_metadata["success"])
+
+    async def test_emotion_intervention_memory_keeps_false_vlm_triggered(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_emotion_false_vlm.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                brain = XiaoAnBrain(
+                    gateway=FakeGateway(),
+                    memory=FakeMemory(tired_summary()),
+                    openclaw_adapter=FakeOpenClawAdapter(decision=OpenClawDecision(handled=False)),
+                    context_memory=context_memory,
+                )
+
+                await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "emotion_tag": "tired",
+                        "confidence": 0.9,
+                        "fatigue_score": 0.85,
+                        "vlm_triggered": False,
+                        "vlm_trigger_reason": None,
+                        "visual_reason": "",
+                    },
+                })
+
+                events = context_memory.query_recent_events(event_type="emotion.intervention")
+
+                self.assertEqual(len(events), 1)
+                metadata = events[0]["payload"]["metadata"]
+                self.assertIn("vlm_triggered", metadata)
+                self.assertFalse(metadata["vlm_triggered"])
+                self.assertIn("vlm_trigger_reason", metadata)
+                self.assertIsNone(metadata["vlm_trigger_reason"])
+                self.assertEqual(metadata["visual_reason"], "")
+
     async def test_tired_emotion_sample_is_forwarded_to_openclaw(self) -> None:
         openclaw_adapter = FakeOpenClawAdapter(decision=OpenClawDecision(handled=False))
         brain = XiaoAnBrain(
@@ -181,6 +290,73 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["handled"])
         self.assertEqual(openclaw_adapter.events, [])
         self.assertNotEqual(result.get("route"), "link_2_emotion_fast_path")
+
+    async def test_neutral_emotion_sample_does_not_record_intervention(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_emotion_neutral.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                brain = XiaoAnBrain(
+                    gateway=FakeGateway(),
+                    memory=FakeMemory(neutral_summary()),
+                    openclaw_adapter=FakeOpenClawAdapter(),
+                    context_memory=context_memory,
+                )
+
+                result = await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "emotion_tag": "neutral",
+                        "confidence": 0.5,
+                        "fatigue_score": 0.0,
+                    },
+                })
+
+                events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
+
+                self.assertFalse(result["handled"])
+                self.assertEqual(events, [])
+                self.assertEqual(care_events, [])
+
+    async def test_cooldown_does_not_record_duplicate_intervention(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_emotion_cooldown.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                brain = XiaoAnBrain(
+                    gateway=FakeGateway(),
+                    memory=FakeMemory(tired_summary()),
+                    openclaw_adapter=FakeOpenClawAdapter(decision=OpenClawDecision(handled=False)),
+                    context_memory=context_memory,
+                )
+
+                first = await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "emotion_tag": "tired",
+                        "confidence": 0.9,
+                        "fatigue_score": 0.85,
+                    },
+                })
+                second = await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "emotion_tag": "tired",
+                        "confidence": 0.9,
+                        "fatigue_score": 0.85,
+                    },
+                })
+
+                events = context_memory.query_recent_events(event_type="emotion.intervention")
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
+
+                self.assertTrue(first["handled"])
+                self.assertFalse(second["handled"])
+                self.assertEqual(second["reason"], "cooldown")
+                self.assertEqual(len(events), 1)
+                self.assertEqual(len(care_events), 1)
 
     async def test_emotion_fast_path_keeps_local_result_when_openclaw_raises(self) -> None:
         gateway = FakeGateway()

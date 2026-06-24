@@ -1,0 +1,2 @@
+base_station/models/openface_ov/**/*.bin filter=lfs diff=lfs merge=lfs -text
+base_station/models/openface_ov/**/*.xml filter=lfs diff=lfs merge=lfs -text

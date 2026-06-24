@@ -28,9 +28,10 @@ class CompanionRequestSkill:
                 "trigger_result": trigger_result,
             }
 
-        await self.robot_motion.care_for_user()
+        actions = await self.robot_motion.care_for_user()
         return {
             "handled": True,
             "reason": "asr_emotion_triggered",
             "trigger_result": trigger_result,
+            "actions": actions,
         }

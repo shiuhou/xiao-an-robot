@@ -17,7 +17,6 @@ import sys
 import tempfile
 from typing import Any
 
-from agent.core.brain import XiaoAnBrain
 from base_station.monitor.emotion_context_builder import EmotionContextBuilder
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
 from base_station.perception.face_emotion_model import MockFaceEmotionModel
@@ -32,20 +31,32 @@ OpenVINOFaceEmotionModel = None
 OpenVINOQwenVLEmotionModel = None
 QwenVLOpenVINORunner = None
 VLMFaceAnalyzer = None
+_build_openface_cv_pipeline = None
 
 
 class BaseStationEmotionRuntime:
     """Run an emotion source through EmotionEventLoop into the Agent brain."""
 
-    def __init__(self, source: Any, event_loop: EmotionEventLoop, verbose: bool = True):
+    def __init__(
+        self,
+        source: Any,
+        event_loop: EmotionEventLoop,
+        verbose: bool = True,
+        no_agent: bool = False,
+    ):
         self.source = source
         self.event_loop = event_loop
         self.verbose = verbose
+        self.no_agent = no_agent
 
     async def run(self) -> list[dict]:
         results = []
         async for sample in self.source.samples():
-            result = await self.event_loop.handle_sample(sample)
+            if self.no_agent:
+                result = self.event_loop.build_event(sample)
+                print("[emotion.sample]", json.dumps(result, ensure_ascii=False))
+            else:
+                result = await self.event_loop.handle_sample(sample)
             results.append(result)
             if self.verbose:
                 print(json.dumps({
@@ -108,6 +119,89 @@ class DirectModelEmotionPipeline:
         return self.model.predict(frame).copy()
 
 
+# Legacy helpers kept for compatibility with older tests/imports. The current
+# VLM-gated flow keeps CV/OpenFace fields at the top level and stores VLM output
+# under final_sample["vlm"] instead of letting VLM own the emitted sample.
+_PERCEPTION_PROMOTE_FIELDS = (
+    "fatigue_level",
+    "observation_quality",
+    "presence_state",
+    "evidence_codes",
+)
+
+_VLM_EMOTION_TAG_ALIASES = {
+    "tired": "tired",
+    "sleepy": "tired",
+    "fatigue": "tired",
+    "sad": "sad",
+    "depressed": "sad",
+    "low": "sad",
+    "downcast": "sad",
+    "anxious": "anxious",
+    "nervous": "anxious",
+    "uneasy": "anxious",
+    "stressed": "stressed",
+    "irritable": "stressed",
+    "frustrated": "stressed",
+    "angry": "stressed",
+    "anger": "stressed",
+    "happy": "happy",
+    "calm": "neutral",
+    "neutral": "neutral",
+}
+
+
+def _is_negative_polarity(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    return "负" in text or text in {"negative", "neg"}
+
+
+def _normalize_vlm_emotion_tag(value: Any, polarity: Any = None) -> str:
+    normalized = str(value or "").strip().lower()
+    mapped = _VLM_EMOTION_TAG_ALIASES.get(normalized)
+    if mapped is not None:
+        return mapped
+    if _is_negative_polarity(polarity):
+        return "stressed"
+    return "neutral"
+
+
+def _as_evidence_list(value: Any) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
+
+
+def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> dict:
+    """Normalize VLM output into the runtime delivery contract."""
+
+    raw = raw or {}
+    expression_label = (
+        raw.get("expression_label")
+        or raw.get("emotion_tag")
+        or raw.get("emotion")
+    )
+    face_observation = (
+        raw.get("face_observation")
+        or raw.get("vlm_observation")
+        or raw.get("visual_reason")
+        or ""
+    )
+    return {
+        "executed": bool(executed),
+        "status": str(status),
+        "expression_label": expression_label,
+        "confidence": raw.get("confidence"),
+        "evidence": _as_evidence_list(raw.get("evidence")),
+        "face_observation": face_observation,
+        "message": raw.get("message") or "",
+    }
+
+
 class VLMGatedCameraEmotionSource:
     """Run a lightweight CV sample first, then call VLM only when the gate asks."""
 
@@ -135,22 +229,32 @@ class VLMGatedCameraEmotionSource:
             gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
             reason = str(gate_result.get("reason", "normal"))
 
-            if gate_result.get("should_trigger", False):
-                context = self.context_builder.build(
-                    cv_sample=cv_sample,
-                    vlm_sample=None,
-                    asr_text=None,
-                    history_summary=self._history_summary(),
-                )
-                prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
-                final_sample = prediction.copy()
-                final_sample["vlm_triggered"] = True
-                final_sample["vlm_trigger_reason"] = reason
-                final_sample["cv_sample"] = cv_sample.copy()
-            else:
-                final_sample = cv_sample.copy()
-                final_sample["vlm_triggered"] = False
-                final_sample["vlm_trigger_reason"] = reason
+            if not gate_result.get("should_trigger", False):
+                frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
+                print(f"[gate.skip] frame_id={frame_id} reason={reason}")
+                continue
+
+            context = self.context_builder.build(
+                cv_sample=cv_sample,
+                vlm_sample=None,
+                asr_text=None,
+                history_summary=self._history_summary(),
+            )
+            prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+
+            final_sample = cv_sample.copy()
+            final_sample["vlm_triggered"] = True
+            final_sample["vlm_trigger_reason"] = reason
+            final_sample["cv_sample"] = cv_sample.copy()
+            final_sample["vlm"] = normalize_vlm_result(
+                prediction,
+                executed=True,
+                status=(
+                    str(prediction.get("status", "ok"))
+                    if isinstance(prediction, dict)
+                    else "ok"
+                ),
+            )
 
             yield final_sample
 
@@ -229,7 +333,7 @@ def create_vlm_emotion_model(
     )
 
 
-def _load_openvino_face_emotion_model():
+def _load_openvino_face_emotion_model():     
     global OpenVINOFaceEmotionModel
     if OpenVINOFaceEmotionModel is None:
         from base_station.perception.openvino_face_emotion_model import OpenVINOFaceEmotionModel as loaded
@@ -262,10 +366,54 @@ def _load_vlm_face_analyzer():
     return VLMFaceAnalyzer
 
 
+def _load_openface_ov_adapter():
+    """Lazy import of the OpenFace OV adapter (pulls in torch/openvino only here)."""
+    global _build_openface_cv_pipeline
+    if _build_openface_cv_pipeline is None:
+        from base_station.perception.openface_ov_adapter import (
+            build_openface_cv_pipeline as loaded,
+        )
+
+        _build_openface_cv_pipeline = loaded
+    return _build_openface_cv_pipeline
+
+
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
     if model_backend in {"qwen_vl", "openvino_qwen_vl"}:
         return DirectModelEmotionPipeline(model=model)
     return FaceEmotionPipeline(pattern=pattern, model=model)
+
+
+def build_cv_pipeline(
+    model_backend: str,
+    pattern: str,
+    model_path: str | None,
+    device: str,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
+):
+    """Build the cv_pipeline (process_frame: frame -> cv_sample) for a camera source.
+
+    The ``openface_ov`` backend wires OpenFace's in-process OpenVINO perceive
+    (3 IR + host decode, from the OpenFace repo) into the OpenFaceCVPipeline that
+    emits the perception contract sample (route A / Gate 4). All other backends
+    keep the existing model + FaceEmotionPipeline/DirectModelEmotionPipeline path.
+    """
+    if model_backend == "openface_ov":
+        build = _load_openface_ov_adapter()
+        return build(
+            openface_repo=openface_repo,
+            models_dir=openface_models_dir,
+            device=device,
+        )
+
+    model = create_face_emotion_model(
+        model_backend=model_backend,
+        pattern=pattern,
+        model_path=model_path,
+        device=device,
+    )
+    return create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
 
 
 def create_emotion_source(
@@ -284,6 +432,8 @@ def create_emotion_source(
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
     history_memory: Any | None = None,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -297,13 +447,14 @@ def create_emotion_source(
             count=count,
             interval_seconds=interval_seconds,
         )
-        model = create_face_emotion_model(
+        pipeline = build_cv_pipeline(
             model_backend=model_backend,
             pattern=pattern,
             model_path=model_path,
             device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
         )
-        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         if enable_vlm_gate:
             vlm_model = create_vlm_emotion_model(
                 vlm_backend=vlm_backend,
@@ -328,13 +479,14 @@ def create_emotion_source(
             width=camera_width,
             height=camera_height,
         )
-        model = create_face_emotion_model(
+        pipeline = build_cv_pipeline(
             model_backend=model_backend,
             pattern=pattern,
             model_path=model_path,
             device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
         )
-        pipeline = create_emotion_pipeline(model_backend=model_backend, model=model, pattern=pattern)
         if enable_vlm_gate:
             vlm_model = create_vlm_emotion_model(
                 vlm_backend=vlm_backend,
@@ -381,12 +533,21 @@ def create_runtime(
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
+    openface_repo: str | None = None,
+    openface_models_dir: str | None = None,
+    no_agent: bool = False,
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
-    brain = XiaoAnBrain(
-        gateway_url=gateway_url,
-        db_path=db_path,
-    )
+    brain = None
+    history_memory = None
+    if not no_agent:
+        from agent.core.brain import XiaoAnBrain
+
+        brain = XiaoAnBrain(
+            gateway_url=gateway_url,
+            db_path=db_path,
+        )
+        history_memory = brain.memory
     source = create_emotion_source(
         source=source_name,
         pattern=pattern,
@@ -402,10 +563,17 @@ def create_runtime(
         vlm_backend=vlm_backend,
         vlm_model_path=vlm_model_path,
         force_vlm=force_vlm,
-        history_memory=brain.memory,
+        history_memory=history_memory,
+        openface_repo=openface_repo,
+        openface_models_dir=openface_models_dir,
     )
     event_loop = EmotionEventLoop(brain=brain)
-    return BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=verbose)
+    return BaseStationEmotionRuntime(
+        source=source,
+        event_loop=event_loop,
+        verbose=verbose,
+        no_agent=no_agent,
+    )
 
 
 def create_fake_face_runtime(
@@ -429,7 +597,7 @@ def create_fake_face_runtime(
     )
 
 
-def parse_count(value: str) -> int | None:
+def parse_count(value: str) -> int | None:  #没啥用的鲁棒
     if value.lower() in {"none", "null", "infinite"}:
         return None
     parsed = int(value)
@@ -441,8 +609,8 @@ def parse_count(value: str) -> int | None:
 EXPECTED_CLI_ERRORS = (ValueError, ImportError, FileNotFoundError, RuntimeError)
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run Xiao An base station emotion monitoring runtime.")
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析命令行参数
+    parser = argparse.ArgumentParser(description="Run Xiao An base station emotion monitoring runtime.")  #初始化参数解析器对象，并设置程序的描述信息
     parser.add_argument(
         "--source",
         default="fake_face",
@@ -465,9 +633,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
     parser.add_argument(
         "--model-backend",
-        choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl"],
+        choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl", "openface_ov"],
         default="mock",
         help="Face emotion model backend for camera sources.",
+    )
+    parser.add_argument(
+        "--openface-repo",
+        default=None,
+        help="Path to the OpenFace 3.0 repo (for --model-backend openface_ov). "
+        "Defaults to the bundled xiao-an runtime, or OPENFACE_REPO when set.",
+    )
+    parser.add_argument(
+        "--openface-models-dir",
+        default=None,
+        help="Path to OpenFace OpenVINO IR models. Defaults to OPENFACE_OV_MODELS_DIR "
+        "or base_station/models/openface_ov.",
     )
     parser.add_argument("--model-path", default=None, help="OpenVINO face emotion model path.")
     parser.add_argument("--model-root", dest="model_path", help=argparse.SUPPRESS)
@@ -484,6 +664,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--force-vlm", action="store_true", help="Force VLM analysis for every camera sample.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
+    parser.add_argument("--no-agent", action="store_true", help="Run perception and emotion.sample output without Agent.")
     return parser.parse_args(argv)
 
 
@@ -510,11 +691,16 @@ async def main(args: argparse.Namespace | None = None) -> None:
             vlm_backend=args.vlm_backend,
             vlm_model_path=args.vlm_model_path,
             force_vlm=args.force_vlm,
+            openface_repo=args.openface_repo,
+            openface_models_dir=args.openface_models_dir,
+            no_agent=args.no_agent,
         )
         try:
             await runtime.run()
         finally:
-            runtime.event_loop.brain.close()
+            brain = runtime.event_loop.brain
+            if brain is not None:
+                brain.close()
 
 
 def run_cli(argv: list[str] | None = None) -> int:

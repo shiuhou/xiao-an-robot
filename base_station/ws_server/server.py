@@ -19,6 +19,8 @@ from typing import Dict, Optional
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from base_station.perception.ws_video_source import VideoFrameDecodeError
+
 from .protocol import (
     Expression,
     MessageType,
@@ -39,12 +41,19 @@ logger = logging.getLogger("ws_server")
 
 # Active robot sessions: device_id -> session dict
 sessions: Dict[str, dict] = {}
+video_frame_source = None
+
+
+def set_video_frame_source(source):
+    global video_frame_source
+    video_frame_source = source
 
 
 def reset_state_for_tests() -> None:
     """Clear in-memory server state between integration tests."""
 
     sessions.clear()
+    set_video_frame_source(None)
 
 
 def remove_session_if_current(device_id: str, websocket: ServerConnection) -> bool:
@@ -289,6 +298,7 @@ async def handle_video(websocket: ServerConnection):
     latest_path = None
     try:
         from pathlib import Path
+
         latest_path = Path("runtime") / "latest.jpg"
         latest_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -296,13 +306,34 @@ async def handle_video(websocket: ServerConnection):
 
     try:
         async for frame in websocket:
-            if isinstance(frame, bytes) and len(frame) > 8:
+            if not isinstance(frame, bytes):
+                continue
+
+            if len(frame) > 8:
                 length = int.from_bytes(frame[0:4], "big")
                 timestamp = int.from_bytes(frame[4:8], "big")
                 jpeg_data = frame[8:8 + length]
-                logger.info(f"Video frame: {length} bytes, ts={timestamp}")
+                logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+
                 if latest_path and jpeg_data:
-                    latest_path.write_bytes(jpeg_data)
+                    try:
+                        latest_path.write_bytes(jpeg_data)
+                    except OSError as exc:
+                        logger.warning("Failed to write latest video frame: %s", exc)
+
+            if video_frame_source is not None:
+                try:
+                    decoded = await video_frame_source.push_packet(frame)
+                    logger.debug(
+                        "Decoded /video frame: frame_id=%s size=%sx%s",
+                        decoded.get("frame_id"),
+                        decoded.get("width"),
+                        decoded.get("height"),
+                    )
+                except VideoFrameDecodeError as exc:
+                    logger.warning("Invalid /video frame: %s", exc)
+                except Exception:
+                    logger.exception("Unexpected error while processing /video frame")
     except ConnectionClosed:
         logger.info("Video stream disconnected")
 

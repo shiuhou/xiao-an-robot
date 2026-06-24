@@ -1,6 +1,10 @@
 #pragma once
-// config.h — 联调固件配置（修改 WiFi / 基站 IP 后烧录）
-// 复制为 config.local.h 并 define MERGETEST_CONFIG_LOCAL 可覆盖（勿提交密钥）
+// config.h — 联调固件配置
+// 本地新建 config.local.h 覆盖 WiFi / 基站 IP（勿提交密钥）
+
+#if __has_include("config.local.h")
+#include "config.local.h"
+#endif
 
 #ifndef MERGETEST_WIFI_SSID
 #define MERGETEST_WIFI_SSID "YOUR_WIFI_SSID"

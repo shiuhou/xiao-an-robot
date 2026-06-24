@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-SOURCE = Path(__file__).resolve().parents[1] / "src" / "face240_raw_design_test.cpp"
+SOURCE = Path(__file__).resolve().parents[1] / "experiments" / "face240_raw_design_test.cpp"
 
 
 def main() -> int:

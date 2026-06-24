@@ -1,26 +1,12 @@
 #include "cam_stream.h"
+#include "board_pins.h"
+#include "feature_flags.h"
 #include "esp_camera.h"
 
-// GOOUUU ESP32-S3-CAM v1.5 / OV2640 pin map.
-// These pins are reserved for the camera.
-constexpr int CAM_PIN_PWDN  = -1;
-constexpr int CAM_PIN_RESET = -1;
-constexpr int CAM_PIN_XCLK  = 15;
-constexpr int CAM_PIN_SIOD  = 4;
-constexpr int CAM_PIN_SIOC  = 5;
-
-constexpr int CAM_PIN_D0 = 11;
-constexpr int CAM_PIN_D1 = 9;
-constexpr int CAM_PIN_D2 = 8;
-constexpr int CAM_PIN_D3 = 10;
-constexpr int CAM_PIN_D4 = 12;
-constexpr int CAM_PIN_D5 = 18;
-constexpr int CAM_PIN_D6 = 17;
-constexpr int CAM_PIN_D7 = 16;
-
-constexpr int CAM_PIN_VSYNC = 6;
-constexpr int CAM_PIN_HREF  = 7;
-constexpr int CAM_PIN_PCLK  = 13;
+#if ENABLE_WS_INTEGRATED
+#include "ws_client.h"
+#include "debug_log.h"
+#endif
 
 void CamStream::begin() {
     if (_active) {
@@ -76,8 +62,53 @@ void CamStream::begin() {
     _lastCapture = 0;
     _captureOk = 0;
     _captureFail = 0;
+#if ENABLE_WS_INTEGRATED
+    _frameId = 0;
+#endif
     Serial.println("[Cam] Camera ready.");
 }
+
+#if ENABLE_WS_INTEGRATED
+
+void CamStream::captureLoop(WSClient& ws) {
+    if (!_active || !ws.isVideoConnected()) {
+        return;
+    }
+
+    const uint32_t now = millis();
+    if (now - _lastCapture < CAPTURE_INTERVAL_MS) {
+        return;
+    }
+    _lastCapture = now;
+
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (!fb || fb->format != PIXFORMAT_JPEG) {
+        ++_captureFail;
+        if (fb) {
+            esp_camera_fb_return(fb);
+        }
+        LOGE("Cam", "capture fail count=%lu", static_cast<unsigned long>(_captureFail));
+        return;
+    }
+
+    ++_captureOk;
+    ++_frameId;
+    const uint16_t width = fb->width ? fb->width : 320;
+    const uint16_t height = fb->height ? fb->height : 240;
+
+    ws.sendVideoFrameMeta(_frameId, width, height);
+    if (!ws.sendVideoBinary(fb->buf, fb->len, millis() / 1000)) {
+        LOGW("Cam", "video binary send failed, fallback base64");
+        ws.sendVideoFrameBase64(fb->buf, fb->len, _frameId, width, height);
+    }
+
+    LOGI("Cam", "frame #%lu %ux%u len=%u ok=%lu",
+         static_cast<unsigned long>(_frameId), width, height, fb->len,
+         static_cast<unsigned long>(_captureOk));
+    esp_camera_fb_return(fb);
+}
+
+#else
 
 void CamStream::captureLoop() {
     if (!_active) {
@@ -109,6 +140,8 @@ void CamStream::captureLoop() {
 
     esp_camera_fb_return(fb);
 }
+
+#endif
 
 bool CamStream::isActive() {
     return _active;

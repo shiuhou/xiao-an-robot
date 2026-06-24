@@ -9,6 +9,8 @@ This is the current repository snapshot after the firmware bring-up envs and har
 - The working tree already contains local firmware changes that should be treated as active work, not reverted:
   - `robot/firmware/platformio.ini` has new envs for WiFi motor control, camera+motor+QR overlay, 2.4 inch face display tests, and ST7789 probe variants.
   - `robot/firmware/testing/` has been removed from the working tree.
+  - `robot/firmware/src/board_pins.h` defines the integrated camera/TFT/audio pin constants.
+  - `face240_integrated` PlatformIO env uses GPIO14/21/42/43/44/48 for TFT on the integrated harness.
   - New firmware source files exist for `motor_wifi_manual`, `motor_cam_wifi_manual`, `face240_*`, and `tft_espi_probe`.
   - `robot/firmware/tools/face240_preview.html` exists for browser preview of the 320x240 face design.
   - `robot/firmware/tools/test_face240_raw_dirty_rect.py` exists as a lightweight structural check for the `face240_raw_design_test.cpp` dirty-rect renderer.
@@ -86,8 +88,10 @@ Dedicated PlatformIO envs now cover the current hardware experiments:
 | `redtracker` | Experimental | On-device red target tracking |
 | `serialredtracker` | Experimental | Serial red target tracking |
 | `display_test` / `tfttest` | Test-ready | 128x160 ST7735 TFT bring-up |
-| `face240` | New / test-ready | Raw 2.4 inch 320x240 ST7789 face design |
-| `face240_wiretest` | New / test-ready | Raw ST7789 color/wiring test |
+| `face240_integrated` | Test-ready | Alias of `face240_wiretest` on integrated harness |
+| `face240` | Test-ready | 2.4 inch ST7789 face demo (integrated pins) |
+| `face240_wiretest` | Test-ready | ST7789 wiring/color check (integrated pins) |
+| `face240_legacy` | Legacy only | Old GPIO9–12 harness; camera must be disconnected |
 | `face240_espi` | New / experimental | TFT_eSPI sprite face test |
 | `tftprobe_*` | New / diagnostic | ST7789 driver, RGB/BGR, inversion, and raw-init probe variants |
 | `voice_recognition_test` | Test-ready | INMP441 I2S RMS/voice activity test |
@@ -104,6 +108,7 @@ Validate with targeted commands:
 cd robot\firmware
 pio run -e esp32-s3-devkitc-1
 pio run -e motor_cam_wifi_manual
+pio run -e face240_integrated
 pio run -e face240_wiretest
 pio run -e voice_recognition_test
 pio run -e speaker_amp_test
@@ -124,7 +129,8 @@ High-risk wiring notes:
 
 - Motor pins are currently `GPIO1/GPIO2` for the left DRV8833 channel and `GPIO47/GPIO38` for the right channel.
 - Limit switches are disabled in firmware (`-1`) until final GPIOs are assigned.
-- OV2640 and TFT test wiring overlap on GPIO9/10/11/12. These tests are isolated envs unless the integrated board wiring is repinned.
+- Default firmware TFT/camera/audio pins live in `robot/firmware/src/board_pins.h` (integrated harness).
+- Legacy GPIO9/10/11/12 TFT wiring is isolated to `face240_legacy` and `display_test_legacy` only.
 - `motor_cam_wifi_manual` uses ESP32 AP mode with SSID `XiaoAn-Motor`, password `12345678`, control UI at `http://192.168.4.1/`, and MJPEG stream at `http://192.168.4.1:81/stream`.
 
 ## Main Gaps

@@ -5,91 +5,104 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+173d0a9 Add hardware bring-up and DK-2500 integration docs
 e09947b Update hardware loop bring-up docs and firmware feedback
 abbd5a1 Preserve local robot updates after sync
 cf17ddb Add local tool execution placeholders
 1564c46 Add OpenClaw adapter factory
-a486d47 Add HTTP OpenClaw adapter
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-README.md                                | 320 ++++++++++++++-----------------
- base_station/ws_server/server.py         |  40 +++-
- docs/architecture.md                     |  14 +-
- docs/deployment_dk2500.md                |  12 ++
- docs/hardware_setup.md                   | 260 +++++++++++++++++++------
- docs/model_download.md                   |  93 ++++++++-
- docs/protocol.md                         |  42 ++--
- docs/troubleshooting.md                  | 144 +++++++++++---
- hardware/README.md                       |  24 ++-
- hardware/bom/bom.md                      |  29 ++-
- hardware/dk2500/bios_notes.md            |  16 +-
- hardware/dk2500/device_checklist.md      |  28 +--
- hardware/dk2500/peripheral_test.md       |  25 ++-
- hardware/mechanical/dock/README.md       |  31 ++-
- hardware/mechanical/shell/README.md      |  32 +++-
- hardware/wiring/esp32_pinout.md          |  69 ++++++-
- hardware/wiring/motor_driver.md          |  50 ++++-
- hardware/wiring/power.md                 |  46 ++++-
- robot/firmware/platformio.ini            | 259 +++++++++++++++++++++++++
- robot/firmware/testing/platformio.ini    |  10 -
- robot/firmware/testing/src/camera_pins.h |  24 ---
- robot/firmware/testing/src/main.cpp      |  77 --------
- tools/send_robot_command.py              |   8 +
- 23 files changed, 1178 insertions(+), 475 deletions(-)
+.gitignore                                         |   3 +
+ AGENTS.md                                          |  13 +-
+ README.md                                          |  24 +-
+ docs/agents/00_snapshot.md                         |   2 +-
+ docs/agents/02_firmware_registry.md                |  27 +-
+ docs/hardware_setup.md                             |  35 ++-
+ docs/project_status_2026-06-22.md                  |  12 +-
+ docs/troubleshooting.md                            |   5 +-
+ hardware/README.md                                 |   2 +-
+ hardware/bom/bom.md                                |   4 +-
+ hardware/wiring/esp32_pinout.md                    | 288 +++++++++++++++++----
+ .../experiments/face240_raw_design_test.cpp        |  25 +-
+ robot/firmware/platformio.ini                      | 212 +++++----------
+ robot/firmware/src/cam_stream.cpp                  |  22 +-
+ robot/firmware/src/camtesting_program.cpp          |  21 +-
+ robot/firmware/src/face240_roboeyes_test.cpp       |  60 ++---
+ robot/firmware/src/face240_wire_test.cpp           |  25 +-
+ robot/firmware/src/keep_face_center_test.cpp       |  21 +-
+ robot/firmware/src/mic_stream.h                    |   5 +-
+ robot/firmware/src/monthly_salary_meow_frames.h    |  40 ---
+ robot/firmware/src/motor_cam_wifi_manual_main.cpp  |  19 +-
+ robot/firmware/src/motor_ctrl.h                    |   1 +
+ robot/firmware/src/red_circle_tracker_test.cpp     |  21 +-
+ .../src/robot_face_9expr_merged_optimized.cpp      |  44 ++--
+ robot/firmware/src/serial_qr_servo_main.cpp        |  20 +-
+ robot/firmware/src/serial_red_tracker_test.cpp     |  20 +-
+ robot/firmware/src/speaker_amp_test.cpp            |  12 +-
+ robot/firmware/src/tft_espi_probe.cpp              |   7 +-
+ robot/firmware/src/tft_test.cpp                    |  73 +-----
+ robot/firmware/src/voice_recognition_test.cpp      |  12 +-
+ robot/firmware/tools/face240_preview.html          |   8 +-
+ .../firmware/tools/test_face240_raw_dirty_rect.py  |   2 +-
+ robot/mergetesting/EXTRACTION_MAP.md               |   2 +-
+ robot/mergetesting/README.md                       |  10 +-
+ robot/mergetesting/platformio.ini                  |  21 +-
+ robot/mergetesting/src/face240_display.cpp         |  46 ++--
+ robot/mergetesting/src/hardware_pins.h             |  28 +-
+ 37 files changed, 498 insertions(+), 694 deletions(-)
 ```
 
-## robot/firmware/src (33 files)
+## robot/firmware/src (32 files)
 
 | 文件 | 路径 | 字节 |
 | --- | --- | --- |
-| `cam_stream.cpp` | robot\firmware\src\cam_stream.cpp | 3437 |
-| `camtesting_program.cpp` | robot\firmware\src\camtesting_program.cpp | 7994 |
+| `cam_stream.cpp` | robot\firmware\src\cam_stream.cpp | 2835 |
+| `camtesting_program.cpp` | robot\firmware\src\camtesting_program.cpp | 7588 |
 | `display.cpp` | robot\firmware\src\display.cpp | 8744 |
-| `face240_espi_test.cpp` | robot\firmware\src\face240_espi_test.cpp | 11977 |
-| `face240_raw_design_test.cpp` | robot\firmware\src\face240_raw_design_test.cpp | 26935 |
-| `face240_roboeyes_test.cpp` | robot\firmware\src\face240_roboeyes_test.cpp | 26893 |
-| `face240_wire_test.cpp` | robot\firmware\src\face240_wire_test.cpp | 3808 |
-| `keep_face_center_test.cpp` | robot\firmware\src\keep_face_center_test.cpp | 10941 |
+| `face240_roboeyes_test.cpp` | robot\firmware\src\face240_roboeyes_test.cpp | 26585 |
+| `face240_wire_test.cpp` | robot\firmware\src\face240_wire_test.cpp | 3477 |
+| `keep_face_center_test.cpp` | robot\firmware\src\keep_face_center_test.cpp | 10535 |
 | `main.cpp` | robot\firmware\src\main.cpp | 6658 |
 | `mic_stream.cpp` | robot\firmware\src\mic_stream.cpp | 360 |
 | `motor_bench_once_main.cpp` | robot\firmware\src\motor_bench_once_main.cpp | 1983 |
-| `motor_cam_wifi_manual_main.cpp` | robot\firmware\src\motor_cam_wifi_manual_main.cpp | 22166 |
+| `motor_cam_wifi_manual_main.cpp` | robot\firmware\src\motor_cam_wifi_manual_main.cpp | 21637 |
 | `motor_ctrl.cpp` | robot\firmware\src\motor_ctrl.cpp | 12234 |
 | `motor_manual_main.cpp` | robot\firmware\src\motor_manual_main.cpp | 9414 |
 | `motor_wifi_manual_main.cpp` | robot\firmware\src\motor_wifi_manual_main.cpp | 7576 |
-| `red_circle_tracker_test.cpp` | robot\firmware\src\red_circle_tracker_test.cpp | 19154 |
-| `robot_face_9expr_merged_optimized.cpp` | robot\firmware\src\robot_face_9expr_merged_optimized.cpp | 27152 |
-| `serial_qr_servo_main.cpp` | robot\firmware\src\serial_qr_servo_main.cpp | 7896 |
-| `serial_red_tracker_test.cpp` | robot\firmware\src\serial_red_tracker_test.cpp | 4245 |
+| `red_circle_tracker_test.cpp` | robot\firmware\src\red_circle_tracker_test.cpp | 18748 |
+| `robot_face_9expr_merged_optimized.cpp` | robot\firmware\src\robot_face_9expr_merged_optimized.cpp | 27130 |
+| `serial_qr_servo_main.cpp` | robot\firmware\src\serial_qr_servo_main.cpp | 7535 |
+| `serial_red_tracker_test.cpp` | robot\firmware\src\serial_red_tracker_test.cpp | 3884 |
 | `servo_ctrl.cpp` | robot\firmware\src\servo_ctrl.cpp | 507 |
-| `speaker_amp_test.cpp` | robot\firmware\src\speaker_amp_test.cpp | 5005 |
-| `tft_espi_probe.cpp` | robot\firmware\src\tft_espi_probe.cpp | 3402 |
-| `tft_test.cpp` | robot\firmware\src\tft_test.cpp | 14581 |
-| `voice_recognition_test.cpp` | robot\firmware\src\voice_recognition_test.cpp | 6120 |
+| `speaker_amp_test.cpp` | robot\firmware\src\speaker_amp_test.cpp | 4851 |
+| `tft_espi_probe.cpp` | robot\firmware\src\tft_espi_probe.cpp | 3324 |
+| `tft_test.cpp` | robot\firmware\src\tft_test.cpp | 12587 |
+| `voice_recognition_test.cpp` | robot\firmware\src\voice_recognition_test.cpp | 5970 |
 | `ws_client.cpp` | robot\firmware\src\ws_client.cpp | 6927 |
+| `board_pins.h` | robot\firmware\src\board_pins.h | 2426 |
 | `cam_stream.h` | robot\firmware\src\cam_stream.h | 343 |
 | `display.h` | robot\firmware\src\display.h | 833 |
-| `mic_stream.h` | robot\firmware\src\mic_stream.h | 333 |
-| `monthly_salary_meow_frames.h` | robot\firmware\src\monthly_salary_meow_frames.h | 86676 |
-| `motor_ctrl.h` | robot\firmware\src\motor_ctrl.h | 3118 |
+| `feature_flags.h` | robot\firmware\src\feature_flags.h | 332 |
+| `mic_stream.h` | robot\firmware\src\mic_stream.h | 430 |
+| `motor_ctrl.h` | robot\firmware\src\motor_ctrl.h | 3202 |
 | `protocol.h` | robot\firmware\src\protocol.h | 3177 |
 | `servo_ctrl.h` | robot\firmware\src\servo_ctrl.h | 371 |
 | `ws_client.h` | robot\firmware\src\ws_client.h | 1242 |
 
-## PlatformIO envs — robot/firmware (28)
+## PlatformIO envs — robot/firmware (21)
 
-`esp32-s3-devkitc-1`, `motor_manual`, `motor_bench_once`, `motor_wifi_manual`, `motor_cam_wifi_manual`, `camtesting`, `keepfacecenter`, `redtracker`, `serialredtracker`, `serialqrservo`, `display_test`, `tfttest`, `face240`, `face240_wiretest`, `face240_roboeyes`, `face240_9expr_merged`, `face240_espi`, `tftprobe_st7789_rgb_off`, `tftprobe_st7789_bgr_off`, `tftprobe_st7789_rgb_on`, `tftprobe_st7789_bgr_on`, `tftprobe_st7789_2_rgb_off`, `tftprobe_st7789_2_bgr_off`, `tftprobe_st7789_2_rgb_on`, `tftprobe_st7789_2_bgr_on`, `tftprobe_hybrid_rawinit`, `voice_recognition_test`, `speaker_amp_test`
+`esp32-s3-devkitc-1`, `motor_manual`, `motor_bench_once`, `motor_wifi_manual`, `motor_cam_wifi_manual`, `camtesting`, `keepfacecenter`, `redtracker`, `serialredtracker`, `serialqrservo`, `display_test`, `face240_roboeyes`, `face240`, `face240_legacy`, `display_test_legacy`, `face240_wiretest`, `face240_integrated`, `face240_9expr_merged`, `tftprobe_hybrid_rawinit`, `voice_recognition_test`, `speaker_amp_test`
 
 ## robot/mergetesting/src (20 files)
 
 | 文件 | 路径 | 字节 |
 | --- | --- | --- |
-| `cam_stream.cpp` | robot\mergetesting\src\cam_stream.cpp | 2828 |
+| `cam_stream.cpp` | robot\mergetesting\src\cam_stream.cpp | 2726 |
 | `display.cpp` | robot\mergetesting\src\display.cpp | 7633 |
-| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 28315 |
+| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 28350 |
 | `main.cpp` | robot\mergetesting\src\main.cpp | 8851 |
 | `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 2694 |
 | `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 12314 |
@@ -101,7 +114,7 @@ README.md                                | 320 ++++++++++++++-----------------
 | `debug_log.h` | robot\mergetesting\src\debug_log.h | 339 |
 | `display.h` | robot\mergetesting\src\display.h | 465 |
 | `face240_display.h` | robot\mergetesting\src\face240_display.h | 252 |
-| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1164 |
+| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1183 |
 | `mic_stream.h` | robot\mergetesting\src\mic_stream.h | 342 |
 | `motor_ctrl.h` | robot\mergetesting\src\motor_ctrl.h | 1152 |
 | `protocol.h` | robot\mergetesting\src\protocol.h | 3796 |

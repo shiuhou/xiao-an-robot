@@ -41,17 +41,24 @@ Current important envs:
 - `motor_wifi_manual`: browser motor control over ESP32 AP.
 - `serialqrservo`: ESP32 serial JPEG stream plus PC-side QR servo.
 - `motor_cam_wifi_manual`: integrated WiFi motor + camera stream + on-device QR overlay demo.
-- `display_test` / `tfttest`: 128x160 TFT test.
-- `face240`, `face240_wiretest`, `face240_roboeyes`, `face240_9expr_merged`, `face240_espi`, `tftprobe_*`: 2.4 inch ST7789 face/display tests.
+- `display_test`: 128x160 TFT test (`tfttest` alias removed 2026-06-23).
+- `face240_integrated`: alias of `face240_wiretest` (integrated harness).
+- `face240_roboeyes`: canonical 2.4" RoboEyes demo; `face240` extends it.
+- `face240_9expr_merged`: nine-expression product path (mergetesting uses this).
+- `tftprobe_hybrid_rawinit`: ST7789 diagnostic (other `tftprobe_*` envs removed).
+- `face240_legacy`, `display_test_legacy`: old GPIO9–12 bench harness only.
+- Archived sources: `robot/firmware/archive/`, experiments: `robot/firmware/experiments/`.
 - `voice_recognition_test`: INMP441 electrical/RMS test, not real ASR.
 - `speaker_amp_test`: MAX98357A tone test.
+- `esp32-s3-integrated`: DK-2500 `/control` + `/video` + `/audio` + face240 (replaces mergetesting for new burns).
 
 ## Hardware Assumptions
 
 - Current motor wiring is DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO47/GPIO38.
 - Fix motor direction with `MOTOR_LEFT_FORWARD_USES_IN1` and `MOTOR_RIGHT_FORWARD_USES_IN1` before rewiring.
 - Limit switch GPIOs are not final.
-- OV2640 and TFT test maps currently overlap on GPIO9/10/11/12; treat them as isolated env tests until the integrated map is repinned.
+- Integrated TFT map (default): SCK=14, MOSI=21, CS=42, DC=43, RST=44, BL=48 via `board_pins.h`.
+- Legacy bench TFT (`face240_legacy`, `display_test_legacy`): GPIO9/10/11/12 — camera must stay disconnected.
 - `motor_cam_wifi_manual` uses SSID `XiaoAn-Motor`, UI `http://192.168.4.1/`, and stream `http://192.168.4.1:81/stream`.
 
 ## Verification
@@ -71,8 +78,10 @@ Firmware:
 cd robot\firmware
 pio run -e esp32-s3-devkitc-1
 pio run -e motor_cam_wifi_manual
+pio run -e face240_integrated
 pio run -e face240_wiretest
 pio run -e face240_9expr_merged
+pio run -e esp32-s3-integrated
 ```
 
 Face display helper:

@@ -1,17 +1,7 @@
 #include <Arduino.h>
 #include <driver/i2s.h>
 
-#ifndef VOICE_I2S_BCLK
-#define VOICE_I2S_BCLK 39
-#endif
-
-#ifndef VOICE_I2S_WS
-#define VOICE_I2S_WS 40
-#endif
-
-#ifndef VOICE_I2S_DIN
-#define VOICE_I2S_DIN 41
-#endif
+#include "board_pins.h"
 
 #ifndef VOICE_SAMPLE_RATE
 #define VOICE_SAMPLE_RATE 16000

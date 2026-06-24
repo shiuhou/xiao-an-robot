@@ -43,7 +43,7 @@
 
 | 组合 | 冲突 GPIO | 推荐 env |
 |------|-----------|----------|
-| TFT + OV2640 | 9/10/11/12 | 分开烧录：`mergetesting_display_only` / `mergetesting_cam_only` |
+| TFT + OV2640 | 整合线束：TFT 14/21/42/43/44/48 + Camera FPC | 默认可同接；旧 9/10/11/12 线束勿与相机并用 |
 | 2.4 face240 + OV2640 | 同上 | `mergetesting_face240_only` 与 `mergetesting_cam_only` 分开 |
 
 ## 串口本地测试（无需基站）

@@ -6,6 +6,7 @@
 #include <Arduino.h>
 
 // ── Motor bring-up wiring map ────────────────────────────────────────────────
+// Canonical map: hardware/wiring/esp32_pinout.md and board_pins.h (camera/audio).
 // Bench assumption for the current harness:
 //   GPIO1  -> left  driver IN1
 //   GPIO2  -> left  driver IN2

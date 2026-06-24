@@ -1,32 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-#include "monthly_salary_meow_frames.h"
-
-#ifndef TFT_MOSI
-#define TFT_MOSI 11
-#endif
-#ifndef TFT_MISO
-#define TFT_MISO -1
-#endif
-#ifndef TFT_SCLK
-#define TFT_SCLK 12
-#endif
-#ifndef TFT_CS
-#define TFT_CS 10
-#endif
-#ifndef TFT_DC
-#define TFT_DC 9
-#endif
-#ifndef TFT_RST
-#define TFT_RST 14
-#endif
-#ifndef TFT_BL
-#define TFT_BL 21
-#endif
-#ifndef TFT_BACKLIGHT_ON
-#define TFT_BACKLIGHT_ON HIGH
-#endif
+#include "board_pins.h"
 
 static constexpr int TFT_W = 128;
 static constexpr int TFT_H = 160;
@@ -408,50 +383,6 @@ static void showMoonSalaryCatDance() {
     }
 }
 
-static bool meowFramePixelOn(const uint8_t *frame, int x, int y) {
-    const uint16_t byteIndex = (y / 8) * GIF_FW + x;
-    return (frame[byteIndex] & (1 << (y % 8))) != 0;
-}
-
-static void drawMeowFrame2x(const uint8_t *frame, int dstX, int dstY, uint16_t fg, uint16_t bg) {
-    static constexpr int SCALE = 2;
-    static constexpr int DRAW_W = GIF_FW * SCALE;
-    static constexpr int DRAW_H = GIF_FH * SCALE;
-
-    setAddressWindow(dstX, dstY, dstX + DRAW_W - 1, dstY + DRAW_H - 1);
-    digitalWrite(TFT_DC, HIGH);
-    selectDisplay();
-
-    for (int sy = 0; sy < GIF_FH; ++sy) {
-        for (int yRepeat = 0; yRepeat < SCALE; ++yRepeat) {
-            for (int sx = 0; sx < GIF_FW; ++sx) {
-                const uint16_t color = meowFramePixelOn(frame, sx, sy) ? fg : bg;
-                writeData16(color);
-                writeData16(color);
-            }
-        }
-    }
-
-    unselectDisplay();
-}
-
-static void showMonthlySalaryMeowFrames() {
-    fillScreen(BLACK);
-    drawText(7, 4, "SALARY MEOW", YELLOW, BLACK, 1);
-    drawText(25, 148, "GITEE GIF", CYAN, BLACK, 1);
-
-    for (uint8_t frameIndex = 0; frameIndex < GIF_FRAMES; ++frameIndex) {
-        drawMeowFrame2x(gif_frames[frameIndex], 0, 16, WHITE, BLACK);
-
-        Serial.printf("[TFT] Monthly salary meow frame=%u/%u uptime=%lu ms\n",
-                      static_cast<unsigned>(frameIndex + 1),
-                      static_cast<unsigned>(GIF_FRAMES),
-                      static_cast<unsigned long>(millis()));
-
-        delay(max<uint16_t>(25, gif_delays[frameIndex] * 3));
-    }
-}
-
 void setup() {
     Serial.begin(115200);
     waitForSerialWindow();
@@ -465,5 +396,5 @@ void setup() {
 }
 
 void loop() {
-    showMonthlySalaryMeowFrames();
+    showMoonSalaryCatDance();
 }

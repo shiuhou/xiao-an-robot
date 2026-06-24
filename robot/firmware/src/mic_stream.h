@@ -1,16 +1,24 @@
 #pragma once
-// mic_stream.h - I2S microphone streaming to base station
-// Author: 施宇灏
 
 #include <Arduino.h>
+#include "feature_flags.h"
+
+class WSClient;
 
 class MicStream {
 public:
     void begin();
-    void streamLoop();     // call in main loop()
+#if ENABLE_WS_INTEGRATED
+    void streamLoop(WSClient& ws);
+#else
+    void streamLoop();
+#endif
     bool isActive();
 
 private:
-    // TODO: define I2S pin constants (INMP441: BCK, WS, DATA)
     bool _active = false;
+#if ENABLE_WS_INTEGRATED
+    uint32_t _chunkId = 0;
+    uint32_t _lastSendMs = 0;
+#endif
 };

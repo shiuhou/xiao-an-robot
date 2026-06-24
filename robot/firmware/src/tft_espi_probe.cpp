@@ -1,12 +1,7 @@
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 
-#ifndef TFT_BL
-#define TFT_BL 21
-#endif
-#ifndef TFT_BACKLIGHT_ON
-#define TFT_BACKLIGHT_ON HIGH
-#endif
+#include "board_pins.h"
 
 #ifndef PROBE_NAME
 #define PROBE_NAME "unknown"

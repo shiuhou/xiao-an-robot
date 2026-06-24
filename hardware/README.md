@@ -7,7 +7,7 @@ This directory collects hardware setup notes for Xiao An. Keep notes practical, 
 | File | Purpose |
 | --- | --- |
 | [bom/bom.md](bom/bom.md) | Current parts list and selection status. |
-| [wiring/esp32_pinout.md](wiring/esp32_pinout.md) | Firmware-backed ESP32-S3 pin map. |
+| [wiring/esp32_pinout.md](wiring/esp32_pinout.md) | ESP32-S3 pin map, power distribution, integrated vs legacy TFT wiring |
 | [wiring/motor_driver.md](wiring/motor_driver.md) | DRV8833 wiring and motor test checklist. |
 | [wiring/power.md](wiring/power.md) | Rails, wireless charging direction, and power safety checks. |
 | [dk2500/device_checklist.md](dk2500/device_checklist.md) | DK-2500 readiness checklist. |

@@ -17,6 +17,11 @@ namespace MsgType {
   constexpr const char* SENSOR_DOCK_STATUS = "sensor.dock_status";
   constexpr const char* MOTION_COMPLETED   = "motion.completed";
   constexpr const char* ERROR_REPORT       = "error.report";
+  constexpr const char* COMMAND_ACK        = "command.ack";
+  constexpr const char* VIDEO_FRAME_META   = "video.frame_meta";
+  constexpr const char* VIDEO_FRAME        = "video.frame";
+  constexpr const char* AUDIO_CHUNK_META   = "audio.chunk_meta";
+  constexpr const char* ASR_TRANSCRIPT_MOCK = "asr.transcript.mock";
 
   // Base Station -> Robot
   constexpr const char* SYSTEM_WELCOME     = "system.welcome";
@@ -37,8 +42,11 @@ namespace Expression {
   constexpr const char* THINKING  = "thinking";
   constexpr const char* SPEAKING  = "speaking";
   constexpr const char* IDLE      = "idle";
+  constexpr const char* NEUTRAL   = "neutral";
   constexpr const char* SURPRISED = "surprised";
   constexpr const char* SLEEPING  = "sleeping";
+  constexpr const char* LISTENING = "listening";
+  constexpr const char* ERROR     = "error";
 }
 
 // Supported motion actions
@@ -63,6 +71,12 @@ namespace ErrorCode {
   constexpr const char* MIC_INIT_FAIL  = "MIC_INIT_FAIL";
   constexpr const char* AUDIO_UNSUPPORTED = "AUDIO_UNSUPPORTED";
   constexpr const char* UNSUPPORTED_COMMAND = "UNSUPPORTED_COMMAND";
+}
+
+namespace LocalSound {
+  constexpr const char* CARE_01  = "care_01";
+  constexpr const char* ALARM_01 = "alarm_01";
+  constexpr const char* WAKE_01  = "wake_01";
 }
 
 // Helper: build base message envelope

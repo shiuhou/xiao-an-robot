@@ -3,29 +3,10 @@
 #include "esp_camera.h"
 #include "esp_http_server.h"
 #include "img_converters.h"
+#include "board_pins.h"
 
 #define AP_SSID "xiao-an-red"
 #define AP_PASSWORD "12345678"
-
-// GOOUUU ESP32-S3-CAM v1.5 camera pin map.
-#define CAM_PIN_PWDN -1
-#define CAM_PIN_RESET -1
-#define CAM_PIN_XCLK 15
-#define CAM_PIN_SIOD 4
-#define CAM_PIN_SIOC 5
-
-#define CAM_PIN_D0 11
-#define CAM_PIN_D1 9
-#define CAM_PIN_D2 8
-#define CAM_PIN_D3 10
-#define CAM_PIN_D4 12
-#define CAM_PIN_D5 18
-#define CAM_PIN_D6 17
-#define CAM_PIN_D7 16
-
-#define CAM_PIN_VSYNC 6
-#define CAM_PIN_HREF 7
-#define CAM_PIN_PCLK 13
 
 static constexpr int SAMPLE_STEP = 2;
 static constexpr int MASK_WIDTH = 320 / SAMPLE_STEP;

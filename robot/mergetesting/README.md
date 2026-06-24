@@ -1,5 +1,7 @@
 # Robot Merge Testing — 明日联调固件
 
+> **2026-06-23:** New DK-2500 burns should prefer `robot/firmware` env **`esp32-s3-integrated`**. This tree remains for regression until sign-off.
+
 独立 PlatformIO 工程，目标：**一条可观察、可回放、可验证的端到端闭环**。
 
 ```
@@ -62,12 +64,14 @@ src/
 | `mergetesting_mic_only` | 麦克风 PCM → `/audio` |
 | `mergetesting_base64_video` | 视频 base64 fallback |
 
-## 硬件引脚冲突说明
+## 硬件引脚（整合线束）
 
-OV2640 与 128×160 TFT **共用 GPIO 9/10/11/12**。同一条线束不能同时跑相机和屏幕：
+TFT 与 OV2640 默认使用 **整合引脚**（见 `hardware_pins.h` / `hardware/wiring/esp32_pinout.md`）：
 
-- **Phase 1–2（控制+命令）**：用 `mergetesting_display_only`
-- **Phase 3（传画）**：用 `mergetesting_cam_only` 或 `mergetesting_base64_video`
+- TFT：GPIO14/21/42/43/44/48
+- Camera：GOOUUU FPC 固定 DVP 引脚
+
+同一条整合线束可同时接相机与 2.4" 屏。`mergetesting_face240_only` 已启用 ST7789 + 整合 SPI 引脚。
 
 ## 四阶段验收
 

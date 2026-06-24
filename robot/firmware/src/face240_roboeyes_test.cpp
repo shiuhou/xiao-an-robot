@@ -2,30 +2,7 @@
 #include <SPI.h>
 #include <math.h>
 
-#ifndef TFT_MOSI
-#define TFT_MOSI 11
-#endif
-#ifndef TFT_MISO
-#define TFT_MISO -1
-#endif
-#ifndef TFT_SCLK
-#define TFT_SCLK 12
-#endif
-#ifndef TFT_CS
-#define TFT_CS 10
-#endif
-#ifndef TFT_DC
-#define TFT_DC 9
-#endif
-#ifndef TFT_RST
-#define TFT_RST 14
-#endif
-#ifndef TFT_BL
-#define TFT_BL 21
-#endif
-#ifndef TFT_BACKLIGHT_ON
-#define TFT_BACKLIGHT_ON HIGH
-#endif
+#include "board_pins.h"
 
 static constexpr int16_t TFT_W = 320;
 static constexpr int16_t TFT_H = 240;
@@ -62,7 +39,7 @@ static constexpr int16_t EYE_CY = 102;
 static constexpr int16_t EYE_W_DEF = 66;
 static constexpr int16_t EYE_H_DEF = 58;
 static constexpr int16_t MOUTH_CY = 174;
-static constexpr int16_t ARC_SEGMENTS = 52;
+static constexpr int16_t ARC_SEGMENTS = 64;
 static constexpr int16_t STROKE_MOUTH = 10;
 static constexpr int16_t STROKE_BROW = 8;
 static constexpr int16_t STROKE_RING = 10;
@@ -716,24 +693,25 @@ static void drawSymbolDots(uint32_t now) {
 static void drawSymbolQuestion(uint32_t now) {
     const uint32_t t = now - expressionStartMs;
     const int16_t pulse = iround(sinf(t / 450.0f) * 1.0f);
-    const int16_t stroke = 14;
+    const int16_t stroke = 16;
+    const int16_t stemCx = FACE_CX + 6;
 
-    // 1) Upper curl — thick arc only, opening downward (not touching stem).
-    const int16_t hookCx = FACE_CX - 8;
-    const int16_t hookCy = 68;
-    const int16_t hookR = 48 + pulse / 2;
-    drawArc(hookCx, hookCy, hookR, PI * 1.10f, PI * 1.90f, stroke, C_YELLOW);
+    // Upper curl: top arc (0.12π→1.06π), opening downward — not the bottom ⌣ arc.
+    const int16_t hookCx = stemCx - 4;
+    const int16_t hookCy = 50;
+    const int16_t hookR = 58 + pulse / 2;
+    drawArc(hookCx, hookCy, hookR, PI * 0.12f, PI * 1.06f, stroke, C_YELLOW);
 
-    // 2) Vertical stem — rounded pill, gap below curl.
-    const int16_t stemW = 18;
-    const int16_t stemH = 32;
-    const int16_t stemX = FACE_CX + 4 - stemW / 2;
-    const int16_t stemY = 128;
+    // Vertical stem — gap below curl opening.
+    const int16_t stemW = 22;
+    const int16_t stemH = 44;
+    const int16_t stemX = stemCx - stemW / 2;
+    const int16_t stemY = 118;
     fillRoundRectBuffer(stemX, stemY, stemW, stemH, stemW / 2, C_YELLOW);
 
-    // 3) Dot — separated below stem.
-    const int16_t dotR = 13 + (pulse > 0 ? 1 : 0);
-    fillCircleBuffer(FACE_CX + 4, 182, dotR, C_YELLOW);
+    // Dot — gap below stem.
+    const int16_t dotR = 15 + (pulse > 0 ? 1 : 0);
+    fillCircleBuffer(stemCx, 192, dotR, C_YELLOW);
 }
 
 static void drawSymbolAlert(uint32_t now) {

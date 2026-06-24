@@ -1,8 +1,13 @@
+﻿#include "face240_display.h"
+#include "../protocol.h"
+#include "../debug_log.h"
+#include <string.h>
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <math.h>
 
-#include "board_pins.h"
+#include "../board_pins.h"
 
 static constexpr int16_t TFT_W = 320;
 static constexpr int16_t TFT_H = 240;
@@ -105,7 +110,7 @@ static uint32_t expressionStartMs = 0;
 static uint32_t lastFrameMs = 0;
 static uint32_t fpsWindowMs = 0;
 static uint16_t fpsFrames = 0;
-static bool autoCarousel = true;
+static bool autoCarousel = false;
 static bool poseInitialized = false;
 
 static int16_t i16min(int16_t a, int16_t b) { return a < b ? a : b; }
@@ -635,16 +640,18 @@ static void drawSymbolQuestion(uint32_t now) {
     const int16_t stroke = 9;
     const int16_t stemCx = 166;
 
-    // 上弯钩：0.12π→1.06π，开口向下（勿用 1.13π→2.12π，会变成顶上的 ⌣）
+    // 銝摩?抬?0.12???.06?嚗????銝??輻 1.13???.12?嚗???憿嗡??????
     const int16_t hookCx = stemCx - 4;
     const int16_t hookCy = 50;
     const int16_t hookR = 58 + pulse / 2;
     drawGlowingArc(hookCx, hookCy, hookR, PI * 0.12f, PI * 1.06f, stroke,
                    C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
 
+    // 蝡?stem嚗?撘舫??
     drawGlowRoundRectCentered(stemCx, 140, 22, 44,
                               C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
 
+    // 摨?
     drawGlowCircle(stemCx, 192, 15 + (pulse > 0 ? 1 : 0),
                    C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
 }
@@ -755,13 +762,33 @@ static void reportFps(uint32_t now) {
     fpsWindowMs = now;
 }
 
-void setup() {
-    Serial.begin(115200);
+static FaceExpression protocolToFace(const char* tag) {
+  if (!tag || !tag[0]) {
+    return FACE_CONTENT;
+  }
+  if (strcmp(tag, Expression::HAPPY) == 0) return FACE_HAPPY;
+  if (strcmp(tag, Expression::SAD) == 0) return FACE_SAD;
+  if (strcmp(tag, Expression::CARING) == 0) return FACE_WINK;
+  if (strcmp(tag, Expression::TIRED) == 0) return FACE_SAD;
+  if (strcmp(tag, Expression::THINKING) == 0 || strcmp(tag, Expression::LISTENING) == 0) {
+    return FACE_QUESTION;
+  }
+  if (strcmp(tag, Expression::SPEAKING) == 0) return FACE_HAPPY;
+  if (strcmp(tag, Expression::SURPRISED) == 0) return FACE_SURPRISED;
+  if (strcmp(tag, Expression::SLEEPING) == 0) return FACE_CONTENT;
+  if (strcmp(tag, Expression::ERROR) == 0) return FACE_ALERT;
+  if (strcmp(tag, Expression::NEUTRAL) == 0 || strcmp(tag, Expression::IDLE) == 0) {
+    return FACE_CONTENT;
+  }
+  return FACE_CONTENT;
+}
+
+void face240_init() {
     waitForSerialWindow();
     Serial.println();
-    Serial.println("[FACE240] merged 9 inner expressions - no shell");
-    Serial.println("[FACE240] Serial: 1-9 select expression, m toggles auto carousel");
-    Serial.println("[FACE240] Pins: SCLK=12 MOSI=11 CS=10 DC=9 RST=14 BL=21");
+    Serial.println("[FACE240] merged 9 inner expressions - integrated harness");
+    Serial.printf("[FACE240] Pins: SCLK=%d MOSI=%d CS=%d DC=%d RST=%d BL=%d\n",
+                  TFT_SCLK, TFT_MOSI, TFT_CS, TFT_DC, TFT_RST, TFT_BL);
 
     randomSeed(static_cast<uint32_t>(esp_random()));
     pinMode(TFT_BL, OUTPUT);
@@ -772,12 +799,17 @@ void setup() {
     carouselStartMs = now;
     expressionStartMs = now;
     fpsWindowMs = now;
-    copyPoseImmediate(poseForExpression(expression));
-    fillBuffer(C_BG);
-    pushFrameBuffer();
+  copyPoseImmediate(poseForExpression(FACE_CONTENT));
+  fillBuffer(C_BG);
+  pushFrameBuffer();
+  LOGI("Face240", "ST7789 9-expression renderer ready");
 }
 
-void loop() {
+void face240_emotion(const char* emotion_tag, int /*intensity*/) {
+  setExpression(protocolToFace(emotion_tag), true);
+}
+
+void face240_tick() {
     const uint32_t now = millis();
     handleSerialInput();
 

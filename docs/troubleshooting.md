@@ -175,13 +175,10 @@ Checks:
 ```powershell
 cd robot\firmware
 pio run -e face240_wiretest -t upload
-pio run -e tftprobe_st7789_rgb_off -t upload
-pio run -e tftprobe_st7789_bgr_off -t upload
-pio run -e tftprobe_st7789_rgb_on -t upload
 pio run -e tftprobe_hybrid_rawinit -t upload
 ```
 
-Remember that current TFT pins overlap with the OV2640 camera map. Test TFT alone unless the integrated wiring has been changed.
+Remember that legacy GPIO9–12 TFT wiring conflicts with OV2640. Default envs use the integrated map in `board_pins.h` (GPIO14/21/42/43/44/48). Use `face240_legacy` only on old harnesses.
 
 ## Windows Local Shell
 

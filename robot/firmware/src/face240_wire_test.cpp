@@ -1,30 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-#ifndef TFT_MOSI
-#define TFT_MOSI 11
-#endif
-#ifndef TFT_MISO
-#define TFT_MISO -1
-#endif
-#ifndef TFT_SCLK
-#define TFT_SCLK 12
-#endif
-#ifndef TFT_CS
-#define TFT_CS 10
-#endif
-#ifndef TFT_DC
-#define TFT_DC 9
-#endif
-#ifndef TFT_RST
-#define TFT_RST 14
-#endif
-#ifndef TFT_BL
-#define TFT_BL 21
-#endif
-#ifndef TFT_BACKLIGHT_ON
-#define TFT_BACKLIGHT_ON HIGH
-#endif
+#include "board_pins.h"
 
 static constexpr int16_t TFT_W = 320;
 static constexpr int16_t TFT_H = 240;

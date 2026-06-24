@@ -1,8 +1,10 @@
 # Scripts
 
-These scripts provide a lightweight development workflow for the DK2500 base station, the Agent, and the mock robot.
+Startup and setup helpers for the DK-2500 base station, Agent, and mock robot.
 
-Run them from the repository root unless a script says otherwise.
+**Note:** Hardware bring-up scripts live under `robot/firmware/tools/` (face preview, QR servo, motor keyboard). Root `tools/` holds Python ops probes (`send_robot_command.py`, registry generator, etc.).
+
+Run from the repository root unless a script says otherwise.
 
 Recommended order:
 

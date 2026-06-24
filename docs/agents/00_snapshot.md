@@ -1,6 +1,6 @@
 # 项目快照 — 2026-06-22
 
-> 联调前 handoff。旧快照：`docs/project_status_2026-06-18.md`, `docs/project_status_2026-06-22.md`
+> 联调前 handoff。当前快照：`docs/project_status_2026-06-22.md`；旧版见 `docs/archive/`。
 
 ## 当前目标
 
@@ -36,6 +36,8 @@
 
 | 变更 | 路径 | 影响 |
 |------|------|------|
+| 仓库整理 2026-06-23 | `archive/`, `experiments/`, env 收斂 | 31→22 env；`tfttest`/`face240_espi`/8×tftprobe 移除 |
+| 回迁计划 | `robot/firmware/MIGRATION_FROM_MERGETESTING.md` | mergetesting 模块迁入主固件路线图 |
 | 新增联调工程 | `robot/mergetesting/` | DK-2500 联调烧这个，不是只改 main.cpp |
 | WS 三通道客户端 | `mergetesting/src/ws_client.cpp` | control + video + audio |
 | 基站收视频存盘 | `base_station/ws_server/server.py` | `runtime/latest.jpg` |
@@ -44,7 +46,7 @@
 
 ## 硬件阻塞
 
-- **GPIO 9/10/11/12**：OV2640 与 TFT 冲突 → 传画与表情**分 env 烧录**
+- **整合线束**：TFT 默认 GPIO14/21/42/43/44/48，可与 OV2640 同接；旧 GPIO9–12 线束仅用 `face240_legacy`
 - **限位开关**：`PIN_LIMIT_* = -1`，dock 逻辑未实机验证
 - **WiFi 凭证**：`config.h` / `main.cpp` 占位，部署前必改
 

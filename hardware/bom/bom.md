@@ -9,7 +9,7 @@ Track hardware parts here. Avoid committing private purchase records, personal a
 | Camera | OV2640 with 24-pin FPC adapter / GOOUUU ESP32-S3-CAM v1.5 pin map | 1 | Bench test path exists | Used by `camtesting` and `motor_cam_wifi_manual`. |
 | Motor driver | DRV8833 dual H-bridge | 1 | In firmware wiring map | Drives two N20 motors. |
 | Motors | N20 gear motor, 3V-6V, about 150-200 RPM | 2 | Planned / bench target | Differential drive. |
-| Display | 128x160 ST7735 or 2.4 inch 320x240 ST7789 TFT | 1 | Multiple test envs exist | `display_test`, `face240*`, `tftprobe_*`. |
+| Display | 2.4 inch 320x240 ST7789 TFT | 1 | Integrated harness | GPIO14/21/42/43/44/48; see `board_pins.h` |
 | Microphone | INMP441 I2S mic | 1 | Test env exists | `voice_recognition_test`, not real ASR. |
 | Speaker amp | MAX98357A I2S amplifier | 1 | Test env exists | `speaker_amp_test`. |
 | Speaker | 8 ohm small speaker, about 1W | 1 | Planned | Match amp and enclosure. |
@@ -21,7 +21,7 @@ Track hardware parts here. Avoid committing private purchase records, personal a
 
 ## Purchase / Selection Rules
 
-- Pick modules that match the current firmware pin map only for bench tests; final integrated wiring may need repinning.
+- Pick modules that match [hardware/wiring/esp32_pinout.md](wiring/esp32_pinout.md) and `robot/firmware/src/board_pins.h`.
 - Confirm voltage/current ratings before combining rails.
 - Keep spare motor driver and ESP32-S3 boards for bring-up failures.
 - Record final dimensions before shell/dock print.

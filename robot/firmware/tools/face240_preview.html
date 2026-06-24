@@ -96,10 +96,10 @@ function symbols(i,t){
   if(i===6){ const a=Math.floor(t/300)%3; for(let j=0;j<3;j++){ const r=j===a?15:11;
     ctx.fillStyle=C.red; ctx.beginPath(); ctx.arc(96+j*64,FCY+8,r,0,Math.PI*2); ctx.fill(); } }
   else if(i===7){
-    const p=Math.sin(t/450)*1.0, cx=FCX+4;
-    arc(cx-8,68,48+p/2,Math.PI*1.10,Math.PI*1.90,14,C.yellow);
-    ctx.fillStyle=C.yellow; ctx.beginPath(); ctx.roundRect(cx-9,128,18,32,9); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx,182,13+(p>0?1:0),0,Math.PI*2); ctx.fill();
+    const p=Math.sin(t/450)*1.0, stemCx=FCX+6;
+    arc(stemCx-4,50,58+p/2,Math.PI*0.12,Math.PI*1.06,16,C.yellow);
+    ctx.fillStyle=C.yellow; ctx.beginPath(); ctx.roundRect(stemCx-11,118,22,44,11); ctx.fill();
+    ctx.beginPath(); ctx.arc(stemCx,192,15+(p>0?1:0),0,Math.PI*2); ctx.fill();
   }
   else if(i===8){ const p=Math.sin(t/240)*2;
     ctx.fillStyle=C.red; ctx.beginPath(); ctx.roundRect(FCX-14-p/2,52,28+p,108,14); ctx.fill();

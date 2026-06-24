@@ -61,6 +61,9 @@ Thumbs.db
 .piolibdeps/
 robot/firmware/compile_commands.json
 robot/mergetesting/src/config.local.h
+.worktrees/
+worktrees/
+base_station/config.yaml
 .agents/
 
 runtime/

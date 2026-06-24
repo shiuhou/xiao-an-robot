@@ -40,6 +40,8 @@ Heavy perception and reasoning stay on the DK-2500. The robot body should stay l
 
 ## Repository Layout
 
+Local PlatformIO build output (`.pio/`) is gitignored and safe to delete anytime.
+
 ```text
 xiao-an-robot/
 ├── robot/                  # ESP32-S3 firmware and isolated hardware bring-up envs
@@ -97,20 +99,22 @@ Run firmware commands from `robot/firmware`.
 | `motor_cam_wifi_manual` | WiFi motor + camera stream + on-device QR overlay demo | `motor_cam_wifi_manual_main.cpp` |
 | `redtracker` | On-device red target tracker | `red_circle_tracker_test.cpp` |
 | `serialredtracker` | Serial red target tracker | `serial_red_tracker_test.cpp` |
-| `display_test` / `tfttest` | 128x160 ST7735 TFT test | `tft_test.cpp` |
-| `face240` | 2.4 inch 320x240 raw ST7789 face design | `face240_raw_design_test.cpp` |
-| `face240_wiretest` | 2.4 inch raw ST7789 color/wiring test | `face240_wire_test.cpp` |
-| `face240_roboeyes` | 2.4 inch raw ST7789 robo-eyes face demo | `face240_roboeyes_test.cpp` |
-| `face240_9expr_merged` | 2.4 inch 9-expression inner-face demo (no shell) | `robot_face_9expr_merged_optimized.cpp` |
-| `face240_espi` | 2.4 inch TFT_eSPI sprite face test | `face240_espi_test.cpp` |
-| `tftprobe_*` | ST7789 driver/order/inversion probes | `tft_espi_probe.cpp` |
+| `display_test` | 128x160 ST7735 TFT test | `tft_test.cpp` |
+| `face240_roboeyes` | 2.4 inch raw ST7789 robo-eyes face demo (canonical) | `face240_roboeyes_test.cpp` |
+| `face240` | Alias of `face240_roboeyes` | `face240_roboeyes_test.cpp` |
+| `face240_integrated` | Alias of `face240_wiretest` | Integrated harness wiring check |
+| `face240_wiretest` | 2.4 inch ST7789 color/wiring test | `face240_wire_test.cpp` |
+| `face240_legacy` | Legacy GPIO9–12 harness only | `face240_wire_test.cpp` |
+| `display_test_legacy` | Legacy 128x160 ST7735 harness | `tft_test.cpp` |
+| `face240_9expr_merged` | 2.4 inch 9-expression inner-face demo (product path) | `robot_face_9expr_merged_optimized.cpp` |
+| `tftprobe_hybrid_rawinit` | ST7789 hybrid raw-init probe | `tft_espi_probe.cpp` |
 | `voice_recognition_test` | INMP441 I2S RMS/voice activity test | `voice_recognition_test.cpp` |
 | `speaker_amp_test` | MAX98357A I2S speaker amp tone test | `speaker_amp_test.cpp` |
 
 Related face display tools:
 
 - `robot/firmware/tools/face240_preview.html`: browser preview of the 320x240 face design.
-- `robot/firmware/tools/test_face240_raw_dirty_rect.py`: lightweight structure check for the raw dirty-rect renderer.
+- `robot/firmware/tools/test_face240_raw_dirty_rect.py`: structure check for `experiments/face240_raw_design_test.cpp`.
 
 Build examples:
 
@@ -119,6 +123,7 @@ cd robot\firmware
 pio run -e esp32-s3-devkitc-1
 pio run -e motor_manual
 pio run -e motor_cam_wifi_manual
+pio run -e face240_integrated
 pio run -e face240_wiretest
 pio run -e face240_9expr_merged
 pio run -e voice_recognition_test
@@ -138,7 +143,8 @@ Important notes:
 
 - Motor bring-up uses DRV8833: left IN1/IN2 = GPIO1/GPIO2, right IN1/IN2 = GPIO47/GPIO38.
 - OV2640 uses the GOOUUU ESP32-S3-CAM v1.5 pin map in `cam_stream.cpp` and camera test files.
-- The TFT test pins reuse GPIO11/12/10/9/14/21, which overlap with the current OV2640 data/SCCB pins. Treat TFT and camera tests as isolated unless the integrated wiring is repinned.
+- Integrated TFT wiring (default): SCK=GPIO14, MOSI=GPIO21, CS=GPIO42, DC=GPIO43, RST=GPIO44, BL=GPIO48. Source: `board_pins.h`, [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md).
+- Legacy TFT bench (`face240_legacy`, `display_test_legacy`) uses GPIO9/10/11/12 and must not share a harness with OV2640.
 - INMP441 test uses BCLK GPIO39, WS GPIO40, DIN GPIO41.
 - MAX98357A test uses BCLK GPIO35, LRC GPIO36, DIN GPIO37.
 - Limit switches are disabled in firmware during motor bench bring-up (`-1`) until final GPIOs are assigned.

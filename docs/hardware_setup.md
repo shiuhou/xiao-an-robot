@@ -43,7 +43,7 @@ For quick prototypes, start from an open 2WD N20 chassis model and edit mounting
 
 Canonical pin table: [hardware/wiring/esp32_pinout.md](../hardware/wiring/esp32_pinout.md).
 
-High-risk note: the current OV2640 and TFT bring-up maps overlap on GPIO9/10/11/12. Treat camera and TFT as isolated env tests unless the integrated wiring is changed.
+Integrated harness (2026-06-22): TFT SPI defaults to GPIO14/21/42/43/44/48 via `robot/firmware/src/board_pins.h` and PlatformIO `tft_integrated_pins`. Legacy GPIO9–12 remains only on `face240_legacy` / `display_test_legacy`.
 
 ## DRV8833 Motor Driver
 
@@ -114,7 +114,34 @@ pio run -e motor_cam_wifi_manual
 
 ## TFT Display
 
-Current 128x160 and 320x240 display tests use:
+### Integrated map (recommended — camera + TFT together)
+
+Use this wiring on the full robot harness. Constants also live in `robot/firmware/src/board_pins.h` and PlatformIO `[tft_integrated_pins]`.
+
+| TFT signal | ESP32-S3 GPIO |
+| --- | ---: |
+| SCK | GPIO14 |
+| MOSI (SDI) | GPIO21 |
+| CS | GPIO42 |
+| DC | GPIO43 |
+| RESET | GPIO44 |
+| LED (BL) | GPIO48 or 3V3 |
+| VCC | Distribution 5V |
+| GND | Distribution GND |
+| MISO | not connected |
+
+Integrated test command:
+
+```powershell
+cd robot\firmware
+pio run -e face240_integrated
+```
+
+Do not connect TFT RESET to the ESP32 board RST pin.
+
+### Legacy bench map (128x160 and old 2.4 inch harnesses only)
+
+Conflicts with OV2640 on GPIO9/10/11/12. Use only when the camera FPC harness is disconnected.
 
 | TFT signal | ESP32-S3 GPIO |
 | --- | ---: |
@@ -126,7 +153,7 @@ Current 128x160 and 320x240 display tests use:
 | RST | GPIO14 |
 | BL | GPIO21 |
 
-Test commands:
+Legacy test commands:
 
 ```powershell
 cd robot\firmware
@@ -138,7 +165,7 @@ pio run -e face240
 pio run -e face240_espi
 ```
 
-If the 2.4 inch ST7789 module shows wrong colors, blank screen, or inverted output, use the `tftprobe_*` envs to isolate driver variant, RGB/BGR order, inversion, and raw init behavior.
+If the 2.4 inch ST7789 module shows wrong colors, blank screen, or inverted output, use the legacy `tftprobe_*` envs on the old harness to isolate driver variant, RGB/BGR order, inversion, and raw init behavior.
 
 ## INMP441 Microphone
 

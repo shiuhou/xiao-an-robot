@@ -7,30 +7,7 @@
 #include <SPI.h>
 #include <math.h>
 
-#ifndef TFT_MOSI
-#define TFT_MOSI 11
-#endif
-#ifndef TFT_MISO
-#define TFT_MISO -1
-#endif
-#ifndef TFT_SCLK
-#define TFT_SCLK 12
-#endif
-#ifndef TFT_CS
-#define TFT_CS 10
-#endif
-#ifndef TFT_DC
-#define TFT_DC 9
-#endif
-#ifndef TFT_RST
-#define TFT_RST 14
-#endif
-#ifndef TFT_BL
-#define TFT_BL 21
-#endif
-#ifndef TFT_BACKLIGHT_ON
-#define TFT_BACKLIGHT_ON HIGH
-#endif
+#include "hardware_pins.h"
 
 static constexpr int16_t TFT_W = 320;
 static constexpr int16_t TFT_H = 240;
@@ -659,12 +636,23 @@ static void drawSymbolDots(uint32_t now) {
 
 static void drawSymbolQuestion(uint32_t now) {
     const uint32_t t = now - expressionStartMs;
-    const int16_t pulse = iround(sinf(t / 420.0f) * 1.5f);
-    drawGlowingArc(156, 83, 33 + pulse, PI * 1.13f, PI * 2.12f, 9,
+    const int16_t pulse = iround(sinf(t / 450.0f) * 1.0f);
+    const int16_t stroke = 9;
+    const int16_t stemCx = 166;
+
+    // 上弯钩：0.12π→1.06π，开口向下（勿用 1.13π→2.12π，会变成顶上的 ⌣）
+    const int16_t hookCx = stemCx - 4;
+    const int16_t hookCy = 50;
+    const int16_t hookR = 58 + pulse / 2;
+    drawGlowingArc(hookCx, hookCy, hookR, PI * 0.12f, PI * 1.06f, stroke,
                    C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
-    drawGlowingLine(176, 100, 158, 132, 8,
-                    C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
-    drawGlowCircle(160, 164, 8 + (pulse > 0 ? 1 : 0),
+
+    // 竖 stem，与弯钩留缝
+    drawGlowRoundRectCentered(stemCx, 140, 22, 44,
+                              C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
+
+    // 底部圆点
+    drawGlowCircle(stemCx, 192, 15 + (pulse > 0 ? 1 : 0),
                    C_YELLOW_GLOW2, C_YELLOW_GLOW, C_YELLOW);
 }
 

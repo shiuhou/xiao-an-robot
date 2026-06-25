@@ -296,6 +296,42 @@ async def handle_video(websocket: ServerConnection):
     """Handle /video channel: receive JPEG frames from robot."""
     logger.info("Video stream connected")
     latest_path = None
+    pending_header: Optional[tuple[int, int]] = None
+
+    async def process_video_packet(packet: bytes) -> None:
+        if len(packet) < 8:
+            logger.warning("Invalid /video frame: packet shorter than header")
+            return
+
+        length = int.from_bytes(packet[0:4], "big")
+        timestamp = int.from_bytes(packet[4:8], "big")
+        jpeg_data = packet[8:8 + length]
+        if len(jpeg_data) != length:
+            logger.warning("Invalid /video frame: JPEG payload length does not match header")
+            return
+
+        logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+
+        if latest_path and jpeg_data:
+            try:
+                latest_path.write_bytes(jpeg_data)
+            except OSError as exc:
+                logger.warning("Failed to write latest video frame: %s", exc)
+
+        if video_frame_source is not None:
+            try:
+                decoded = await video_frame_source.push_packet(packet)
+                logger.debug(
+                    "Decoded /video frame: frame_id=%s size=%sx%s",
+                    decoded.get("frame_id"),
+                    decoded.get("width"),
+                    decoded.get("height"),
+                )
+            except VideoFrameDecodeError as exc:
+                logger.warning("Invalid /video frame: %s", exc)
+            except Exception:
+                logger.exception("Unexpected error while processing /video frame")
+
     try:
         from pathlib import Path
 
@@ -309,31 +345,24 @@ async def handle_video(websocket: ServerConnection):
             if not isinstance(frame, bytes):
                 continue
 
-            if len(frame) > 8:
+            if pending_header is not None:
+                expected_length, timestamp = pending_header
+                pending_header = None
+                packet = (
+                    expected_length.to_bytes(4, "big")
+                    + timestamp.to_bytes(4, "big")
+                    + frame[:expected_length]
+                )
+                await process_video_packet(packet)
+                continue
+
+            if len(frame) == 8:
                 length = int.from_bytes(frame[0:4], "big")
                 timestamp = int.from_bytes(frame[4:8], "big")
-                jpeg_data = frame[8:8 + length]
-                logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+                pending_header = (length, timestamp)
+                continue
 
-                if latest_path and jpeg_data:
-                    try:
-                        latest_path.write_bytes(jpeg_data)
-                    except OSError as exc:
-                        logger.warning("Failed to write latest video frame: %s", exc)
-
-            if video_frame_source is not None:
-                try:
-                    decoded = await video_frame_source.push_packet(frame)
-                    logger.debug(
-                        "Decoded /video frame: frame_id=%s size=%sx%s",
-                        decoded.get("frame_id"),
-                        decoded.get("width"),
-                        decoded.get("height"),
-                    )
-                except VideoFrameDecodeError as exc:
-                    logger.warning("Invalid /video frame: %s", exc)
-                except Exception:
-                    logger.exception("Unexpected error while processing /video frame")
+            await process_video_packet(frame)
     except ConnectionClosed:
         logger.info("Video stream disconnected")
 

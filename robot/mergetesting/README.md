@@ -1,6 +1,6 @@
-# Robot Merge Testing — 明日联调固件
+# Robot Merge Testing — DK-2500/base-station integration firmware
 
-> **2026-06-23:** New DK-2500 burns should prefer `robot/firmware` env **`esp32-s3-integrated`**. This tree remains for regression until sign-off.
+> **Boundary:** New DK-2500/base-station burns belong in this directory. `robot/firmware` is for robot-body bring-up and reusable modules; when integration needs a proven robot feature, copy/sync the minimal module from `robot/firmware` into `robot/mergetesting`.
 
 独立 PlatformIO 工程，目标：**一条可观察、可回放、可验证的端到端闭环**。
 

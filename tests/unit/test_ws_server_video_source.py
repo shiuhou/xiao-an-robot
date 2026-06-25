@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+import asyncio
 
 import cv2
 import numpy as np
@@ -64,6 +65,21 @@ class WebSocketServerVideoSourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(frame["width"], 320)
         self.assertEqual(frame["height"], 240)
         self.assertEqual(frame["device_timestamp"], 1234)
+
+    async def test_handle_video_accepts_split_header_and_jpeg_frames(self) -> None:
+        source = WebSocketVideoFrameSource(maxsize=1)
+        ws_server.set_video_frame_source(source)
+        packet = make_video_packet(device_ts=5678)
+        websocket = FakeVideoWebSocket([packet[:8], packet[8:]])
+
+        await ws_server.handle_video(websocket)
+        frames = source.frames()
+        frame = await asyncio.wait_for(frames.__anext__(), timeout=0.2)
+
+        self.assertEqual(frame["source"], "ws_video")
+        self.assertEqual(frame["width"], 320)
+        self.assertEqual(frame["height"], 240)
+        self.assertEqual(frame["device_timestamp"], 5678)
 
     async def test_handle_video_without_source_does_not_crash(self) -> None:
         ws_server.set_video_frame_source(None)

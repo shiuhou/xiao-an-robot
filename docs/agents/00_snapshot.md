@@ -18,7 +18,7 @@
 | 协议 `docs/protocol.md` v0.1 | 🟡 | 草案；mergetesting 扩展了 `command.ack`, `video.frame_meta` |
 | 基站 WS 四通道 | ✅ | `base_station/ws_server/server.py` |
 | Agent → 机器人转发 | ✅ | `/agent` + `tools/send_robot_command.py` |
-| 主固件 `/control` | ✅ | `robot/firmware/src/main.cpp` |
+| 主固件机器人本体调试 | ✅ | `robot/firmware/src/main.cpp`；不作为 DK-2500 联调默认入口 |
 | 主固件 `/video` `/audio` | ⬜ | `cam_stream`/`mic_stream` 在 main 里仍是 TODO |
 | **mergetesting 联调固件** | ✅ 编译 | `robot/mergetesting/`，分 env 烧录 |
 | 电机 DRV8833 | ✅ | isolated + mergetesting |
@@ -37,8 +37,8 @@
 | 变更 | 路径 | 影响 |
 |------|------|------|
 | 仓库整理 2026-06-23 | `archive/`, `experiments/`, env 收斂 | 31→22 env；`tfttest`/`face240_espi`/8×tftprobe 移除 |
-| 回迁计划 | `robot/firmware/MIGRATION_FROM_MERGETESTING.md` | mergetesting 模块迁入主固件路线图 |
-| 新增联调工程 | `robot/mergetesting/` | DK-2500 联调烧这个，不是只改 main.cpp |
+| 边界说明 | `robot/firmware/MIGRATION_FROM_MERGETESTING.md` | firmware 验证单项功能，mergetesting 做 DK-2500 联调 |
+| 联调工程 | `robot/mergetesting/` | DK-2500 联调烧这个，不跑 firmware 的集成 env |
 | WS 三通道客户端 | `mergetesting/src/ws_client.cpp` | control + video + audio |
 | 基站收视频存盘 | `base_station/ws_server/server.py` | `runtime/latest.jpg` |
 | `send_robot_command local` | `tools/send_robot_command.py` | 测 `audio.play_local` |
@@ -63,8 +63,8 @@ python -m base_station.ws_server.server          # 基站
 
 | 目录 | 负责人（方案） | Agent 注意 |
 |------|----------------|------------|
-| `robot/firmware` | 施宇灏 | 勿把实验塞进 `main.cpp` |
-| `robot/mergetesting` | 联调专用 | 可激进，合并稳定后再回迁 main |
+| `robot/firmware` | 施宇灏 | 小机器人单项功能调试；勿把联调 loop 塞进 `main.cpp` |
+| `robot/mergetesting` | 联调专用 | 可激进；从 firmware 取用已验证模块，不回迁成 firmware 联调入口 |
 | `base_station` | 郑斯悦+张子尧 | 改 protocol 要同步 `shared/` |
 | `agent` | 张子尧 | Gateway/Brain 与 WS 耦合 |
 | `docs/protocol.md` | 三人 PR | 破坏性变更升 major |

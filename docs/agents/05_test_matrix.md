@@ -22,9 +22,13 @@ python tools/check_runtime_env.py
 
 ## 固件编译（勿并行同 workspace 多 env）
 
+`robot/firmware` checks are for robot-body feature bring-up only. DK-2500/base-station integration checks are under `robot/mergetesting`.
+
 | env | 命令 | 编译 | 硬件 H |
 |-----|------|------|--------|
 | `esp32-s3-devkitc-1` | `pio run -e esp32-s3-devkitc-1` | P | — |
+| `ota_bootstrap` | `pio run -e ota_bootstrap` | P | H optional: USB first flash |
+| `ota_bootstrap_wifi` | `pio run -e ota_bootstrap_wifi` | P | H optional: OTA upload after WiFi ready |
 | `motor_cam_wifi_manual` | `pio run -e motor_cam_wifi_manual` | P | H 可选 |
 | `face240_wiretest` | `pio run -e face240_wiretest` | P | H |
 | `face240_9expr_merged` | `pio run -e face240_9expr_merged` | P | H |
@@ -32,6 +36,8 @@ python tools/check_runtime_env.py
 | `speaker_amp_test` | `pio run -e speaker_amp_test` | P | H |
 
 ## Mergetesting
+
+Use these envs for `/control`, `/video`, and `/audio` integration with `base_station`.
 
 ```powershell
 cd robot\mergetesting

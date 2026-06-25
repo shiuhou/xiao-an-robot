@@ -1,5 +1,7 @@
 # 固件源码注册表 — `robot/firmware/src/`
 
+> Boundary: `robot/firmware` is for robot-body feature bring-up and reusable modules. DK-2500/base-station integration firmware lives in `robot/mergetesting`; integration code may copy/sync proven firmware modules, but should not make `robot/firmware` the default demo path.
+
 > 每个文件：**角色 | PlatformIO env | 实现状态 | 关键符号 | 最后验证**
 
 ## 集成模块（`esp32-s3-devkitc-1` 包含）
@@ -15,7 +17,8 @@
 | `mic_stream.cpp/h` | 麦克风 WS 推流 | ⬜ | 全 TODO |
 | `servo_ctrl.cpp/h` | 舵机点头/摆耳 | ⬜ | 全 TODO；main 里 nod 走 servo stub |
 | `board_pins.h` | 集成 harness 引脚常量 | ✅ | 与 `hardware/wiring/esp32_pinout.md` 同步 |
-| `feature_flags.h` | 编译期功能开关 stub | 🟡 | `ENABLE_WS_VIDEO`, `ENABLE_WS_AUDIO` |
+| `feature_flags.h` | 编译期功能开关 stub | 🟡 | `ENABLE_WS_VIDEO`, `ENABLE_WS_AUDIO`, `ENABLE_ARDUINO_OTA` |
+| `ota_update.cpp/h` | ArduinoOTA wrapper | ✅ | `ota_begin()`, `ota_loop()`, `ota_set_on_start()` |
 
 ### `main.cpp` 命令分发（约 L100–174）
 
@@ -48,6 +51,7 @@
 | `motor_bench_once_main.cpp` | `motor_bench_once` | ✅ | 一次性方向测试 |
 | `motor_wifi_manual_main.cpp` | `motor_wifi_manual` | ✅ | AP 网页控电机 |
 | `motor_cam_wifi_manual_main.cpp` | `motor_cam_wifi_manual` | ✅ | AP + MJPEG + 电机 + QR overlay |
+| `ota_bootstrap_main.cpp` | `ota_bootstrap` / `ota_bootstrap_wifi` | ✅ | WiFi STA + ArduinoOTA recovery bridge |
 | `camtesting_program.cpp` | `camtesting` | ✅ | 相机 AP 流 |
 | `keep_face_center_test.cpp` | `keepfacecenter` | 🟡 | 人脸居中 + 电机脉冲 |
 | `serial_qr_servo_main.cpp` | `serialqrservo` | 🟡 | 串口 JPEG + PC QR |
@@ -91,4 +95,4 @@
 | `cam_stream.cpp` | + WS 推流 |
 | `ws_client.cpp` | 三通道增强版 |
 
-主固件稳定后，mergetesting 改动应 **回迁** `robot/firmware/src/main.cpp` 与模块。见 `robot/firmware/MIGRATION_FROM_MERGETESTING.md`。
+方向是 **firmware -> mergetesting**：先在 `robot/firmware` 验证单项机器人功能，再把最小可用模块复制/同步到 `robot/mergetesting` 做 `/control` `/video` `/audio` 联调。不要把 mergetesting 的联调 loop 回迁成新的 firmware 默认入口。见 `robot/firmware/MIGRATION_FROM_MERGETESTING.md`。

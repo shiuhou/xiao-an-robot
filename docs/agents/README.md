@@ -30,7 +30,7 @@
 | **契约** | `docs/protocol.md`, `shared/protocol/*` | 消息格式 | 三人共识后改 |
 | **快照** | `docs/project_status_YYYY-MM-DD.md`, `docs/agents/00_snapshot.md` | 当前进度/阻塞 | 每次联调前后 |
 | **注册表** | `docs/agents/02_*` ~ `04_*` | **文件 + 关键函数** | 改代码时同步 |
-| **源码** | `robot/firmware/src/*` 等 | 逐行真相 | Git |
+| **源码** | `robot/firmware/src/*`, `robot/mergetesting/src/*` | 逐行真相 | Git |
 
 **不要**在注册表里复制整文件源码；用「路径 + 函数 + 状态 + 最后验证命令」即可。
 
@@ -48,8 +48,9 @@
 
 | 路径 | 用途 | 传画面方式 |
 |------|------|-----------|
-| `robot/firmware` + `esp32-s3-devkitc-1` | 主固件 `/control` | `/video` **未接** main loop |
-| `robot/mergetesting` | **明日 DK-2500 联调** | WebSocket `/video` 1fps JPEG |
+| `robot/firmware` + dedicated envs | 小机器人单项功能调试 | 电机/屏幕/相机/麦克风/喇叭先在这里验证 |
+| `robot/mergetesting` | **DK-2500/base-station 联调** | WebSocket `/control` `/video` `/audio` |
+| `ota_bootstrap` / `ota_bootstrap_wifi` | 无线烧录桥 | 只用于刷新 bootstrap；烧其他 env 必须给该 env 保留 OTA runtime，见 `docs/project_status_2026-06-25.md` |
 | `motor_cam_wifi_manual` env | 单机硬件 demo | ESP32 AP + HTTP MJPEG `:81/stream` |
 
 ## 刷新注册表（可选）
@@ -65,3 +66,4 @@ python tools/generate_agent_registry.py
 - 人类可读总览：`docs/architecture.md`, `docs/hardware_setup.md`
 - Agent 规则：`AGENTS.md`（仓库根）
 - 联调对接表：`robot/mergetesting/CAPABILITIES.md`
+- 代码边界：`robot/firmware` 验证单项功能，`robot/mergetesting` 负责 base-station 联调；不要把联调入口放回 firmware。

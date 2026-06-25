@@ -10,10 +10,12 @@ Updated snapshot: **2026-06-22**. Detailed handoff: [docs/project_status_2026-06
 
 Current working direction:
 
-- Keep `robot/firmware/src/main.cpp` as the main `/control` integration path.
+- Keep `robot/firmware` focused on robot-body firmware and isolated hardware bring-up.
+- Keep DK-2500/base-station integration firmware in `robot/mergetesting`.
+- Let `robot/mergetesting` copy or sync proven modules from `robot/firmware`, but do not make firmware envs the default integration path.
 - Keep hardware bring-up isolated in dedicated PlatformIO envs selected by `build_src_filter`.
 - Validate firmware envs one by one with `pio run -e <env>`; broad `pio run` can misrepresent env health.
-- Treat `/video`, `/audio`, TFT face, motors, mic, and speaker as staged hardware paths until each peripheral is bench-verified.
+- Treat `/video`, `/audio`, TFT face, motors, mic, and speaker as staged hardware paths until each peripheral is bench-verified; after bench validation, wire integration behavior in `robot/mergetesting`.
 - Do not blindly merge remote perception/memory branches into `main`; review them against the current hardware-control route first.
 
 ## Core Architecture
@@ -45,7 +47,8 @@ Local PlatformIO build output (`.pio/`) is gitignored and safe to delete anytime
 ```text
 xiao-an-robot/
 ├── robot/                  # ESP32-S3 firmware and isolated hardware bring-up envs
-│   └── firmware/
+│   ├── firmware/           # robot-body feature tests and reusable modules
+│   └── mergetesting/       # DK-2500/base-station integration firmware
 ├── base_station/           # DK-2500 WebSocket server, perception runtime, ASR/emotion loops
 │   ├── ws_server/
 │   ├── perception/
@@ -77,9 +80,10 @@ Base station and Agent:
 
 ESP32-S3 firmware:
 
-- Main firmware has a `/control` WebSocket client in `ws_client.cpp/.h`.
-- Robot messages implemented in the main firmware include `device.hello`, `device.heartbeat`, `device.status`, `motion.completed`, and `error.report`.
-- Robot command dispatch includes `system.welcome`, `display.expression`, `motion.execute`, `audio.play_tts`, `audio.play_local`, `config.update`, and `system.shutdown`.
+- Main firmware keeps robot-body control and reusable bring-up modules in `robot/firmware`.
+- DK-2500 integration firmware lives in `robot/mergetesting` and owns `/control`, `/video`, `/audio` demo behavior.
+- Robot messages available for integration include `device.hello`, `device.heartbeat`, `device.status`, `motion.completed`, and `error.report`.
+- Robot command dispatch supports `system.welcome`, `display.expression`, `motion.execute`, `audio.play_tts`, `audio.play_local`, `config.update`, and `system.shutdown`.
 - Audio commands intentionally return `AUDIO_UNSUPPORTED` until MAX98357A/TTS playback is integrated.
 - Hardware experiments are now consolidated under `robot/firmware/platformio.ini`; the old nested `robot/firmware/testing` PlatformIO project has been retired.
 
@@ -90,6 +94,8 @@ Run firmware commands from `robot/firmware`.
 | Env | Purpose | Main file |
 | --- | --- | --- |
 | `esp32-s3-devkitc-1` | Main `/control` firmware | `main.cpp` |
+| `ota_bootstrap` | USB-flashed WiFi OTA recovery bridge | `ota_bootstrap_main.cpp` |
+| `ota_bootstrap_wifi` | Wireless upload target after `ota_bootstrap` is running | `ota_bootstrap_main.cpp` |
 | `camtesting` | OV2640 camera capture test | `camtesting_program.cpp` |
 | `motor_bench_once` | One-shot motor direction validation | `motor_bench_once_main.cpp` |
 | `motor_manual` | Serial WASD motor control | `motor_manual_main.cpp` |
@@ -111,6 +117,16 @@ Run firmware commands from `robot/firmware`.
 | `voice_recognition_test` | INMP441 I2S RMS/voice activity test | `voice_recognition_test.cpp` |
 | `speaker_amp_test` | MAX98357A I2S speaker amp tone test | `speaker_amp_test.cpp` |
 
+DK-2500/base-station integration envs live in `robot/mergetesting`, not in this firmware matrix:
+
+```powershell
+cd robot\mergetesting
+pio run -e mergetesting_display_only
+pio run -e mergetesting_face240_only
+pio run -e mergetesting_cam_only
+pio run -e mergetesting_mic_only
+```
+
 Related face display tools:
 
 - `robot/firmware/tools/face240_preview.html`: browser preview of the 320x240 face design.
@@ -121,6 +137,7 @@ Build examples:
 ```powershell
 cd robot\firmware
 pio run -e esp32-s3-devkitc-1
+pio run -e ota_bootstrap
 pio run -e motor_manual
 pio run -e motor_cam_wifi_manual
 pio run -e face240_integrated
@@ -129,6 +146,15 @@ pio run -e face240_9expr_merged
 pio run -e voice_recognition_test
 pio run -e speaker_amp_test
 ```
+
+OTA bootstrap:
+
+- Keep real WiFi and OTA credentials in ignored `robot/firmware/src/config.local.h`; `config.local.example.h` documents the keys.
+- First flash the bridge over USB: `pio run -e ota_bootstrap -t upload --upload-port COMxx`.
+- Expected serial behavior: `[OTA_BOOT] WiFi connected IP=...`, then `[OTA] Ready hostname=xiao-an-esp32 auth=...`, followed by 5s `alive` logs.
+- After the bridge is running on WiFi, upload wirelessly with `pio run -e ota_bootstrap_wifi -t upload --upload-port <board-ip>`.
+- `ota_bootstrap_wifi` only rebuilds and uploads the bootstrap firmware. To wirelessly upload another functional env, create/use that env's own OTA-enabled upload target; the firmware being uploaded must start WiFi, call the ArduinoOTA setup, and keep calling the OTA loop after boot. Otherwise OTA is lost after that firmware reboots.
+- Hardware-verified 2026-06-25 on `COM19` using a Windows hotspot: ESP32 IP `192.168.137.197`, wireless upload returned espota `Result: OK`. See `docs/project_status_2026-06-25.md`.
 
 WiFi manual demos:
 
@@ -220,15 +246,15 @@ Target product routes:
 Current demo priority:
 
 ```text
-Perception trigger -> Agent decision -> caring expression -> short safe movement -> robot feedback
+robot/mergetesting -> base_station WebSocket -> Agent decision -> expression/motion/audio command -> robot feedback
 ```
 
 ## Development Direction
 
 1. Finish the visible `/control` minimum loop on real hardware.
 2. Validate physical peripherals in this order: motor safety, TFT expression, OV2640 capture, dock limit switch, speaker amp, INMP441 mic.
-3. Add low-rate `/video` only after `/control` is stable.
-4. Keep `/audio`, real ASR, and TTS playback as the second integration layer.
+3. Add low-rate `/video` in `robot/mergetesting` only after `/control` is stable.
+4. Keep `/audio`, real ASR, and TTS playback as the second integration layer in `robot/mergetesting` + `base_station`.
 5. Replace mock perception with OpenVINO/OpenFace/Qwen paths only after live control is observable and safe.
 6. Review remote perception/memory branches deliberately before merging into `main`.
 

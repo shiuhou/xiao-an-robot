@@ -60,6 +60,7 @@ Thumbs.db
 .pioenvs/
 .piolibdeps/
 robot/firmware/compile_commands.json
+robot/firmware/src/config.local.h
 robot/mergetesting/src/config.local.h
 .worktrees/
 worktrees/

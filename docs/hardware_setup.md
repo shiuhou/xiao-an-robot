@@ -45,6 +45,41 @@ Canonical pin table: [hardware/wiring/esp32_pinout.md](../hardware/wiring/esp32_
 
 Integrated harness (2026-06-24): TFT SPI defaults to GPIO14/21/42/43/44 with LED/BL tied to 3V3 (`TFT_BL=-1`) via `robot/firmware/src/board_pins.h` and PlatformIO `tft_integrated_pins`. Legacy GPIO9–12 remains only on `face240_legacy` / `display_test_legacy`.
 
+## WiFi OTA Bootstrap
+
+Use `ota_bootstrap` as the first wireless-upload bridge before adding OTA to larger demos. It keeps camera, mic, speaker, WebSocket, and face display disabled, and holds DRV8833 motor pins low while OTA is active.
+
+Local WiFi and OTA secrets belong in ignored `robot/firmware/src/config.local.h`; `robot/firmware/src/config.local.example.h` documents the expected macros.
+
+Initial USB flash:
+
+```powershell
+cd robot\firmware
+pio run -e ota_bootstrap
+pio run -e ota_bootstrap -t upload --upload-port COMxx
+```
+
+Expected serial behavior: the firmware scans for `WIFI_SSID`, prints `WiFi connected IP=...`, prints `[OTA] Ready hostname=xiao-an-esp32 auth=...`, then prints an `alive` line every 5 seconds.
+
+Wireless upload after the bridge is running:
+
+```powershell
+cd robot\firmware
+pio run -e ota_bootstrap_wifi -t upload --upload-port <board-ip>
+```
+
+Important limitation for future firmware work: `ota_bootstrap_wifi` uploads only the bootstrap image. If an agent wants to wirelessly upload a different env, that env needs its own OTA-enabled upload target and the firmware itself must keep OTA alive after boot. Minimum requirements are WiFi STA connection, `ENABLE_ARDUINO_OTA=1`, the `ota_update.cpp/h` wrapper or equivalent ArduinoOTA setup, and a regular `ota_loop()` call in the runtime loop. If those are missing, the first wireless upload can replace the bootstrap, but the next upload will require USB recovery.
+
+Verified 2026-06-25 on the Windows-hotspot route:
+
+```powershell
+cd robot\firmware
+pio run -e ota_bootstrap -t upload --upload-port COM19
+pio run -e ota_bootstrap_wifi -t upload --upload-port 192.168.137.197
+```
+
+The OTA upload returned `Result: OK`, and the ESP32 rebooted back onto WiFi at `192.168.137.197`. A public WiFi can also work if it keeps the robot and base station on the same reachable LAN and does not block OTA port `3232`.
+
 ## DRV8833 Motor Driver
 
 Current firmware mapping:

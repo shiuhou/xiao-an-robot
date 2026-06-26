@@ -96,27 +96,40 @@ class ActionExecutor:
             try:
                 result = await self._call(self.robot_motion_skill.say, decision.reply_text)
             except Exception as exc:
+                error = str(exc) or "robot_action_failed"
+                skipped_action = {
+                    "name": "robot.say",
+                    "source": "reply_text",
+                    "reason": "robot_action_failed",
+                    "arguments": arguments,
+                    "result": {
+                        "ok": False,
+                        "tool": "robot.say",
+                        "error": error,
+                    },
+                }
+                skipped_actions.append(skipped_action)
                 self._record_tool_run(
                     tool_name="robot.say",
                     arguments=arguments,
-                    result={},
+                    result=skipped_action["result"],
                     status="failed",
-                    error=str(exc),
+                    error=error,
                     source_event_type=source_event_type,
                 )
-                raise
-            executed_actions.append({
-                "name": "robot.say",
-                "source": "reply_text",
-                "arguments": arguments,
-            })
-            self._record_tool_run(
-                tool_name="robot.say",
-                arguments=arguments,
-                result=self._result_dict(result),
-                status="success",
-                source_event_type=source_event_type,
-            )
+            else:
+                executed_actions.append({
+                    "name": "robot.say",
+                    "source": "reply_text",
+                    "arguments": arguments,
+                })
+                self._record_tool_run(
+                    tool_name="robot.say",
+                    arguments=arguments,
+                    result=self._result_dict(result),
+                    status="success",
+                    source_event_type=source_event_type,
+                )
 
         for tool_call in decision.tool_calls:
             await self._execute_tool_call(

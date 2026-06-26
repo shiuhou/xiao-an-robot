@@ -656,13 +656,19 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory_store.tool_runs[0]["status"], "failed")
         self.assertEqual(memory_store.tool_runs[0]["error"], "failed")
 
-    async def test_tool_execution_failure_records_failed_and_reraises(self) -> None:
+    async def test_reply_text_say_failure_returns_skipped_action_and_records_failed_run(self) -> None:
         memory_store = FakeMemoryStore()
         executor = ActionExecutor(FailingRobotMotionSkill(), memory_store=memory_store)
 
-        with self.assertRaises(RuntimeError):
-            await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
+        result = await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
 
+        self.assertTrue(result["handled"])
+        self.assertEqual(result["reply_text"], "hello")
+        self.assertEqual(result["executed_actions"], [])
+        self.assertEqual(result["skipped_actions"][0]["name"], "robot.say")
+        self.assertEqual(result["skipped_actions"][0]["source"], "reply_text")
+        self.assertEqual(result["skipped_actions"][0]["reason"], "robot_action_failed")
+        self.assertIn("say failed", result["skipped_actions"][0]["result"]["error"])
         self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.say")
         self.assertEqual(memory_store.tool_runs[0]["status"], "failed")
         self.assertIn("say failed", memory_store.tool_runs[0]["error"])

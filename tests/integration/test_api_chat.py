@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from agent.core.openclaw_adapter import OpenClawDecision
 from base_station.api.runtime import ApiRuntime
 from base_station.api.server import create_server
 
@@ -91,6 +92,39 @@ class ApiChatIntegrationTest(unittest.TestCase):
             self.runtime.brain.openclaw_adapter.events[-1].session_id,
             "default",
         )
+
+    def test_chat_reply_text_keeps_200_when_robot_is_offline(self) -> None:
+        self.runtime.brain.openclaw_adapter.decision = OpenClawDecision(
+            handled=True,
+            reply_text="frontend reply",
+        )
+
+        status, body = self.post_json(
+            "/api/chat",
+            {
+                "text": "你好小安",
+                "session_id": "offline-reply",
+            },
+        )
+
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"], body)
+        result = body["data"]
+        self.assertEqual(result["reply_text"], "frontend reply")
+        self.assertEqual(result["executed_actions"], [])
+        self.assertEqual(result["skipped_actions"][0]["name"], "robot.say")
+        self.assertEqual(
+            result["skipped_actions"][0]["reason"],
+            "robot_action_failed",
+        )
+        self.assertIn(
+            "Failed to connect",
+            result["skipped_actions"][0]["result"]["error"],
+        )
+        runs = self.runtime.memory_store.query_recent_tool_runs(limit=5)
+        self.assertEqual(runs[0]["tool_name"], "robot.say")
+        self.assertEqual(runs[0]["status"], "failed")
+        self.assertIn("Failed to connect", runs[0]["error"])
 
 
 if __name__ == "__main__":

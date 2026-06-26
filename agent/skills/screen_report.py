@@ -1,6 +1,8 @@
 """
-screen_report.py - Skill: report screen usage patterns to user
-Author: 张子尧
+Deprecated screen report placeholder.
+
+Screen monitoring exited the MVP in Step 30.1. Keep this skill only for legacy
+imports until a later cleanup.
 """
 
 

@@ -1,4 +1,4 @@
-"""Pure policy for deciding which memory scopes should be injected."""
+"""Pure policy for deciding which compatibility scopes should be injected."""
 
 from __future__ import annotations
 
@@ -145,7 +145,7 @@ KEYWORDS_BY_SCOPE = {
 
 
 class ContextInjectionPolicy:
-    """Keyword-based memory scope router for ContextBuilder MVP."""
+    """Keyword-based compatibility scope router for ContextBuilder."""
 
     def decide_for_text(self, text: str | None) -> ContextInjectionDecision:
         if text is None or not text.strip():

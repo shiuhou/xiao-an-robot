@@ -1,3 +1,8 @@
+-- Xiao An Local Event Store.
+-- OpenClaw xiaoan-runtime owns user profile, long-term memory, reminders,
+-- tasks, reports, natural-language replies, and tool selection. Compatibility
+-- tables below remain for old APIs/tests and local diagnostics.
+
 CREATE TABLE IF NOT EXISTS emotions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp INTEGER NOT NULL,

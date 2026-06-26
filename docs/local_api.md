@@ -1,8 +1,17 @@
 # Xiao An Local HTTP API
 
-The local API exposes chat, context preview, tool execution, memory queries,
-tasks, and reminders to local clients. It uses only Python's standard library
-HTTP server and listens on `127.0.0.1` by default.
+The local API exposes robot-adjacent local runtime state and compatibility
+endpoints to local clients. It uses only Python's standard library HTTP server
+and listens on `127.0.0.1` by default.
+
+OpenClaw `xiaoan-runtime` owns the main product responsibilities for user
+profile, long-term memory, scheduled reminders, tasks, morning briefs, daily
+reports, natural-language replies, and tool selection. This API keeps legacy
+notes, summaries, reminders, tasks, and work-activity routes so existing tests
+and local clients continue to work.
+
+SQLite behind this API is a Local Event Store, not the primary user long-term
+memory source.
 
 ## Start The Server
 
@@ -72,11 +81,23 @@ curl http://127.0.0.1:8787/api/health
 
 ### `GET /api/status`
 
-Returns runtime component and database status.
+Returns runtime component status and the ownership boundary exposed by Step
+30.1.
 
 ```bash
 curl http://127.0.0.1:8787/api/status
 ```
+
+Important fields:
+
+- `storage_role`: `local_event_store`
+- `openclaw_owned_features`: user profile, long-term memory, reminders, tasks,
+  morning briefs, daily reports, natural-language replies, and tool selection.
+- `xiao_an_robot_owned_features`: robot body, perception chain, local emotion
+  thresholds, safety policy, ESP32 communication, robot action execution, and
+  local event logs.
+- `deprecated_local_features`: local compatibility or deprecated surfaces such
+  as reminders, tasks, notes, summaries, work activity, and screen monitoring.
 
 ### `POST /api/chat`
 
@@ -103,11 +124,27 @@ curl -X POST http://127.0.0.1:8787/api/context/preview \
 
 ### `GET /api/tools`
 
-Lists local tools known by the action executor.
+Lists the OpenClaw-facing Xiao An robot tool manifest. The recommended tools
+are physical/runtime capabilities:
+
+- `xiaoan.robot.say`
+- `xiaoan.robot.expression`
+- `xiaoan.robot.move_out`
+- `xiaoan.robot.return_to_dock`
+- `xiaoan.robot.care`
+- `xiaoan.breathing.start`
+- `xiaoan.emotion.snapshot`
+- `xiaoan.runtime.status`
+
+The response also includes `legacy_tools` for compatibility. Legacy
+`note.*`, `task.*`, `reminder.*`, `summary.*`, and `work_context.*` tools are
+not recommended to OpenClaw as Xiao An robot body tools.
 
 ```bash
 curl http://127.0.0.1:8787/api/tools
 ```
+
+Detailed manifest: [openclaw_tool_manifest.md](openclaw_tool_manifest.md).
 
 ### `POST /api/tools/call`
 
@@ -116,15 +153,17 @@ Executes one local tool through the existing action executor.
 ```bash
 curl -X POST http://127.0.0.1:8787/api/tools/call \
   -H "Content-Type: application/json" \
-  -d '{"tool":"note.add","arguments":{"content":"Review the local API flow"},"session_id":"manual-test"}'
+  -d '{"tool":"xiaoan.runtime.status","arguments":{},"session_id":"manual-test"}'
 ```
 
-Tool calls preserve the existing business writes, `memory_events`, and
-`tool_runs` behavior.
+Recommended `xiaoan.*` tool calls preserve `tool_runs` behavior. Legacy tool
+calls also preserve their existing compatibility writes and `memory_events`.
 
-## Memory Queries
+## Legacy Event And Memory Queries
 
-All endpoints in this section are read-only.
+All endpoints in this section are read-only. They expose the Local Event Store
+for diagnostics and legacy clients; they are not the main product source for
+long-term user memory.
 
 ### `GET /api/memory/recent`
 
@@ -226,6 +265,9 @@ curl "http://127.0.0.1:8787/api/project/context?scope=notes&limit=5"
 
 ## Task Operations
 
+Task endpoints are legacy compatibility. New product task behavior belongs in
+OpenClaw `xiaoan-runtime`.
+
 ### `POST /api/tasks`
 
 Required:
@@ -267,6 +309,9 @@ Task writes reuse `task.add`, `task.complete`, and `task.cancel`, so the task
 row, memory event, and tool run remain part of one flow.
 
 ## Reminder Operations
+
+Reminder endpoints are legacy compatibility. New product reminder scheduling
+belongs in OpenClaw `xiaoan-runtime`.
 
 ### `POST /api/reminders`
 
@@ -329,4 +374,9 @@ The robot and base station continue to communicate through WebSocket and
 channel.
 
 A separate Robot Debug API may be added later if a frontend needs explicit
-manual robot testing. It is not part of Step 28.6.
+manual robot testing. It is not part of the OpenClaw ownership boundary.
+
+## Deprecated Local Features
+
+Screen monitoring has exited the MVP. Existing screen watcher/report files are
+deprecated placeholders and should not be treated as future product goals.

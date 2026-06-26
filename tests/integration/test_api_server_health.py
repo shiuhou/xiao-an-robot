@@ -71,6 +71,21 @@ class ApiServerHealthIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(status["data"]["components"]["brain"])
         self.assertTrue(status["data"]["components"]["memory_store"])
+        self.assertEqual(status["data"]["storage_role"], "local_event_store")
+        self.assertIn(
+            "long_term_memory",
+            status["data"]["openclaw_owned_features"],
+        )
+        self.assertIn(
+            "robot_action_execution",
+            status["data"]["xiao_an_robot_owned_features"],
+        )
+        deprecated = {
+            item["name"]: item["status"]
+            for item in status["data"]["deprecated_local_features"]
+        }
+        self.assertEqual(deprecated["screen_monitoring"], "deprecated")
+        self.assertEqual(deprecated["tasks"], "legacy_compatibility")
 
 
 if __name__ == "__main__":

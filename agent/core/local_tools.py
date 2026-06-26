@@ -1,4 +1,4 @@
-"""Local placeholder tools executed from OpenClaw tool calls."""
+"""Local robot tools plus legacy compatibility tools."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from agent.core.project_memory import ProjectMemoryService
 
 
 class LocalToolRegistry:
-    """Small local tool placeholder registry with no side effects."""
+    """Local tool registry; notes/tasks/reminders/summaries are compatibility."""
 
     def __init__(
         self,

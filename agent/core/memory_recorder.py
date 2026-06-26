@@ -1,4 +1,4 @@
-"""Small recorder helpers for writing high-level agent events to memory."""
+"""Small recorder helpers for writing high-level agent events to the event store."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from agent.core.memory import XiaoAnMemoryStore
 
 
 class MemoryRecorder:
-    """Record agent route events through the existing unified memory API."""
+    """Record agent route events through the existing Local Event Store API."""
 
     def __init__(
         self,

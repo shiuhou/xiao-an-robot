@@ -1,4 +1,4 @@
-"""Assemble optional Xiao An context for OpenClaw events."""
+"""Assemble optional compatibility context for OpenClaw events."""
 
 from __future__ import annotations
 

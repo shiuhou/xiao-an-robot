@@ -119,7 +119,16 @@ class LocalApiFlowIntegrationTest(unittest.TestCase):
         tools = self.assert_ok("GET", "/api/tools")
         tool_names = {item["name"] for item in tools["tools"]}
         self.assertTrue(
-            {"note.add", "task.add", "reminder.add"}.issubset(tool_names),
+            {
+                "xiaoan.robot.say",
+                "xiaoan.robot.expression",
+                "xiaoan.robot.care",
+                "xiaoan.emotion.snapshot",
+            }.issubset(tool_names),
+        )
+        legacy_tool_names = {item["name"] for item in tools["legacy_tools"]}
+        self.assertTrue(
+            {"note.add", "task.add", "reminder.add"}.issubset(legacy_tool_names),
         )
 
         note_add = self.assert_ok(

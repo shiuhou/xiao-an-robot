@@ -1,4 +1,4 @@
-"""Fake work activity samples for local context-memory development."""
+"""Fake work activity samples for legacy compatibility testing."""
 
 from __future__ import annotations
 

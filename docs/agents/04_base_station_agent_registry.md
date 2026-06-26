@@ -43,7 +43,7 @@
 | `emotion_db.py` | ✅ | SQLite 情绪记录 |
 | `asr_runtime.py` | 🟡 | ASR 运行时 |
 | `emotion_context_builder.py` | ✅ | 上下文构建 |
-| `screen_watcher.py` | 🟡 | 屏幕监控 |
+| `screen_watcher.py` | ⚪ | deprecated；屏幕监控已退出 MVP |
 
 ---
 
@@ -58,8 +58,8 @@
 | `core/action_executor.py` | ✅ | 动作执行编排 |
 | `core/openclaw_adapter.py` | 🟡 | OpenClaw 适配 |
 | `core/http_openclaw_adapter.py` | 🟡 | HTTP 版 |
-| `core/local_tools.py` | ✅ | 本地工具 |
-| `core/memory.py` / `context_builder.py` | 🟡 | 记忆/上下文 |
+| `core/local_tools.py` | ✅ | 本地工具；notes/tasks/reminders/summaries 为兼容层 |
+| `core/memory.py` / `context_builder.py` | 🟡 | Local Event Store / 兼容上下文 |
 
 ### Skills
 

@@ -2,6 +2,21 @@
 
 This is the current repository snapshot after the firmware bring-up envs and hardware notes were consolidated.
 
+Step 30.1 update: OpenClaw `xiaoan-runtime` now owns user profile, long-term
+memory, scheduled reminders, tasks, morning briefs, daily reports,
+natural-language replies, and tool selection. This repository owns the robot
+body, local perception chain, local emotion thresholds, safety policy, ESP32
+communication, robot action execution, and local event logs. See
+[openclaw_ownership_boundary.md](openclaw_ownership_boundary.md).
+
+Step 30.2 update: OpenClaw-facing body tools are documented in
+[openclaw_tool_manifest.md](openclaw_tool_manifest.md). The recommended tools
+are `xiaoan.robot.say`, `xiaoan.robot.expression`, `xiaoan.robot.move_out`,
+`xiaoan.robot.return_to_dock`, `xiaoan.robot.care`,
+`xiaoan.breathing.start`, `xiaoan.emotion.snapshot`, and
+`xiaoan.runtime.status`; legacy memory/task/reminder/summary/work-context tools
+remain compatibility-only.
+
 ## Git / Workspace State
 
 - Current branch: `main`.
@@ -22,7 +37,7 @@ This is the current repository snapshot after the firmware bring-up envs and har
 | --- | --- |
 | `robot/firmware` | ESP32-S3 main firmware plus isolated PlatformIO hardware bring-up envs |
 | `base_station` | DK-2500 WebSocket server, local perception runtime, emotion/ASR monitoring |
-| `agent` | Agent brain, OpenClaw adapter path, local tools, memory/context shell, robot skills |
+| `agent` | Local gateway, robot skills, OpenClaw adapter path, compatibility tools, Local Event Store access |
 | `shared` | Protocol constants, schemas, and example messages |
 | `tests` | Unit/integration tests and mock robot |
 | `tools` | Runtime probes and command senders |
@@ -49,6 +64,9 @@ Generated/private items that should stay out of commits:
 - `CompanionRequestSkill`, `asr_runtime`, and `asr_emotion_trigger` are covered by tests.
 - `EmotionDB`, `EmotionEventLoop`, and `emotion_runtime` support fake/mock/OpenCV-source active-care simulation.
 - Qwen/VLM trigger and wrapper paths exist. Real OpenVINO Qwen generation is still staged.
+- SQLite is the Local Event Store for traces, emotion history, tool runs, and legacy compatibility rows; it is not the primary source of user long-term memory.
+- Local notes, summaries, tasks, reminders, and work-activity APIs remain for compatibility and tests, not as the main product surface.
+- Screen monitoring is deprecated and has exited the MVP.
 
 ### ESP32-S3 Main Firmware
 
@@ -148,7 +166,7 @@ High-risk wiring notes:
 - Real OpenVINO face emotion postprocessing is still staged.
 - Qwen2.5-VL OpenVINO generation is still not fully wired.
 - Real ASR/VAD/TTS model execution still needs deployment wiring.
-- Remote perception/memory branches need controlled review before merge.
+- Remote perception/memory branches need controlled review before merge, especially to avoid reintroducing local ownership of OpenClaw-owned user memory, tasks, reminders, briefs, reports, replies, or tool choice.
 
 ### Product / Demo
 
@@ -169,7 +187,9 @@ High-risk wiring notes:
 3. Use `motor_cam_wifi_manual` for the visible QR/camera/motor demo when the QR box and coordinates need to appear in the live stream itself.
 4. Add low-rate `/video` only after `/control` is stable.
 5. Use mock/OpenCV perception first, then swap in OpenVINO/OpenFace/Qwen paths.
-6. Keep the Intel Cup story bounded:
+6. Keep local reminders/tasks/notes/summaries/work-activity as legacy compatibility only.
+7. Do not add screen-monitoring product goals.
+8. Keep the Intel Cup story bounded:
 
 ```text
 Perception trigger -> Agent decision -> caring expression -> short safe movement -> robot feedback

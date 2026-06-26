@@ -1,8 +1,8 @@
 """Xiao An Agent Brain MVP.
 
-This module is still not an OpenClaw replacement. For the local simulation MVP,
-it acts as a small event router: emotion events go to EmotionMonitorSkill, which
-can use RobotGateway and EmotionDB to trigger robot care actions.
+This module is not an OpenClaw replacement. OpenClaw xiaoan-runtime owns user
+profile, long-term memory, reply generation, and tool selection; this module
+keeps local event routing and robot action compatibility paths.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ FRONTEND_MESSAGE_EVENT = "frontend.message"
 
 
 class XiaoAnBrain:
-    """Minimal Agent brain for routing local MVP events to skills."""
+    """Minimal local router for robot events and compatibility skills."""
 
     def __init__(
         self,

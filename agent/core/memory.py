@@ -1,4 +1,4 @@
-"""Long-term memory and context retrieval for the agent."""
+"""SQLite Local Event Store and legacy compatibility queries."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 
 class XiaoAnMemoryStore:
-    """SQLite-backed unified memory store for Xiao An."""
+    """SQLite-backed Local Event Store for Xiao An robot runtime traces."""
 
     def __init__(
         self,

@@ -1,6 +1,6 @@
 # Xiao An Robot
 
-小安是一個基於 Intel DK-2500 / Core Ultra 基站與 ESP32-S3 機器人本體的桌面智能情感助理。設計重點是「有身體的 Agent」：ESP32-S3 負責低功耗硬體控制與感測串流，DK-2500 負責本地感知與 OpenVINO 推理，Agent / OpenClaw 路徑負責決策、工具調用與互動策略。
+小安是一個基於 Intel DK-2500 / Core Ultra 基站與 ESP32-S3 機器人本體的桌面智能情感助理。設計重點是「有身體的 Agent」：ESP32-S3 負責低功耗硬體控制與感測串流，DK-2500 負責本地感知與 OpenVINO 推理，OpenClaw `xiaoan-runtime` 負責使用者理解、自然語言回覆與工具選擇。
 
 目標場景是桌面學習與辦公。小安可以在本地感知疲勞、焦慮或陪伴需求，透過表情屏、短距離安全移動與語音回饋，提供低打擾的主動關懷。
 
@@ -15,6 +15,32 @@ Current working direction:
 - Validate firmware envs one by one with `pio run -e <env>`; broad `pio run` can misrepresent env health.
 - Treat `/video`, `/audio`, TFT face, motors, mic, and speaker as staged hardware paths until each peripheral is bench-verified.
 - Do not blindly merge remote perception/memory branches into `main`; review them against the current hardware-control route first.
+- Treat local reminders, tasks, notes, summaries, and work-activity APIs as legacy compatibility, not the main product surface.
+- Treat screen monitoring as deprecated and outside the MVP.
+
+## OpenClaw Ownership Boundary
+
+Canonical boundary: [docs/openclaw_ownership_boundary.md](docs/openclaw_ownership_boundary.md).
+OpenClaw-facing robot tool manifest:
+[docs/openclaw_tool_manifest.md](docs/openclaw_tool_manifest.md).
+
+OpenClaw `xiaoan-runtime` owns user profile, long-term memory, scheduled
+reminders, tasks, morning briefs, daily reports, natural-language replies, and
+tool selection.
+
+This `xiao-an-robot` repository owns the robot body, local perception chain,
+local emotion thresholds, safety policy, ESP32 communication, robot action
+execution, and local event logs.
+
+Recommended OpenClaw tools are limited to robot body/runtime capabilities:
+`xiaoan.robot.say`, `xiaoan.robot.expression`, `xiaoan.robot.move_out`,
+`xiaoan.robot.return_to_dock`, `xiaoan.robot.care`,
+`xiaoan.breathing.start`, `xiaoan.emotion.snapshot`, and
+`xiaoan.runtime.status`.
+
+SQLite in this repository is a **Local Event Store** for emotion samples,
+interaction traces, tool runs, compatibility records, and diagnostics. It is
+not the primary source for user long-term memory.
 
 ## Core Architecture
 
@@ -27,12 +53,12 @@ Base Station (Intel DK-2500 / Core Ultra)
   - WebSocket server
   - OpenVINO / local perception
   - ASR / VAD / TTS
-  - SQLite local memory
+  - SQLite Local Event Store
 
-Agent Layer (OpenClaw + LLM)
-  - understands intent
-  - plans actions
-  - calls skills/tools
+OpenClaw xiaoan-runtime
+  - owns user profile, long-term memory, reminders, tasks, reports
+  - understands intent and writes natural-language replies
+  - selects tools
   - returns text, emotion, and robot commands
 ```
 
@@ -50,7 +76,7 @@ xiao-an-robot/
 │   ├── ws_server/
 │   ├── perception/
 │   └── monitor/
-├── agent/                  # Agent brain, gateway, skills, memory/context shell
+├── agent/                  # Legacy local brain, gateway, robot skills, compatibility tools
 │   ├── core/
 │   ├── skills/
 │   └── data/
@@ -74,6 +100,8 @@ Base station and Agent:
 - `XiaoAnBrain` routes ASR, emotion, frontend, and OpenClaw/tool-call style events through tested MVP paths.
 - `EmotionDB`, `EmotionEventLoop`, and `emotion_runtime` support fake/mock/OpenCV-source active-care simulation.
 - Qwen/VLM gate and wrapper paths exist; real OpenVINO Qwen generation remains staged.
+- Local notes, summaries, tasks, reminders, and work-activity tables/endpoints remain for legacy compatibility and test coverage.
+- Screen monitoring is deprecated and should not be used as a future MVP target.
 
 ESP32-S3 firmware:
 
@@ -217,6 +245,11 @@ Target product routes:
 2. Visual active care: low-rate camera perception -> fatigue/emotion trigger -> Agent decision -> caring expression and short safe movement.
 3. Quick companion request: local ASR text trigger -> immediate expression/action -> richer reply generated in the background.
 
+OpenClaw owns user-facing profile, long-term memory, reminders, tasks, morning
+briefs, daily reports, reply generation, and tool choice in those routes. This
+repository contributes local sensing, safety gates, command execution, and event
+logging.
+
 Current demo priority:
 
 ```text
@@ -230,7 +263,9 @@ Perception trigger -> Agent decision -> caring expression -> short safe movement
 3. Add low-rate `/video` only after `/control` is stable.
 4. Keep `/audio`, real ASR, and TTS playback as the second integration layer.
 5. Replace mock perception with OpenVINO/OpenFace/Qwen paths only after live control is observable and safe.
-6. Review remote perception/memory branches deliberately before merging into `main`.
+6. Keep local reminders/tasks/notes/summaries/work-activity support as compatibility only; new product behavior belongs in OpenClaw `xiaoan-runtime`.
+7. Do not add screen-monitoring goals; screen monitoring has exited the MVP.
+8. Review remote perception/memory branches deliberately before merging into `main`.
 
 ## Protocol
 
@@ -265,7 +300,7 @@ Main robot-to-base messages:
 - Raw camera frames and microphone audio should stay on the local robot/base-station system.
 - DK-2500 performs local perception and converts raw data into structured labels or summaries.
 - Cloud LLM/OpenClaw should receive text summaries, state labels, and user-approved context, not raw audio/video.
-- Local SQLite stores emotion history and interaction metadata.
+- Local SQLite is the Local Event Store for emotion history, interaction metadata, tool runs, and legacy compatibility records; OpenClaw owns long-term user memory.
 
 ## Files That Should Not Be Committed
 

@@ -33,6 +33,50 @@ class ApiRouterTest(unittest.TestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.body["data"]["db_path"], "temp.db")
 
+    def test_status_exposes_openclaw_ownership_boundary(self) -> None:
+        class OwnershipRuntime(FakeRuntime):
+            def status(self) -> dict:
+                data = super().status()
+                data.update({
+                    "storage_role": "local_event_store",
+                    "openclaw_owned_features": [
+                        "user_profile",
+                        "long_term_memory",
+                        "scheduled_reminders",
+                        "tasks",
+                        "morning_brief",
+                        "daily_report",
+                        "natural_language_replies",
+                        "tool_selection",
+                    ],
+                    "deprecated_local_features": [
+                        {
+                            "name": "screen_monitoring",
+                            "status": "deprecated",
+                        },
+                        {
+                            "name": "reminders",
+                            "status": "legacy_compatibility",
+                        },
+                    ],
+                })
+                return data
+
+        router = ApiRouter(OwnershipRuntime())
+        response = router.route("GET", "/api/status")
+        data = response.body["data"]
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(data["storage_role"], "local_event_store")
+        self.assertIn("long_term_memory", data["openclaw_owned_features"])
+        self.assertIn("tasks", data["openclaw_owned_features"])
+        deprecated = {
+            item["name"]: item["status"]
+            for item in data["deprecated_local_features"]
+        }
+        self.assertEqual(deprecated["screen_monitoring"], "deprecated")
+        self.assertEqual(deprecated["reminders"], "legacy_compatibility")
+
     def test_options(self) -> None:
         response = self.router.route("OPTIONS", "/api/health")
 

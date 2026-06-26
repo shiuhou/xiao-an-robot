@@ -1,4 +1,4 @@
-"""Rule-based daily summary builder over Xiao An unified memory."""
+"""Legacy rule-based daily summary builder over the Local Event Store."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Any
 
 
 class DailySummaryBuilder:
-    """Build a structured daily summary without calling an LLM."""
+    """Build a compatibility daily summary without calling an LLM."""
 
     def __init__(self, memory_store: Any, default_limit: int = 20):
         self.memory_store = memory_store

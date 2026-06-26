@@ -1,4 +1,4 @@
-"""Project-level memory recording built on the unified memory store."""
+"""Legacy project-context helpers built on the Local Event Store."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from agent.core.memory import XiaoAnMemoryStore
 
 
 class ProjectMemoryService:
-    """Record and retrieve project context without exposing storage details."""
+    """Record and retrieve compatibility context without exposing storage details."""
 
     _SCOPE_ALIASES = {
         "notes": "notes",

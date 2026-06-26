@@ -29,8 +29,16 @@
 | MAX98357A 喇叭 | 🟡 | 音调测试 ✅；mergetesting 本地音效 |
 | 舵机 | ⬜ | `servo_ctrl` 全 stub |
 | OpenVINO 真实 NPU 联调 | 🟡 | 单测/mock 多，硬件帧待接 |
-| OpenClaw 完整 tools | 🟡 | MVP 路径有测试 |
+| OpenClaw 完整 tools | 🟡 | OpenClaw `xiaoan-runtime` 负责工具选择；本地 tools 保留兼容测试 |
 | Frontend | ⬜ | 早期占位 |
+
+## Step 30.1 职责边界
+
+- OpenClaw `xiaoan-runtime` 负责用户画像、长期记忆、定时提醒、任务、晨报/日报、自然语言回复和工具选择。
+- `xiao-an-robot` 负责机器人身体、感知链路、本地情绪阈值、安全策略、ESP32 通信、机器人动作执行和本地事件日志。
+- SQLite 是 Local Event Store，不是用户长期记忆主源。
+- 本地 reminders/tasks/notes/summaries/work_activity 只作为 legacy compatibility。
+- screen monitoring 已退出 MVP。
 
 ## 近期重要变更（Agent 必知）
 

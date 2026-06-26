@@ -1,15 +1,26 @@
 # Architecture
 
-Xiao An is split into four main modules so hardware, sensing, reasoning, and UI work can move independently.
+Xiao An is split into local robot runtime modules plus OpenClaw `xiaoan-runtime`
+ownership so hardware, sensing, safety, and user-facing reasoning can move
+independently.
 
 Current status: the architecture is staged. The `/control` route and local simulation paths are the most mature parts; `/video`, `/audio`, real ASR/VAD/TTS, and full hardware integration are still being brought up.
+
+Canonical ownership boundary: [openclaw_ownership_boundary.md](openclaw_ownership_boundary.md).
 
 ## Module Responsibilities
 
 - `robot/`: ESP32-S3 firmware for display, motion, camera/mic/speaker tests, and WebSocket client behavior.
-- `base_station/`: DK2500 edge service for WebSocket channels, audio/video stream handling, OpenVINO perception, and robot session management.
-- `agent/`: OpenClaw-style Agent brain, memory, and skills. It decides what to say or do after receiving context.
+- `base_station/`: DK2500 edge service for WebSocket channels, audio/video stream handling, OpenVINO perception, local emotion thresholds, safety-adjacent runtime gates, and robot session management.
+- `agent/`: Local gateway, robot skills, event routing, and legacy compatibility tools. It is not the product owner for user profile, long-term memory, tasks, reminders, briefs, reports, reply generation, or tool selection.
 - `frontend/`: Electron GUI for desktop interaction and operator-facing views.
+
+OpenClaw `xiaoan-runtime` owns user profile, long-term memory, scheduled
+reminders, tasks, morning briefs, daily reports, natural-language replies, and
+tool selection. It may choose approved Xiao An robot tools, while this
+repository keeps responsibility for the robot body, perception chain, local
+emotion gates, safety policy, ESP32 communication, action execution, and local
+event logs.
 
 ## WebSocket Channels
 
@@ -31,12 +42,25 @@ Mock and fake paths are intentionally kept in the codebase so the Agent and WebS
 
 ## Agent Core and Skills
 
-- `agent/core`: Long-running reasoning, context building, memory access, and gateway logic.
-- `agent/skills`: Focused actions the Agent can call, such as motion, calendar, breathing guide, or daily reports.
+- `agent/core`: Local event routing, context compatibility, Local Event Store access, gateway logic, and robot action execution.
+- `agent/skills`: Focused local actions the runtime can call, especially robot motion/expression/TTS paths.
+
+Legacy local notes, summaries, reminders, tasks, and work-activity code remains
+for API compatibility and test coverage. New user-facing product behavior for
+those domains belongs in OpenClaw `xiaoan-runtime`.
+
+Screen monitoring is deprecated and outside the MVP. Do not use
+`screen_watcher.py`, `screen_report.py`, or active-window tracking as a future
+product target.
 
 ## Database Schema
 
-`agent/data/schema.sql` defines the SQLite tables used by the Agent. It is the source for creating `agent/data/xiao_an.db` during local setup or DK2500 deployment.
+`agent/data/schema.sql` defines the SQLite Local Event Store tables used by the
+local robot runtime. It is the source for creating `agent/data/xiao_an.db`
+during local setup or DK2500 deployment.
+
+The Local Event Store records emotion samples, interaction traces, tool runs,
+legacy compatibility rows, and diagnostics. It is not the source of truth for
+user long-term memory; OpenClaw owns that state.
 
 Do not commit generated `.db`, `.sqlite`, logs, or downloaded model files.
-

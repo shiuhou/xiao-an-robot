@@ -1,4 +1,4 @@
-"""Standalone fake work activity runtime for unified memory testing."""
+"""Standalone fake work-activity runtime for Local Event Store testing."""
 
 from __future__ import annotations
 

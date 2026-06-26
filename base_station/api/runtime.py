@@ -19,8 +19,64 @@ from agent.core.openclaw_adapter import (
     OpenClawToolCall,
 )
 from agent.core.project_memory import ProjectMemoryService
+from agent.core.xiaoan_tool_manifest import tool_manifest
 from agent.skills.robot_motion import RobotMotionSkill
 from base_station.monitor.emotion_db import EmotionDB
+
+
+OPENCLAW_OWNED_FEATURES = [
+    "user_profile",
+    "long_term_memory",
+    "scheduled_reminders",
+    "tasks",
+    "morning_brief",
+    "daily_report",
+    "natural_language_replies",
+    "tool_selection",
+]
+
+XIAO_AN_ROBOT_OWNED_FEATURES = [
+    "robot_body",
+    "perception_pipeline",
+    "local_emotion_thresholds",
+    "safety_policy",
+    "esp32_communication",
+    "robot_action_execution",
+    "local_event_store",
+]
+
+DEPRECATED_LOCAL_FEATURES = [
+    {
+        "name": "reminders",
+        "status": "legacy_compatibility",
+        "replacement_owner": "openclaw_xiaoan_runtime",
+    },
+    {
+        "name": "tasks",
+        "status": "legacy_compatibility",
+        "replacement_owner": "openclaw_xiaoan_runtime",
+    },
+    {
+        "name": "notes",
+        "status": "legacy_compatibility",
+        "replacement_owner": "openclaw_xiaoan_runtime",
+    },
+    {
+        "name": "summaries",
+        "status": "legacy_compatibility",
+        "replacement_owner": "openclaw_xiaoan_runtime",
+    },
+    {
+        "name": "work_activity",
+        "status": "legacy_compatibility",
+        "replacement_owner": "openclaw_xiaoan_runtime",
+    },
+    {
+        "name": "screen_monitoring",
+        "status": "deprecated",
+        "replacement_owner": None,
+    },
+]
 
 
 class ApiRuntime:
@@ -51,17 +107,19 @@ class ApiRuntime:
         )
         self.robot_gateway = RobotGateway(url=self.robot_ws_url)
         self.robot_motion = RobotMotionSkill(gateway=self.robot_gateway)
+        self.emotion_memory = EmotionDB(
+            db_path=self.db_path,
+            check_same_thread=False,
+        )
         self.action_executor = ActionExecutor(
             robot_motion_skill=self.robot_motion,
             local_tool_registry=self.local_tools,
             memory_store=self.memory_store,
             project_memory_service=self.project_memory,
+            emotion_snapshot_provider=self.emotion_memory.get_recent_summary,
+            runtime_status_provider=self.status,
         )
         self.context_builder = ContextBuilder(memory_store=self.memory_store)
-        self.emotion_memory = EmotionDB(
-            db_path=self.db_path,
-            check_same_thread=False,
-        )
         self.brain = XiaoAnBrain(
             gateway=self.robot_gateway,
             memory=self.emotion_memory,
@@ -118,11 +176,17 @@ class ApiRuntime:
             "context": context,
         }
 
-    def list_tools(self) -> list[dict[str, str]]:
-        return [
-            {"name": name}
-            for name in sorted(self.action_executor.LOCAL_TOOL_NAMES)
-        ]
+    def list_tools(self) -> dict[str, Any]:
+        return {
+            "tools": tool_manifest(),
+            "legacy_tools": [
+                {"name": name, "status": "legacy_compatibility"}
+                for name in sorted(
+                    set(self.action_executor.LEGACY_ROBOT_TOOL_ALIASES)
+                    | self.action_executor.LOCAL_TOOL_NAMES
+                )
+            ],
+        }
 
     def call_tool(
         self,
@@ -414,9 +478,16 @@ class ApiRuntime:
             "service": "xiao-an-local-api",
             "status": "closed" if self.closed else "ready",
             "db_path": self.db_path,
+            "storage_role": "local_event_store",
             "robot_ws_url": self.robot_ws_url,
             "verbose": self.verbose,
             "components": components,
+            "openclaw_owned_features": list(OPENCLAW_OWNED_FEATURES),
+            "xiao_an_robot_owned_features": list(XIAO_AN_ROBOT_OWNED_FEATURES),
+            "deprecated_local_features": [
+                dict(feature)
+                for feature in DEPRECATED_LOCAL_FEATURES
+            ],
         }
 
     def close(self) -> None:

@@ -76,18 +76,29 @@ class ApiToolsIntegrationTest(unittest.TestCase):
         self.assertTrue(body["ok"])
         return body["data"]
 
-    def test_list_tools_uses_executor_tool_names(self) -> None:
+    def test_list_tools_returns_openclaw_robot_manifest(self) -> None:
         status, body = self.get_json("/api/tools")
 
         self.assertEqual(status, 200)
         names = {item["name"] for item in body["data"]["tools"]}
         self.assertEqual(
             names,
-            set(self.runtime.action_executor.LOCAL_TOOL_NAMES),
+            self.runtime.action_executor.RECOMMENDED_TOOL_NAMES,
         )
-        self.assertIn("note.add", names)
-        self.assertIn("task.add", names)
-        self.assertIn("reminder.add", names)
+        self.assertIn("xiaoan.robot.say", names)
+        self.assertIn("xiaoan.robot.care", names)
+        self.assertIn("xiaoan.emotion.snapshot", names)
+        self.assertNotIn("note.add", names)
+        self.assertNotIn("task.add", names)
+        self.assertNotIn("reminder.add", names)
+        legacy_names = {
+            item["name"]
+            for item in body["data"]["legacy_tools"]
+        }
+        self.assertIn("robot.say", legacy_names)
+        self.assertIn("note.add", legacy_names)
+        self.assertIn("task.add", legacy_names)
+        self.assertIn("reminder.add", legacy_names)
 
     def test_note_add_and_search_persist_full_memory_flow(self) -> None:
         add = self.call_tool(

@@ -17,6 +17,7 @@ class FakeRobotMotionSkill:
         self.expression_calls = []
         self.move_out_calls = 0
         self.return_to_dock_calls = 0
+        self.care_calls = []
 
     def say(self, text: str) -> dict:
         self.say_calls.append(text)
@@ -33,6 +34,10 @@ class FakeRobotMotionSkill:
     def return_to_dock(self) -> dict:
         self.return_to_dock_calls += 1
         return {"ok": True}
+
+    def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+        self.care_calls.append(text)
+        return [{"ok": True, "action": "care_for_user"}]
 
 
 class FailingRobotMotionSkill(FakeRobotMotionSkill):
@@ -56,6 +61,10 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
     async def return_to_dock(self) -> dict:
         self.return_to_dock_calls += 1
         return {"ok": True}
+
+    async def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+        self.care_calls.append(text)
+        return [{"ok": True, "action": "care_for_user"}]
 
 
 class FakeLocalToolRegistry:
@@ -239,6 +248,22 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["executed_actions"][0]["name"], "robot.say")
         self.assertEqual(result["executed_actions"][0]["source"], "tool_call")
 
+    async def test_xiaoan_robot_say_tool_call_calls_say(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.robot.say", arguments={"text": "hello"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.say_calls, ["hello"])
+        action = result["executed_actions"][0]
+        self.assertEqual(action["name"], "xiaoan.robot.say")
+        self.assertTrue(action["result"]["ok"])
+        self.assertEqual(action["result"]["tool"], "xiaoan.robot.say")
+
     async def test_robot_expression_tool_call_calls_show_expression(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -263,6 +288,19 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.move_out_calls, 1)
 
+    async def test_xiaoan_robot_move_out_tool_call_calls_motion(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.robot.move_out")],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.move_out_calls, 1)
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.move_out")
+
     async def test_robot_return_to_dock_tool_call_calls_motion(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -274,6 +312,85 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         await executor.execute(decision)
 
         self.assertEqual(robot_motion.return_to_dock_calls, 1)
+
+    async def test_xiaoan_robot_care_tool_call_runs_care_sequence(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.robot.care", arguments={"text": "休息一下"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.care_calls, ["休息一下"])
+        action = result["executed_actions"][0]
+        self.assertEqual(action["name"], "xiaoan.robot.care")
+        self.assertEqual(action["result"]["tool"], "xiaoan.robot.care")
+        self.assertEqual(action["result"]["actions"][0]["action"], "care_for_user")
+
+    async def test_legacy_robot_care_tool_call_still_runs_care_sequence(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="robot.care", arguments={"text": "legacy"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.care_calls, ["legacy"])
+        self.assertEqual(result["executed_actions"][0]["name"], "robot.care")
+
+    async def test_xiaoan_breathing_start_runs_local_guidance(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.breathing.start", arguments={"text": "慢慢呼吸"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.expression_calls, ["calm"])
+        self.assertEqual(robot_motion.say_calls, ["慢慢呼吸"])
+        self.assertEqual(result["executed_actions"][0]["result"]["tool"], "xiaoan.breathing.start")
+
+    async def test_xiaoan_emotion_snapshot_uses_provider(self) -> None:
+        def snapshot(seconds: int = 300) -> dict:
+            return {"seconds": seconds, "top_emotion": "neutral"}
+
+        executor = ActionExecutor(
+            FakeRobotMotionSkill(),
+            emotion_snapshot_provider=snapshot,
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.emotion.snapshot", arguments={"seconds": 60})],
+        )
+
+        result = await executor.execute(decision)
+
+        action_result = result["executed_actions"][0]["result"]
+        self.assertTrue(action_result["ok"])
+        self.assertEqual(action_result["snapshot"]["seconds"], 60)
+        self.assertEqual(action_result["snapshot"]["top_emotion"], "neutral")
+
+    async def test_xiaoan_runtime_status_uses_provider(self) -> None:
+        executor = ActionExecutor(
+            FakeRobotMotionSkill(),
+            runtime_status_provider=lambda: {"status": "ready"},
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.runtime.status")],
+        )
+
+        result = await executor.execute(decision)
+
+        action_result = result["executed_actions"][0]["result"]
+        self.assertTrue(action_result["ok"])
+        self.assertEqual(action_result["status"]["status"], "ready")
 
     async def test_unknown_tool_is_skipped_without_crashing(self) -> None:
         robot_motion = FakeRobotMotionSkill()

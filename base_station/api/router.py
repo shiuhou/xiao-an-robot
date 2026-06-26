@@ -34,9 +34,7 @@ class ApiRouter:
             return success(self.runtime.status())
 
         if active_method == "GET" and active_path == "/api/tools":
-            return success({
-                "tools": self.runtime.list_tools(),
-            })
+            return success(self.runtime.list_tools())
 
         if active_method == "GET" and active_path == "/api/memory/recent":
             return success(self.runtime.query_recent_memory(

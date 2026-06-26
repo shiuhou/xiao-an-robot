@@ -1,4 +1,4 @@
-"""Background reminder scheduler for due reminder records."""
+"""Legacy background scheduler for local reminder compatibility records."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from agent.core.openclaw_adapter import OpenClawDecision, OpenClawToolCall
 
 
 class ReminderScheduler:
-    """Poll due reminders and trigger a robot.say action when they mature."""
+    """Poll legacy due reminders and trigger a robot.say action."""
 
     def __init__(
         self,

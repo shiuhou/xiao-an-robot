@@ -1,6 +1,8 @@
 """
-screen_watcher.py - Monitor active window and screen usage
-Author: 张子尧
+Deprecated screen watcher placeholder.
+
+Screen monitoring exited the MVP in Step 30.1. Keep this file only for legacy
+imports until a later cleanup.
 """
 
 

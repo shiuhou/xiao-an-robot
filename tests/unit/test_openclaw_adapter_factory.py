@@ -99,6 +99,7 @@ class OpenClawAdapterFactoryTest(unittest.TestCase):
         self.assertIsInstance(adapter, GatewayOpenClawAdapter)
         self.assertEqual(adapter.gateway_url, "ws://127.0.0.1:18789")
         self.assertEqual(adapter.agent, "xiaoan-runtime")
+        self.assertEqual(adapter.timeout_sec, 90.0)
 
     def test_gateway_backend_reads_url_agent_and_timeout(self) -> None:
         adapter = build_openclaw_adapter_from_env({

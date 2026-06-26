@@ -59,6 +59,84 @@ class FakeOpenClawGateway:
             await server.wait_closed()
 
 
+class FakeChallengeOpenClawGateway(FakeOpenClawGateway):
+    async def _serve(self) -> None:
+        import websockets
+
+        async def handler(websocket):
+            await websocket.send(json.dumps({
+                "type": "event",
+                "event": "connect.challenge",
+                "payload": {"nonce": "test-nonce", "ts": 1},
+            }))
+
+            raw_connect = await websocket.recv()
+            connect_request = json.loads(raw_connect)
+            self.requests.append(connect_request)
+            await websocket.send(json.dumps({
+                "type": "res",
+                "id": connect_request["id"],
+                "ok": True,
+                "payload": {
+                    "type": "hello-ok",
+                    "protocol": 4,
+                    "server": {"version": "test", "connId": "conn-1"},
+                    "features": {"methods": ["agent"], "events": []},
+                    "snapshot": {
+                        "presence": [],
+                        "health": {},
+                        "stateVersion": {"presence": 1, "health": 1},
+                        "uptimeMs": 1,
+                    },
+                    "auth": {"role": "operator", "scopes": ["operator.admin"]},
+                    "policy": {
+                        "maxPayload": 100000,
+                        "maxBufferedBytes": 100000,
+                        "tickIntervalMs": 30000,
+                    },
+                },
+            }))
+
+            raw_agent = await websocket.recv()
+            agent_request = json.loads(raw_agent)
+            self.requests.append(agent_request)
+            await websocket.send(json.dumps({
+                "type": "res",
+                "id": agent_request["id"],
+                "ok": True,
+                "payload": {
+                    "runId": "run-1",
+                    "sessionKey": "agent:xiaoan-runtime:test",
+                    "status": "accepted",
+                },
+            }))
+            await websocket.send(json.dumps({
+                "type": "res",
+                "id": agent_request["id"],
+                "ok": True,
+                "payload": {
+                    "runId": "run-1",
+                    "status": "ok",
+                    "result": {
+                        "payloads": [
+                            {"text": json.dumps(self.response, ensure_ascii=False)},
+                        ],
+                    },
+                },
+            }, ensure_ascii=False))
+
+        self.loop = asyncio.get_running_loop()
+        self.stop_future = self.loop.create_future()
+        server = await websockets.serve(handler, "127.0.0.1", 0)
+        host, port = server.sockets[0].getsockname()[:2]
+        self.url_queue.put(f"ws://{host}:{port}")
+        try:
+            await self.stop_future
+        finally:
+            server.close()
+            await server.wait_closed()
+
+
 class GatewayOpenClawAdapterTest(unittest.TestCase):
     def test_gateway_reply_text_response(self) -> None:
         gateway = FakeOpenClawGateway({
@@ -111,6 +189,36 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
         self.assertTrue(decision.handled)
         self.assertEqual(decision.tool_calls[0].name, "xiaoan.robot.expression")
         self.assertEqual(decision.tool_calls[0].arguments["expression"], "happy")
+
+    def test_gateway_challenge_agent_response(self) -> None:
+        gateway = FakeChallengeOpenClawGateway({
+            "handled": True,
+            "reply_text": "你好，我在。",
+            "tool_calls": [],
+        })
+        url = gateway.start()
+        try:
+            adapter = GatewayOpenClawAdapter(
+                gateway_url=url,
+                agent="xiaoan-runtime",
+                timeout_sec=1,
+                gateway_token="test-token",
+            )
+            decision = adapter.handle_event(OpenClawEvent(
+                type="frontend.message",
+                text="你好小安",
+                source="frontend",
+                session_id="challenge-test",
+            ))
+        finally:
+            gateway.stop()
+
+        self.assertTrue(decision.handled)
+        self.assertEqual(decision.reply_text, "你好，我在。")
+        self.assertEqual(gateway.requests[0]["method"], "connect")
+        self.assertEqual(gateway.requests[0]["params"]["auth"]["token"], "test-token")
+        self.assertEqual(gateway.requests[1]["method"], "agent")
+        self.assertEqual(gateway.requests[1]["params"]["agentId"], "xiaoan-runtime")
 
     def test_gateway_offline_returns_clear_error_decision(self) -> None:
         adapter = GatewayOpenClawAdapter(

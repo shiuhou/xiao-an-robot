@@ -161,15 +161,15 @@ class ActionExecutor:
             try:
                 result = await self._call(self.robot_motion_skill.say, text)
             except Exception as exc:
-                self._record_tool_run(
-                    tool_name=name,
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
                     arguments=arguments,
-                    result={},
-                    status="failed",
                     error=str(exc),
+                    skipped_actions=skipped_actions,
                     source_event_type=source_event_type,
                 )
-                raise
+                return
             executed_actions.append(self._executed(
                 tool_call,
                 result=self._xiaoan_success(canonical_name, result=result)
@@ -206,15 +206,15 @@ class ActionExecutor:
                     loop=arguments.get("loop"),
                 )
             except Exception as exc:
-                self._record_tool_run(
-                    tool_name=name,
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
                     arguments=arguments,
-                    result={},
-                    status="failed",
                     error=str(exc),
+                    skipped_actions=skipped_actions,
                     source_event_type=source_event_type,
                 )
-                raise
+                return
             executed_actions.append(self._executed(
                 tool_call,
                 result=self._xiaoan_success(canonical_name, result=result)
@@ -234,15 +234,15 @@ class ActionExecutor:
             try:
                 result = await self._call(self.robot_motion_skill.move_out_of_dock)
             except Exception as exc:
-                self._record_tool_run(
-                    tool_name=name,
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
                     arguments=arguments,
-                    result={},
-                    status="failed",
                     error=str(exc),
+                    skipped_actions=skipped_actions,
                     source_event_type=source_event_type,
                 )
-                raise
+                return
             executed_actions.append(self._executed(
                 tool_call,
                 result=self._xiaoan_success(canonical_name, result=result)
@@ -262,15 +262,15 @@ class ActionExecutor:
             try:
                 result = await self._call(self.robot_motion_skill.return_to_dock)
             except Exception as exc:
-                self._record_tool_run(
-                    tool_name=name,
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
                     arguments=arguments,
-                    result={},
-                    status="failed",
                     error=str(exc),
+                    skipped_actions=skipped_actions,
                     source_event_type=source_event_type,
                 )
-                raise
+                return
             executed_actions.append(self._executed(
                 tool_call,
                 result=self._xiaoan_success(canonical_name, result=result)
@@ -296,15 +296,15 @@ class ActionExecutor:
                     self.robot_motion_skill.care_for_user,
                 )
             except Exception as exc:
-                self._record_tool_run(
-                    tool_name=name,
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
                     arguments=arguments,
-                    result={},
-                    status="failed",
                     error=str(exc),
+                    skipped_actions=skipped_actions,
                     source_event_type=source_event_type,
                 )
-                raise
+                return
             executed_actions.append(self._executed(
                 tool_call,
                 result=self._xiaoan_success(canonical_name, actions=result)
@@ -540,6 +540,31 @@ class ActionExecutor:
             "tool": "xiaoan.runtime.status",
             "status": self._result_dict(status),
         }
+
+    def _record_robot_tool_failure(
+        self,
+        tool_call: OpenClawToolCall,
+        canonical_name: str,
+        arguments: dict,
+        error: str,
+        skipped_actions: list[dict],
+        source_event_type: str | None = None,
+    ) -> None:
+        result = {
+            "ok": False,
+            "tool": canonical_name,
+            "error": error or "robot_action_failed",
+        }
+        skipped_action = self._skipped(tool_call, "robot_action_failed", result=result)
+        skipped_actions.append(skipped_action)
+        self._record_tool_run(
+            tool_name=tool_call.name,
+            arguments=arguments,
+            result=result,
+            status="failed",
+            error=result["error"],
+            source_event_type=source_event_type,
+        )
 
     @staticmethod
     def _xiaoan_success(

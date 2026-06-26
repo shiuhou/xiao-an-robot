@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
 try:
     import websockets
 except ImportError:  # pragma: no cover - depends on local dev environment
     websockets = None
 
+from agent.core.action_executor import ActionExecutor
 from agent.core.gateway import RobotGateway
+from agent.core.memory import XiaoAnMemoryStore
+from agent.core.openclaw_adapter import OpenClawDecision, OpenClawToolCall
 from agent.skills.robot_motion import RobotMotionSkill
 
 if websockets is not None:
@@ -60,8 +65,16 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         gateway = RobotGateway(url=f"ws://127.0.0.1:{self.port}/agent", timeout_sec=2)
         self.skill = RobotMotionSkill(gateway=gateway)
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.memory_store = XiaoAnMemoryStore(
+            db_path=str(Path(self.temp_dir.name) / "robot_motion_tool_runs.db"),
+        )
 
     async def asyncTearDown(self) -> None:
+        if hasattr(self, "memory_store"):
+            self.memory_store.close()
+        if hasattr(self, "temp_dir"):
+            self.temp_dir.cleanup()
         if hasattr(self, "robot"):
             await self.robot.close()
         if hasattr(self, "server"):
@@ -108,6 +121,72 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
             "motion.execute",
             "audio.play_tts",
         ])
+
+    async def test_xiaoan_robot_care_tool_call_forwards_commands_and_records_tool_run(self) -> None:
+        executor = ActionExecutor(
+            self.skill,
+            memory_store=self.memory_store,
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.care",
+                    arguments={"text": CARE_TEXT},
+                ),
+            ],
+        )
+
+        result = await asyncio.wait_for(
+            executor.execute(decision, source_event_type="frontend.message"),
+            timeout=5,
+        )
+        robot_messages = [await self.recv_json(self.robot) for _ in range(3)]
+        tool_runs = self.memory_store.query_recent_tool_runs(tool_name="xiaoan.robot.care")
+
+        self.assertEqual(result["skipped_actions"], [])
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.care")
+        self.assertEqual([message["type"] for message in robot_messages], [
+            "display.expression",
+            "motion.execute",
+            "audio.play_tts",
+        ])
+        self.assertEqual(robot_messages[0]["payload"]["expression"], "caring")
+        self.assertEqual(robot_messages[1]["payload"]["action"], "move_out_of_dock")
+        self.assertIn(CARE_TEXT, robot_messages[2]["payload"]["text_preview"])
+        self.assertEqual(len(tool_runs), 1)
+        self.assertEqual(tool_runs[0]["status"], "success")
+        self.assertEqual(tool_runs[0]["source_event_type"], "frontend.message")
+
+    async def test_xiaoan_robot_care_tool_call_reports_offline_robot(self) -> None:
+        await self.robot.close()
+        ws_server.reset_state_for_tests()
+        executor = ActionExecutor(
+            self.skill,
+            memory_store=self.memory_store,
+        )
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.care",
+                    arguments={"text": CARE_TEXT},
+                ),
+            ],
+        )
+
+        result = await asyncio.wait_for(
+            executor.execute(decision, source_event_type="frontend.message"),
+            timeout=5,
+        )
+        tool_runs = self.memory_store.query_recent_tool_runs(tool_name="xiaoan.robot.care")
+
+        self.assertEqual(result["executed_actions"], [])
+        self.assertEqual(result["skipped_actions"][0]["reason"], "robot_action_failed")
+        self.assertIn("No online robot connected", result["skipped_actions"][0]["result"]["error"])
+        self.assertEqual(len(tool_runs), 1)
+        self.assertEqual(tool_runs[0]["status"], "failed")
+        self.assertIn("No online robot connected", tool_runs[0]["error"])
 
 
 if __name__ == "__main__":

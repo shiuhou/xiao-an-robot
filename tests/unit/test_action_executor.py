@@ -45,6 +45,23 @@ class FailingRobotMotionSkill(FakeRobotMotionSkill):
         raise RuntimeError("say failed")
 
 
+class OfflineRobotMotionSkill(FakeRobotMotionSkill):
+    def say(self, text: str) -> dict:
+        raise RuntimeError("No online robot connected on /control")
+
+    def show_expression(self, expression: str) -> dict:
+        raise RuntimeError("No online robot connected on /control")
+
+    def move_out_of_dock(self) -> dict:
+        raise RuntimeError("No online robot connected on /control")
+
+    def return_to_dock(self) -> dict:
+        raise RuntimeError("No online robot connected on /control")
+
+    def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+        raise RuntimeError("No online robot connected on /control")
+
+
 class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
     async def say(self, text: str) -> dict:
         self.say_calls.append(text)
@@ -545,6 +562,44 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.say")
         self.assertEqual(memory_store.tool_runs[0]["status"], "success")
         self.assertEqual(memory_store.tool_runs[0]["source_event_type"], "asr.transcript")
+
+    async def test_xiaoan_robot_tool_failure_returns_clear_reason_and_records_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(OfflineRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(name="xiaoan.robot.move_out"),
+            ],
+        )
+
+        result = await executor.execute(decision, source_event_type="frontend.message")
+
+        self.assertEqual(result["executed_actions"], [])
+        self.assertEqual(result["skipped_actions"][0]["name"], "xiaoan.robot.move_out")
+        self.assertEqual(result["skipped_actions"][0]["reason"], "robot_action_failed")
+        self.assertIn("No online robot connected", result["skipped_actions"][0]["result"]["error"])
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "xiaoan.robot.move_out")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "failed")
+        self.assertIn("No online robot connected", memory_store.tool_runs[0]["error"])
+        self.assertEqual(memory_store.tool_runs[0]["source_event_type"], "frontend.message")
+
+    async def test_legacy_robot_tool_failure_keeps_legacy_name_in_tool_run(self) -> None:
+        memory_store = FakeMemoryStore()
+        executor = ActionExecutor(OfflineRobotMotionSkill(), memory_store=memory_store)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(name="robot.care", arguments={"text": "legacy"}),
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(result["skipped_actions"][0]["name"], "robot.care")
+        self.assertEqual(result["skipped_actions"][0]["result"]["tool"], "xiaoan.robot.care")
+        self.assertEqual(memory_store.tool_runs[0]["tool_name"], "robot.care")
+        self.assertEqual(memory_store.tool_runs[0]["status"], "failed")
 
     async def test_local_tool_success_records_tool_run(self) -> None:
         memory_store = FakeMemoryStore()

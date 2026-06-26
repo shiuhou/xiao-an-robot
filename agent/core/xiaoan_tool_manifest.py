@@ -107,6 +107,14 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Optional short care message to speak.",
                 },
+                "reply_text": {
+                    "type": "string",
+                    "description": "Optional decision reply text associated with this care action.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Optional reason code for the care action.",
+                },
             },
         },
         "returns": {

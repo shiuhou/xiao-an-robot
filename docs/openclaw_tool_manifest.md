@@ -58,6 +58,8 @@ Code source: `agent/core/xiaoan_tool_manifest.py`.
 - Purpose: run Xiao An's local active-care sequence.
 - Parameters:
   - `text` string, optional. Short care message to speak.
+  - `reply_text` string, optional. Decision reply text associated with this care action.
+  - `reason` string, optional. Reason code for the care action.
 - Success:
   - `{"ok": true, "tool": "xiaoan.robot.care", "actions": [...]}`
 - Failure:

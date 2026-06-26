@@ -78,6 +78,7 @@ export default function StatusDashboard() {
   const deprecatedLocalFeatures = runtimeStatus?.deprecated_local_features ?? [];
   const openclawOwnedFeatures = runtimeStatus?.openclaw_owned_features ?? [];
   const robotOwnedFeatures = runtimeStatus?.xiao_an_robot_owned_features ?? [];
+  const robotConnectionDetail = runtimeStatus?.robot_connection_detail ?? {};
 
   return (
     <div className="dashboard">
@@ -181,6 +182,18 @@ export default function StatusDashboard() {
           <div>
             <dt>Robot Connection</dt>
             <dd>{formatValue(runtimeStatus?.robot_connection_status)}</dd>
+          </div>
+          <div>
+            <dt>Robot / Mock Device</dt>
+            <dd>{formatValue(robotConnectionDetail.last_device_id)}</dd>
+          </div>
+          <div>
+            <dt>Last Robot Forward</dt>
+            <dd>{formatValue(robotConnectionDetail.last_forwarded_type)}</dd>
+          </div>
+          <div>
+            <dt>Last Robot Error</dt>
+            <dd>{formatValue(robotConnectionDetail.last_error)}</dd>
           </div>
           <div>
             <dt>Verbose</dt>

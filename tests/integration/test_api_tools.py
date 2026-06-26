@@ -100,6 +100,28 @@ class ApiToolsIntegrationTest(unittest.TestCase):
         self.assertIn("task.add", legacy_names)
         self.assertIn("reminder.add", legacy_names)
 
+    def test_robot_tool_failure_updates_connection_status(self) -> None:
+        result = self.call_tool(
+            "xiaoan.robot.expression",
+            {"expression": "caring"},
+        )
+        status, body = self.get_json("/api/status")
+
+        self.assertEqual(result["result"]["executed_actions"], [])
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            body["data"]["robot_connection_status"],
+            "offline_via_command_ack",
+        )
+        self.assertEqual(
+            body["data"]["robot_connection_detail"]["last_tool"],
+            "xiaoan.robot.expression",
+        )
+        self.assertIn(
+            "Failed to connect",
+            body["data"]["robot_connection_detail"]["last_error"],
+        )
+
     def test_note_add_and_search_persist_full_memory_flow(self) -> None:
         add = self.call_tool(
             "note.add",

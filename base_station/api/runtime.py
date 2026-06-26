@@ -6,7 +6,7 @@ import asyncio
 import os
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from agent.core.action_executor import ActionExecutor
 from agent.core.brain import XiaoAnBrain
@@ -103,6 +103,14 @@ class ApiRuntime:
         self.verbose = bool(verbose)
         self.closed = False
         self._operation_lock = threading.RLock()
+        self.robot_connection_status = "unknown_until_command_ack"
+        self.robot_connection_detail: dict[str, Any] = {
+            "last_checked_by": None,
+            "last_tool": None,
+            "last_device_id": None,
+            "last_forwarded_type": None,
+            "last_error": None,
+        }
 
         self.memory_store = XiaoAnMemoryStore(
             db_path=self.db_path,
@@ -221,6 +229,7 @@ class ApiRuntime:
                     source_event_type=source_event_type,
                 ),
             )
+            self._update_robot_connection_status(tool, result)
         return {
             "tool": tool,
             "session_id": session_id,
@@ -489,7 +498,8 @@ class ApiRuntime:
             "db_path": self.db_path,
             "storage_role": "local_event_store",
             "robot_ws_url": self.robot_ws_url,
-            "robot_connection_status": "unknown_until_command_ack",
+            "robot_connection_status": self.robot_connection_status,
+            "robot_connection_detail": dict(self.robot_connection_detail),
             "openclaw_backend": openclaw_backend,
             "openclaw_gateway_url": os.environ.get("XIAO_AN_OPENCLAW_GATEWAY_URL", ""),
             "openclaw_agent": os.environ.get("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime"),
@@ -511,6 +521,58 @@ class ApiRuntime:
             self._safe_close(self.brain)
             self._safe_close(self.project_memory)
             self._safe_close(self.memory_store)
+
+    def _update_robot_connection_status(
+        self,
+        tool: str,
+        action_result: dict[str, Any],
+    ) -> None:
+        if not tool.startswith("xiaoan.robot."):
+            return
+
+        executed_actions = action_result.get("executed_actions", [])
+        skipped_actions = action_result.get("skipped_actions", [])
+        detail = {
+            "last_checked_by": "api.tools.call",
+            "last_tool": tool,
+            "last_device_id": None,
+            "last_forwarded_type": None,
+            "last_error": None,
+        }
+
+        for action in executed_actions:
+            result = action.get("result", {})
+            for payload in self._iter_robot_ack_payloads(result):
+                detail["last_device_id"] = payload.get("device_id")
+                detail["last_forwarded_type"] = payload.get("forwarded_type")
+            self.robot_connection_status = "online_via_command_ack"
+            self.robot_connection_detail = detail
+            return
+
+        if skipped_actions:
+            result = skipped_actions[0].get("result", {})
+            error = result.get("error") if isinstance(result, dict) else None
+            detail["last_error"] = error or skipped_actions[0].get("reason")
+            self.robot_connection_status = "offline_via_command_ack"
+            self.robot_connection_detail = detail
+
+    @staticmethod
+    def _iter_robot_ack_payloads(result: Any) -> Iterable[dict[str, Any]]:
+        if not isinstance(result, dict):
+            return
+
+        robot_result = result.get("result")
+        if isinstance(robot_result, dict):
+            payload = robot_result.get("payload")
+            if isinstance(payload, dict):
+                yield payload
+
+        for item in result.get("actions", []):
+            if not isinstance(item, dict):
+                continue
+            payload = item.get("payload")
+            if isinstance(payload, dict):
+                yield payload
 
     @staticmethod
     def _safe_close(component: Any) -> None:

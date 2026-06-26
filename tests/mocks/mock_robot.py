@@ -25,6 +25,10 @@ COMMAND_TYPES = {
 }
 
 
+def log(message: str) -> None:
+    print(message, flush=True)
+
+
 class Sequence:
     """Small counter for readable, increasing message sequence numbers."""
 
@@ -67,14 +71,14 @@ async def send_heartbeats(websocket: Any, seq: Sequence, device_id: str, interva
             },
         )
         await websocket.send(json.dumps(message, ensure_ascii=False))
-        print(f"> device.heartbeat battery={battery}%")
+        log(f"> device.heartbeat battery={battery}%")
 
 
 async def run_mock(args: argparse.Namespace) -> None:
     try:
         import websockets
     except ImportError:  # pragma: no cover - friendly CLI error path
-        print("Missing dependency: websockets. Install base_station or agent requirements first.")
+        log("Missing dependency: websockets. Install base_station or agent requirements first.")
         sys.exit(2)
 
     seq = Sequence()
@@ -82,7 +86,7 @@ async def run_mock(args: argparse.Namespace) -> None:
 
     try:
         async with websockets.connect(uri) as websocket:
-            print(f"Connected to {uri}")
+            log(f"Connected to {uri}")
             hello = build_message(
                 seq,
                 "device.hello",
@@ -94,7 +98,7 @@ async def run_mock(args: argparse.Namespace) -> None:
                 },
             )
             await websocket.send(json.dumps(hello, ensure_ascii=False))
-            print("> device.hello")
+            log("> device.hello")
 
             heartbeat_task = asyncio.create_task(
                 send_heartbeats(websocket, seq, args.device_id, args.heartbeat_interval)
@@ -104,25 +108,25 @@ async def run_mock(args: argparse.Namespace) -> None:
                     try:
                         message = json.loads(raw)
                     except json.JSONDecodeError:
-                        print(f"< non-json message: {raw!r}")
+                        log(f"< non-json message: {raw!r}")
                         continue
 
                     msg_type = message.get("type", "<missing type>")
                     payload = message.get("payload", {})
                     if msg_type in COMMAND_TYPES:
-                        print(f"< {msg_type}: {json.dumps(payload, ensure_ascii=False)}")
+                        log(f"< {msg_type}: {json.dumps(payload, ensure_ascii=False)}")
                     else:
-                        print(f"< {msg_type}: {json.dumps(payload, ensure_ascii=False)}")
+                        log(f"< {msg_type}: {json.dumps(payload, ensure_ascii=False)}")
             finally:
                 heartbeat_task.cancel()
     except OSError as exc:
-        print(f"Connection failed: could not reach {uri}. Check host, port, and base station server. ({exc})")
+        log(f"Connection failed: could not reach {uri}. Check host, port, and base station server. ({exc})")
         sys.exit(1)
     except websockets.exceptions.InvalidURI as exc:
-        print(f"Connection failed: invalid WebSocket URI {uri}. ({exc})")
+        log(f"Connection failed: invalid WebSocket URI {uri}. ({exc})")
         sys.exit(1)
     except websockets.exceptions.ConnectionClosedError as exc:
-        print(f"Connection closed by server: {exc}")
+        log(f"Connection closed by server: {exc}")
         sys.exit(1)
 
 

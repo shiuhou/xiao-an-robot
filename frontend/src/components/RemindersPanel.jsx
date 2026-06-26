@@ -145,10 +145,10 @@ export default function RemindersPanel() {
     <div className="resource-page">
       <header className="page-header">
         <div>
-          <p className="section-kicker">Xiao An Frontend MVP</p>
-          <h1>Reminders</h1>
+          <p className="section-kicker">Legacy Compatibility</p>
+          <h1>Local Reminders</h1>
           <p className="page-description">
-            Schedule, inspect, and close local reminders.
+            Local reminder APIs remain for compatibility; OpenClaw owns reminders.
           </p>
         </div>
         <button

@@ -72,6 +72,12 @@ class ApiServerHealthIntegrationTest(unittest.TestCase):
         self.assertTrue(status["data"]["components"]["brain"])
         self.assertTrue(status["data"]["components"]["memory_store"])
         self.assertEqual(status["data"]["storage_role"], "local_event_store")
+        self.assertEqual(status["data"]["openclaw_backend"], "fake")
+        self.assertEqual(status["data"]["openclaw_agent"], "xiaoan-runtime")
+        self.assertEqual(
+            status["data"]["robot_connection_status"],
+            "unknown_until_command_ack",
+        )
         self.assertIn(
             "long_term_memory",
             status["data"]["openclaw_owned_features"],

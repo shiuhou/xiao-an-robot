@@ -75,15 +75,18 @@ export default function StatusDashboard() {
   const toolNames = tools
     .map((tool) => tool?.name)
     .filter((name) => typeof name === "string" && name.length > 0);
+  const deprecatedLocalFeatures = runtimeStatus?.deprecated_local_features ?? [];
+  const openclawOwnedFeatures = runtimeStatus?.openclaw_owned_features ?? [];
+  const robotOwnedFeatures = runtimeStatus?.xiao_an_robot_owned_features ?? [];
 
   return (
     <div className="dashboard">
       <header className="page-header">
         <div>
-          <p className="section-kicker">Xiao An Frontend MVP</p>
-          <h1>Status Dashboard</h1>
+          <p className="section-kicker">Xiao An Runtime Debug</p>
+          <h1>Status</h1>
           <p className="page-description">
-            Local API connectivity and runtime component status.
+            Local API, OpenClaw bridge, robot gateway, database, and components.
           </p>
         </div>
         <button
@@ -118,6 +121,12 @@ export default function StatusDashboard() {
           <span className="metric-label">Tools</span>
           <strong className="metric-value">{toolNames.length}</strong>
         </div>
+        <div className="metric">
+          <span className="metric-label">OpenClaw Backend</span>
+          <strong className="metric-value compact">
+            {formatValue(runtimeStatus?.openclaw_backend)}
+          </strong>
+        </div>
         <div className="metric wide">
           <span className="metric-label">Last Refreshed</span>
           <strong className="metric-value compact">
@@ -150,8 +159,28 @@ export default function StatusDashboard() {
             <dd>{formatValue(runtimeStatus?.db_path)}</dd>
           </div>
           <div>
+            <dt>Storage Role</dt>
+            <dd>{formatValue(runtimeStatus?.storage_role)}</dd>
+          </div>
+          <div>
+            <dt>OpenClaw Backend</dt>
+            <dd>{formatValue(runtimeStatus?.openclaw_backend)}</dd>
+          </div>
+          <div>
+            <dt>OpenClaw Gateway</dt>
+            <dd>{formatValue(runtimeStatus?.openclaw_gateway_url)}</dd>
+          </div>
+          <div>
+            <dt>OpenClaw Agent</dt>
+            <dd>{formatValue(runtimeStatus?.openclaw_agent)}</dd>
+          </div>
+          <div>
             <dt>Robot WebSocket</dt>
             <dd>{formatValue(runtimeStatus?.robot_ws_url)}</dd>
+          </div>
+          <div>
+            <dt>Robot Connection</dt>
+            <dd>{formatValue(runtimeStatus?.robot_connection_status)}</dd>
           </div>
           <div>
             <dt>Verbose</dt>
@@ -186,7 +215,7 @@ export default function StatusDashboard() {
 
       <section className="dashboard-section" aria-labelledby="tools-title">
         <div className="section-heading">
-          <h2 id="tools-title">Local Tools</h2>
+          <h2 id="tools-title">OpenClaw-Facing Tools</h2>
           <span>{toolNames.length} available</span>
         </div>
         {toolNames.length > 0 ? (
@@ -197,6 +226,50 @@ export default function StatusDashboard() {
           </ul>
         ) : (
           <p className="empty-state">No tool data available.</p>
+        )}
+      </section>
+
+      <section className="dashboard-section" aria-labelledby="ownership-title">
+        <div className="section-heading">
+          <h2 id="ownership-title">Runtime Ownership</h2>
+          <span>OpenClaw boundary</span>
+        </div>
+        <div className="ownership-grid">
+          <div>
+            <h3>OpenClaw Owns</h3>
+            <ul className="tool-list ownership-list">
+              {openclawOwnedFeatures.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3>Xiao An Robot Owns</h3>
+            <ul className="tool-list ownership-list">
+              {robotOwnedFeatures.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="dashboard-section" aria-labelledby="legacy-title">
+        <div className="section-heading">
+          <h2 id="legacy-title">Legacy / Deprecated Local Features</h2>
+          <span>{deprecatedLocalFeatures.length} listed</span>
+        </div>
+        {deprecatedLocalFeatures.length > 0 ? (
+          <ul className="legacy-feature-list">
+            {deprecatedLocalFeatures.map((feature) => (
+              <li key={feature.name}>
+                <span>{feature.name}</span>
+                <strong>{feature.status}</strong>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="empty-state">No legacy feature data available.</p>
         )}
       </section>
     </div>

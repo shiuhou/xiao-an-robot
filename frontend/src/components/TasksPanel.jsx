@@ -107,10 +107,10 @@ export default function TasksPanel() {
     <div className="resource-page">
       <header className="page-header">
         <div>
-          <p className="section-kicker">Xiao An Frontend MVP</p>
-          <h1>Tasks</h1>
+          <p className="section-kicker">Legacy Compatibility</p>
+          <h1>Local Tasks</h1>
           <p className="page-description">
-            Create and manage local pending work items.
+            Local task APIs remain for compatibility; OpenClaw owns product tasks.
           </p>
         </div>
         <button

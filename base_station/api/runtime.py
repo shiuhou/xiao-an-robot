@@ -482,12 +482,17 @@ class ApiRuntime:
             "robot_motion": self.robot_motion is not None,
             "brain": self.brain is not None,
         }
+        openclaw_backend = os.environ.get("XIAO_AN_OPENCLAW_BACKEND", "fake").strip() or "fake"
         return {
             "service": "xiao-an-local-api",
             "status": "closed" if self.closed else "ready",
             "db_path": self.db_path,
             "storage_role": "local_event_store",
             "robot_ws_url": self.robot_ws_url,
+            "robot_connection_status": "unknown_until_command_ack",
+            "openclaw_backend": openclaw_backend,
+            "openclaw_gateway_url": os.environ.get("XIAO_AN_OPENCLAW_GATEWAY_URL", ""),
+            "openclaw_agent": os.environ.get("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime"),
             "verbose": self.verbose,
             "components": components,
             "openclaw_owned_features": list(OPENCLAW_OWNED_FEATURES),

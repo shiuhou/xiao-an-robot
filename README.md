@@ -83,7 +83,7 @@ xiao-an-robot/
 │   ├── skills/
 │   └── data/
 ├── shared/                 # Protocol schema, constants, and examples
-├── frontend/               # Early desktop UI placeholder
+├── frontend/               # Electron runtime debug console for demo and integration
 ├── hardware/               # BOM, wiring, DK-2500, shell, and dock notes
 ├── docs/                   # Architecture, protocol, deployment, status, troubleshooting
 ├── tests/                  # Unit/integration tests and mock robot

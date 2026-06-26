@@ -47,7 +47,7 @@ are in [openclaw_gateway_bridge.md](openclaw_gateway_bridge.md).
 | `tools` | Runtime probes and command senders |
 | `docs` | Architecture, protocol, deployment, hardware, status, troubleshooting |
 | `hardware` | BOM, wiring, DK-2500, shell, dock, and power notes |
-| `frontend` | Early desktop UI placeholder |
+| `frontend` | Electron runtime debug console for status, OpenClaw chat, robot debug, emotion timeline, and runtime logs |
 
 Generated/private items that should stay out of commits:
 

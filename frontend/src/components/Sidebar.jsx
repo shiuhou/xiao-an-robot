@@ -9,7 +9,7 @@ export default function Sidebar({ items, activePage, onNavigate }) {
         </span>
         <div>
           <p className="brand-name">Xiao An</p>
-          <p className="brand-caption">Frontend MVP</p>
+          <p className="brand-caption">Runtime Debug</p>
         </div>
       </div>
 
@@ -31,7 +31,7 @@ export default function Sidebar({ items, activePage, onNavigate }) {
         })}
       </nav>
 
-      <p className="sidebar-footer">Local desktop client</p>
+      <p className="sidebar-footer">OpenClaw bridge console</p>
     </aside>
   );
 }

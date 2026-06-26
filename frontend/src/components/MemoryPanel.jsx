@@ -463,10 +463,10 @@ export default function MemoryPanel() {
     <div className="memory-page">
       <header className="page-header compact-header">
         <div>
-          <p className="section-kicker">Xiao An Frontend MVP</p>
-          <h1>Memory</h1>
+          <p className="section-kicker">Legacy Compatibility</p>
+          <h1>Local Event Store</h1>
           <p className="page-description">
-            Inspect notes, unified events, tool history, and project context.
+            SQLite is a local event/debug store; OpenClaw owns long-term memory.
           </p>
         </div>
       </header>

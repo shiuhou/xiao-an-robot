@@ -13,7 +13,10 @@ Canonical ownership boundary: [openclaw_ownership_boundary.md](openclaw_ownershi
 - `robot/`: ESP32-S3 firmware for display, motion, camera/mic/speaker tests, and WebSocket client behavior.
 - `base_station/`: DK2500 edge service for WebSocket channels, audio/video stream handling, OpenVINO perception, local emotion thresholds, safety-adjacent runtime gates, and robot session management.
 - `agent/`: Local gateway, robot skills, event routing, and legacy compatibility tools. It is not the product owner for user profile, long-term memory, tasks, reminders, briefs, reports, reply generation, or tool selection.
-- `frontend/`: Electron GUI for desktop interaction and operator-facing views.
+- `frontend/`: Electron runtime debug console for Local API status, OpenClaw chat
+  inspection, robot action debugging, emotion timeline, and runtime logs. It is
+  not the product surface for local long-term memory, reminders, tasks, work
+  activity, or screen reports.
 
 OpenClaw `xiaoan-runtime` owns user profile, long-term memory, scheduled
 reminders, tasks, morning briefs, daily reports, natural-language replies, and

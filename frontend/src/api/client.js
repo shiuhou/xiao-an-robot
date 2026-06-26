@@ -63,6 +63,14 @@ export function listTools() {
   return request("/api/tools");
 }
 
+export function callTool(tool, argumentsValue = {}, sessionId = "frontend-debug") {
+  return postJson("/api/tools/call", {
+    tool,
+    arguments: argumentsValue,
+    session_id: sessionId,
+  });
+}
+
 export function chat(text, sessionId = "default", metadata = {}) {
   return postJson("/api/chat", {
     text,

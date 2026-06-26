@@ -385,8 +385,10 @@ The robot and base station continue to communicate through WebSocket and
 `RobotGateway`. This keeps normal robot execution on the existing control
 channel.
 
-A separate Robot Debug API may be added later if a frontend needs explicit
-manual robot testing. It is not part of the OpenClaw ownership boundary.
+For runtime debugging, the Electron frontend uses `POST /api/tools/call` with
+approved `xiaoan.robot.*` tool names. That route exercises the same
+`ActionExecutor -> RobotGateway -> WebSocket -> ESP32/mock_robot` path as
+OpenClaw tool calls, while keeping `/api/robot/*` out of the API surface.
 
 ## Deprecated Local Features
 

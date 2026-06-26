@@ -10,6 +10,7 @@ from agent.core.brain import XiaoAnBrain
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 from base_station.monitor.emotion_db import EmotionDB
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
+from base_station.monitor.emotion_runtime import create_emotion_source
 
 
 class FakeGateway:
@@ -72,7 +73,33 @@ class EmotionEventLoopIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[0]["reason"], "fatigue_window")
         self.assertFalse(results[1]["handled"])
         self.assertFalse(results[2]["handled"])
-        self.assertEqual([call[0] for call in self.gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(self.gateway.calls, [])
+
+    async def test_fake_camera_tired_sample_triggers_openclaw_intervention(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(decision=OpenClawDecision(handled=False))
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=self.db,
+            openclaw_adapter=openclaw_adapter,
+        )
+        loop = EmotionEventLoop(brain=brain)
+        source = create_emotion_source(
+            source="fake_camera",
+            pattern="tired",
+            count=1,
+            interval_seconds=0,
+        )
+        sample = await source.samples().__anext__()
+
+        result = await loop.handle_sample(sample)
+
+        self.assertTrue(result["handled"])
+        self.assertEqual(result["openclaw_event_type"], "emotion.intervention")
+        self.assertEqual(len(openclaw_adapter.events), 1)
+        payload = openclaw_adapter.events[0].context["payload"]
+        self.assertEqual(payload["emotion_tag"], "tired")
+        self.assertEqual(payload["source"], "fake_face")
+        self.assertEqual(payload["frame_source"], "fake_camera")
 
     async def test_cooldown_prevents_repeated_intervention(self) -> None:
         first = await self.loop.handle_sample({
@@ -91,7 +118,7 @@ class EmotionEventLoopIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(first["handled"])
         self.assertFalse(second["handled"])
         self.assertEqual(second["reason"], "cooldown")
-        self.assertEqual([call[0] for call in self.gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(self.gateway.calls, [])
 
 
 if __name__ == "__main__":

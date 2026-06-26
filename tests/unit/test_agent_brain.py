@@ -65,10 +65,11 @@ class XiaoAnBrainTest(unittest.IsolatedAsyncioTestCase):
             "top_emotion": "tired",
             "emotions_count": {"tired": 1},
         })
+        openclaw_adapter = FakeOpenClawAdapter(decision=OpenClawDecision(handled=False))
         brain = XiaoAnBrain(
             gateway=gateway,
             memory=memory,
-            openclaw_adapter=FakeOpenClawAdapter(decision=OpenClawDecision(handled=False)),
+            openclaw_adapter=openclaw_adapter,
         )
 
         result = await brain.handle_event({
@@ -83,7 +84,10 @@ class XiaoAnBrainTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["handled"])
         self.assertEqual(result["reason"], "fatigue_window")
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(gateway.calls, [])
+        self.assertEqual(len(openclaw_adapter.events), 1)
+        self.assertEqual(openclaw_adapter.events[0].type, "emotion.intervention")
+        self.assertEqual(openclaw_adapter.events[0].context["payload"]["emotion_tag"], "tired")
         self.assertEqual(len(memory.inserted), 1)
 
     async def test_unsupported_event_returns_unsupported_event_result(self) -> None:

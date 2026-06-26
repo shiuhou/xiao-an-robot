@@ -130,10 +130,10 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_event.session_id, "frontend-session-1")
         self.assertEqual(openclaw_event.context["payload"]["text"], "你好小安")
 
-    async def test_frontend_message_does_not_use_companion_fast_path(self) -> None:
+    async def test_frontend_companion_text_uses_fast_path(self) -> None:
         gateway = FakeGateway()
         openclaw_adapter = FakeOpenClawAdapter(
-            decision=OpenClawDecision(handled=True, reply_text="交给 OpenClaw 处理。"),
+            decision=OpenClawDecision(handled=True, reply_text="我在，先陪你缓一缓。"),
         )
         brain = XiaoAnBrain(
             gateway=gateway,
@@ -146,9 +146,33 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
             "payload": {"text": "我有点累"},
         })
 
+        self.assertEqual(result["route"], "link_3_companion_fast_path")
+        self.assertEqual(result["openclaw_event_type"], "companion.request")
+        self.assertEqual(openclaw_adapter.events[0].type, "companion.request")
+        self.assertEqual(openclaw_adapter.events[0].source, "frontend")
+        self.assertEqual(openclaw_adapter.events[0].text, "我有点累")
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(gateway.calls[-1][1], "我在，先陪你缓一缓。")
+
+    async def test_frontend_greeting_does_not_use_companion_fast_path(self) -> None:
+        gateway = FakeGateway()
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=True, reply_text="你好。"),
+        )
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        result = await brain.handle_event({
+            "type": "frontend.message",
+            "payload": {"text": "你好小安"},
+        })
+
         self.assertEqual(result["route"], "frontend_openclaw")
         self.assertEqual(result["reason"], "openclaw_decision")
-        self.assertEqual(openclaw_adapter.events[0].text, "我有点累")
+        self.assertEqual(openclaw_adapter.events[0].type, "frontend.message")
         self.assertEqual([call[0] for call in gateway.calls], ["tts"])
         self.assertNotIn("motion", [call[0] for call in gateway.calls])
 

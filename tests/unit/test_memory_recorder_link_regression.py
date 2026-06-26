@@ -8,7 +8,7 @@ from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
 from agent.core.memory import XiaoAnMemoryStore
-from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
+from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision, OpenClawToolCall
 
 
 class FakeGateway:
@@ -121,7 +121,15 @@ class MemoryRecorderLinkRegressionTest(unittest.IsolatedAsyncioTestCase):
                     gateway=FakeGateway(),
                     memory=FakeEmotionMemory(tired_summary()),
                     openclaw_adapter=FakeOpenClawAdapter(
-                        decision=OpenClawDecision(handled=False),
+                        decision=OpenClawDecision(
+                            handled=True,
+                            tool_calls=[
+                                OpenClawToolCall(
+                                    name="xiaoan.robot.care",
+                                    arguments={"text": "我在，先休息一下。"},
+                                ),
+                            ],
+                        ),
                     ),
                     context_memory=context_memory,
                 )

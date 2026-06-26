@@ -64,6 +64,20 @@ class ASREmotionTriggerTest(unittest.TestCase):
         self.assertEqual(result["reason"], "negative_keyword")
         self.assertEqual(result["matched_keyword"], "emo")
 
+    def test_companion_phrase_triggers_negative_keyword(self) -> None:
+        result = self.trigger.analyze("陪陪我")
+
+        self.assertEqual(result["should_trigger"], True)
+        self.assertEqual(result["reason"], "negative_keyword")
+        self.assertEqual(result["matched_keyword"], "陪陪我")
+
+    def test_breakdown_phrase_triggers_negative_keyword(self) -> None:
+        result = self.trigger.analyze("我有点崩溃")
+
+        self.assertEqual(result["should_trigger"], True)
+        self.assertEqual(result["reason"], "negative_keyword")
+        self.assertEqual(result["matched_keyword"], "崩溃")
+
     def test_uppercase_emo_triggers_negative_keyword(self) -> None:
         result = self.trigger.analyze("EMO 了")
 

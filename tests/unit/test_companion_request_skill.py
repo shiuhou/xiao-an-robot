@@ -11,6 +11,14 @@ class FakeRobotMotion:
     def __init__(self) -> None:
         self.calls = []
 
+    async def show_expression(self, expression: str = "neutral") -> dict:
+        self.calls.append(("show_expression", expression))
+        return {"ok": True, "type": "display.expression"}
+
+    async def move_out_of_dock(self) -> dict:
+        self.calls.append(("move_out_of_dock",))
+        return {"ok": True, "type": "motion.execute"}
+
     async def care_for_user(self, text: str = "") -> list[dict]:
         self.calls.append(("care_for_user", text))
         return [{"ok": True}]
@@ -27,13 +35,14 @@ class CompanionRequestSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "asr_emotion_triggered")
         self.assertEqual(result["trigger_result"]["reason"], "fatigue_keyword")
 
-    async def test_tired_text_calls_robot_care(self) -> None:
+    async def test_tired_text_calls_local_pre_response_without_tts(self) -> None:
         motion = FakeRobotMotion()
         skill = CompanionRequestSkill(robot_motion=motion)
 
         await skill.handle_text("我有点累")
 
-        self.assertEqual([call[0] for call in motion.calls], ["care_for_user"])
+        self.assertEqual([call[0] for call in motion.calls], ["show_expression", "move_out_of_dock"])
+        self.assertEqual(motion.calls[0][1], "caring")
 
     async def test_normal_text_does_not_trigger(self) -> None:
         motion = FakeRobotMotion()

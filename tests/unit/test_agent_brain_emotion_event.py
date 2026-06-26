@@ -8,7 +8,7 @@ from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
 from agent.core.memory import XiaoAnMemoryStore
-from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
+from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision, OpenClawToolCall
 
 
 class FakeGateway:
@@ -87,7 +87,7 @@ def neutral_summary() -> dict:
 
 
 class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
-    async def test_tired_emotion_sample_triggers_local_fast_path(self) -> None:
+    async def test_tired_emotion_sample_triggers_openclaw_intervention_without_local_care(self) -> None:
         gateway = FakeGateway()
         openclaw_adapter = FakeOpenClawAdapter(decision=OpenClawDecision(handled=False))
         brain = XiaoAnBrain(
@@ -108,7 +108,8 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["handled"])
         self.assertEqual(result["route"], "link_2_emotion_fast_path")
         self.assertEqual(result["openclaw_event_type"], "emotion.intervention")
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(gateway.calls, [])
+        self.assertEqual(len(openclaw_adapter.events), 1)
 
     async def test_tired_emotion_sample_records_intervention_memory_event(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -116,7 +117,15 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
             with XiaoAnMemoryStore(db_path) as context_memory:
                 gateway = FakeGateway()
                 openclaw_adapter = FakeOpenClawAdapter(
-                    decision=OpenClawDecision(handled=False),
+                    decision=OpenClawDecision(
+                        handled=True,
+                        tool_calls=[
+                            OpenClawToolCall(
+                                name="xiaoan.robot.care",
+                                arguments={"text": "先休息一下"},
+                            ),
+                        ],
+                    ),
                 )
                 brain = XiaoAnBrain(
                     gateway=gateway,
@@ -181,6 +190,7 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(care_metadata["tts"])
                 self.assertTrue(care_metadata["handled"])
                 self.assertTrue(care_metadata["success"])
+                self.assertEqual(care_metadata["action_name"], "xiaoan.robot.care")
 
     async def test_emotion_intervention_memory_keeps_false_vlm_triggered(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -245,6 +255,13 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_event.context["emotion_tag"], "tired")
         self.assertEqual(openclaw_event.context["fatigue_score"], 0.85)
         self.assertEqual(openclaw_event.context["confidence"], 0.9)
+        payload = openclaw_event.context["payload"]
+        self.assertEqual(payload["emotion_tag"], "tired")
+        self.assertEqual(payload["confidence"], 0.9)
+        self.assertEqual(payload["fatigue_score"], 0.85)
+        self.assertEqual(payload["reason"], "fatigue_window")
+        self.assertIn("timestamp", payload)
+        self.assertEqual(payload["source"], "face")
 
     async def test_openclaw_reply_text_is_executed_as_emotion_followup(self) -> None:
         gateway = FakeGateway()
@@ -266,9 +283,53 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
             },
         })
 
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts", "tts"])
-        self.assertEqual(gateway.calls[-1][1], "我会继续留意你的状态。")
+        self.assertEqual([call[0] for call in gateway.calls], ["tts"])
+        self.assertEqual(gateway.calls[0][1], "我会继续留意你的状态。")
         self.assertEqual(result["openclaw_result"]["executed_actions"][0]["source"], "reply_text")
+
+    async def test_openclaw_care_tool_call_is_executed_and_records_care_action(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = str(Path(temp_dir) / "brain_emotion_openclaw_care.db")
+            with XiaoAnMemoryStore(db_path) as context_memory:
+                gateway = FakeGateway()
+                openclaw_adapter = FakeOpenClawAdapter(
+                    decision=OpenClawDecision(
+                        handled=True,
+                        tool_calls=[
+                            OpenClawToolCall(
+                                name="xiaoan.robot.care",
+                                arguments={"text": "我在，先休息一下。"},
+                            ),
+                        ],
+                    ),
+                )
+                brain = XiaoAnBrain(
+                    gateway=gateway,
+                    memory=FakeMemory(tired_summary()),
+                    openclaw_adapter=openclaw_adapter,
+                    context_memory=context_memory,
+                )
+
+                result = await brain.handle_event({
+                    "type": "emotion.sample",
+                    "payload": {
+                        "source": "face",
+                        "emotion_tag": "tired",
+                        "confidence": 0.9,
+                        "fatigue_score": 0.85,
+                        "session_id": "emotion-care",
+                    },
+                })
+
+                care_events = context_memory.query_recent_events(event_type="robot.care_action")
+                tool_runs = context_memory.query_recent_tool_runs(tool_name="xiaoan.robot.care")
+
+                self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+                self.assertEqual(result["openclaw_result"]["executed_actions"][0]["name"], "xiaoan.robot.care")
+                self.assertEqual(len(care_events), 1)
+                self.assertEqual(care_events[0]["payload"]["metadata"]["action_name"], "xiaoan.robot.care")
+                self.assertEqual(len(tool_runs), 1)
+                self.assertEqual(tool_runs[0]["source_event_type"], "emotion.intervention")
 
     async def test_neutral_emotion_sample_does_not_enter_openclaw(self) -> None:
         openclaw_adapter = FakeOpenClawAdapter()
@@ -356,7 +417,7 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(second["handled"])
                 self.assertEqual(second["reason"], "cooldown")
                 self.assertEqual(len(events), 1)
-                self.assertEqual(len(care_events), 1)
+                self.assertEqual(len(care_events), 0)
 
     async def test_emotion_fast_path_keeps_local_result_when_openclaw_raises(self) -> None:
         gateway = FakeGateway()
@@ -380,7 +441,7 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["route"], "link_2_emotion_fast_path")
         self.assertEqual(result["openclaw_event_type"], "emotion.intervention")
         self.assertIn("openclaw failed", result["openclaw_error"])
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(gateway.calls, [])
 
 
 if __name__ == "__main__":

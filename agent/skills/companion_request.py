@@ -7,7 +7,7 @@ from agent.skills.robot_motion import RobotMotionSkill
 
 
 class CompanionRequestSkill:
-    """Turn ASR companion/fatigue text cues into robot care actions."""
+    """Turn companion/fatigue text cues into an immediate robot pre-response."""
 
     name = "companion_request"
 
@@ -28,7 +28,10 @@ class CompanionRequestSkill:
                 "trigger_result": trigger_result,
             }
 
-        actions = await self.robot_motion.care_for_user()
+        actions = [
+            await self.robot_motion.show_expression("caring"),
+            await self.robot_motion.move_out_of_dock(),
+        ]
         return {
             "handled": True,
             "reason": "asr_emotion_triggered",

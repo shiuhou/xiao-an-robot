@@ -60,6 +60,7 @@ class XiaoAnBrain:
             gateway=self.gateway,
             memory=self.memory,
             window_seconds=window_seconds,
+            execute_local_care=False,
         )
         self.companion_request = CompanionRequestSkill(
             robot_motion=self.robot_motion,
@@ -92,17 +93,14 @@ class XiaoAnBrain:
             emotion_result["route"] = "link_2_emotion_fast_path"
             emotion_result["openclaw_event_type"] = "emotion.intervention"
             trigger_context = trigger if isinstance(trigger, dict) else {}
-            self._record_emotion_intervention(trigger_context, emotion_result)
-            self._record_robot_care_action(
-                route=emotion_result.get("route"),
-                source_event_type=emotion_result.get("openclaw_event_type"),
-                trigger=trigger_context,
-                result=emotion_result,
-                reply_text=emotion_result.get("message"),
-                timestamp_ms=trigger_context.get("timestamp_ms") or trigger_context.get("timestamp"),
-                session_id=trigger_context.get("session_id", "default"),
+            intervention_payload = self._build_emotion_intervention_payload(
+                trigger_context,
+                emotion_result,
             )
+            emotion_result["payload"] = intervention_payload
+            self._record_emotion_intervention(trigger_context, emotion_result)
             openclaw_context = {
+                "payload": intervention_payload,
                 "event": event,
                 "trigger": trigger,
                 "emotion_result": dict(emotion_result),
@@ -117,13 +115,26 @@ class XiaoAnBrain:
             try:
                 openclaw_event = OpenClawEvent(
                     type="emotion.intervention",
-                    text="User emotion intervention triggered.",
+                    text=emotion_result.get("message") or "User emotion intervention triggered.",
                     source="emotion_monitor",
                     session_id=trigger_context.get("session_id", "default"),
                     context=openclaw_context,
                 )
                 decision = self.openclaw_adapter.handle_event(openclaw_event)
-                emotion_result["openclaw_result"] = await self.action_executor.execute(decision)
+                openclaw_result = await self.action_executor.execute(
+                    decision,
+                    source_event_type="emotion.intervention",
+                )
+                emotion_result["openclaw_result"] = openclaw_result
+                self._record_robot_care_action(
+                    route=emotion_result.get("route"),
+                    source_event_type=emotion_result.get("openclaw_event_type"),
+                    trigger=trigger_context,
+                    result=openclaw_result,
+                    reply_text=openclaw_result.get("reply_text") or decision.reply_text,
+                    timestamp_ms=intervention_payload.get("timestamp_ms"),
+                    session_id=trigger_context.get("session_id", "default"),
+                )
             except Exception as exc:
                 emotion_result["openclaw_error"] = str(exc)
             return emotion_result
@@ -133,38 +144,11 @@ class XiaoAnBrain:
             text = payload.get("text")
             companion_result = await self.companion_request.handle_text(text)
             if companion_result.get("handled", False):
-                companion_result["route"] = "link_3_companion_fast_path"
-                companion_result["openclaw_event_type"] = "companion.request"
-                self._record_companion_request(payload, companion_result)
-                self._record_robot_care_action(
-                    route=companion_result.get("route"),
-                    source_event_type=companion_result.get("openclaw_event_type"),
-                    trigger=companion_result.get("trigger_result"),
-                    result=companion_result,
-                    reply_text=companion_result.get("reply_text"),
-                    timestamp_ms=payload.get("timestamp_ms"),
-                    session_id=payload.get("session_id", "default"),
+                return await self._handle_companion_fast_path(
+                    payload=payload,
+                    companion_result=companion_result,
+                    source="asr",
                 )
-                companion_context = {
-                    "payload": payload,
-                    "companion_result": dict(companion_result),
-                }
-                if "trigger_result" in companion_result:
-                    companion_context["trigger_result"] = companion_result["trigger_result"]
-
-                try:
-                    openclaw_event = OpenClawEvent(
-                        type="companion.request",
-                        text=payload.get("text", "") or "",
-                        source="asr",
-                        session_id=payload.get("session_id", "default"),
-                        context=companion_context,
-                    )
-                    decision = self.openclaw_adapter.handle_event(openclaw_event)
-                    companion_result["openclaw_result"] = await self.action_executor.execute(decision)
-                except Exception as exc:
-                    companion_result["openclaw_error"] = str(exc)
-                return companion_result
 
             base_context = {
                 "payload": payload,
@@ -192,6 +176,14 @@ class XiaoAnBrain:
 
         if event_type == FRONTEND_MESSAGE_EVENT:
             payload = event.get("payload") or {}
+            companion_result = await self.companion_request.handle_text(payload.get("text"))
+            if companion_result.get("handled", False):
+                return await self._handle_companion_fast_path(
+                    payload=payload,
+                    companion_result=companion_result,
+                    source="frontend",
+                )
+
             base_context = {
                 "payload": payload,
             }
@@ -219,6 +211,49 @@ class XiaoAnBrain:
             "reason": "unsupported_event",
             "message": f"Unsupported event type: {event_type}",
         }
+
+    async def _handle_companion_fast_path(
+        self,
+        *,
+        payload: dict,
+        companion_result: dict,
+        source: str,
+    ) -> dict:
+        companion_result["route"] = "link_3_companion_fast_path"
+        companion_result["openclaw_event_type"] = "companion.request"
+        self._record_companion_request(payload, companion_result)
+        self._record_robot_care_action(
+            route=companion_result.get("route"),
+            source_event_type=companion_result.get("openclaw_event_type"),
+            trigger=companion_result.get("trigger_result"),
+            result=companion_result,
+            reply_text=companion_result.get("reply_text"),
+            timestamp_ms=payload.get("timestamp_ms"),
+            session_id=payload.get("session_id", "default"),
+        )
+        companion_context = {
+            "payload": payload,
+            "companion_result": dict(companion_result),
+        }
+        if "trigger_result" in companion_result:
+            companion_context["trigger_result"] = companion_result["trigger_result"]
+
+        try:
+            openclaw_event = OpenClawEvent(
+                type="companion.request",
+                text=payload.get("text", "") or "",
+                source=source,
+                session_id=payload.get("session_id", "default"),
+                context=companion_context,
+            )
+            decision = self.openclaw_adapter.handle_event(openclaw_event)
+            companion_result["openclaw_result"] = await self.action_executor.execute(
+                decision,
+                source_event_type="companion.request",
+            )
+        except Exception as exc:
+            companion_result["openclaw_error"] = str(exc)
+        return companion_result
 
     def _build_openclaw_context(
         self,
@@ -290,6 +325,11 @@ class XiaoAnBrain:
         session_id: str | None,
     ) -> None:
         care_result = result.get("actions")
+        action_name = "care_for_user"
+        if not care_result:
+            care_result = self._care_actions_from_execution_result(result)
+            if care_result:
+                action_name = "xiaoan.robot.care"
         if not care_result:
             return
 
@@ -313,10 +353,10 @@ class XiaoAnBrain:
         }
         try:
             record(
-                content="care_for_user",
+                content=action_name,
                 route=route,
                 trigger=trigger if isinstance(trigger, dict) else None,
-                action_name="care_for_user",
+                action_name=action_name,
                 reply_text=reply_text,
                 robot_action_result={"actions": care_result},
                 metadata=metadata,
@@ -326,6 +366,48 @@ class XiaoAnBrain:
             )
         except Exception:
             return
+
+    def _care_actions_from_execution_result(self, result: dict) -> Any:
+        if not isinstance(result, dict):
+            return None
+        executed_actions = result.get("executed_actions")
+        if not isinstance(executed_actions, list):
+            return None
+        for action in executed_actions:
+            if not isinstance(action, dict):
+                continue
+            if action.get("name") not in {
+                "xiaoan.robot.care",
+                "robot.care",
+                "robot.care_for_user",
+            }:
+                continue
+            action_result = action.get("result")
+            if isinstance(action_result, dict) and isinstance(action_result.get("actions"), list):
+                return action_result["actions"]
+        return None
+
+    def _build_emotion_intervention_payload(self, trigger: dict, emotion_result: dict) -> dict:
+        existing_payload = emotion_result.get("payload")
+        payload = dict(existing_payload) if isinstance(existing_payload, dict) else {}
+        timestamp = (
+            payload.get("timestamp_ms")
+            or payload.get("timestamp")
+            or trigger.get("timestamp_ms")
+            or trigger.get("timestamp")
+        )
+        payload.update({
+            "emotion_tag": payload.get("emotion_tag") or trigger.get("emotion_tag") or trigger.get("emotion"),
+            "confidence": payload.get("confidence", trigger.get("confidence")),
+            "fatigue_score": payload.get("fatigue_score", trigger.get("fatigue_score")),
+            "reason": payload.get("reason") or emotion_result.get("reason"),
+            "timestamp": payload.get("timestamp") or timestamp,
+            "timestamp_ms": payload.get("timestamp_ms") or timestamp,
+            "source": payload.get("source") or trigger.get("source"),
+        })
+        if "frame_source" not in payload and "frame_source" in trigger:
+            payload["frame_source"] = trigger.get("frame_source")
+        return payload
 
     def _split_care_result(self, care_result: Any) -> tuple[Any | None, Any | None, Any | None]:
         if not isinstance(care_result, list):

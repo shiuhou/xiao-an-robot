@@ -44,6 +44,7 @@ class EmotionMonitorSkill:
         cooldown_seconds: int = 300,
         fatigue_threshold: float = DEFAULT_FATIGUE_THRESHOLD,
         negative_confidence_threshold: float = 0.65,
+        execute_local_care: bool = True,
     ):
         self.gateway = gateway
         self.memory = memory
@@ -53,6 +54,7 @@ class EmotionMonitorSkill:
         self.cooldown_seconds = cooldown_seconds
         self.fatigue_threshold = self._normalize_fatigue_score(fatigue_threshold)
         self.negative_confidence_threshold = negative_confidence_threshold
+        self.execute_local_care = execute_local_care
         self._last_intervention_ms: int | None = None
         self.robot_motion = RobotMotionSkill(gateway=gateway)
 
@@ -70,15 +72,20 @@ class EmotionMonitorSkill:
 
     def _parse_trigger(self, trigger: dict) -> dict[str, Any]:
         payload = trigger.get("payload", trigger)
-        source = str(payload.get("source", "face")).lower()
+        raw_source = str(payload.get("source", "face")).lower()
+        source = raw_source
         if source not in VALID_SOURCES:
             source = "face"
 
         return {
             "source": source,
+            "raw_source": raw_source,
             "emotion": str(payload.get("emotion_tag") or payload.get("emotion") or "normal").lower(),
             "confidence": float(payload.get("confidence", 0.0) or 0.0),
             "fatigue_score": self._normalize_fatigue_score(payload.get("fatigue_score")),
+            "raw_fatigue_score": payload.get("fatigue_score"),
+            "timestamp_ms": payload.get("timestamp_ms") or payload.get("timestamp"),
+            "frame_source": payload.get("frame_source"),
             "polarity": payload.get("polarity"),
             "valence": payload.get("valence"),
             "fatigue_level": str(payload.get("fatigue_level") or "").lower() or None,
@@ -87,6 +94,26 @@ class EmotionMonitorSkill:
             "algorithm_version": payload.get("algorithm_version"),
             "presence_state": payload.get("presence_state"),
             "au_json": payload.get("au_json"),
+        }
+
+    def _build_intervention_payload(
+        self,
+        parsed: dict[str, Any],
+        reason: str,
+        message: str,
+        now_ms: int,
+    ) -> dict[str, Any]:
+        timestamp = parsed.get("timestamp_ms") or now_ms
+        return {
+            "emotion_tag": parsed["emotion"],
+            "confidence": parsed["confidence"],
+            "fatigue_score": parsed["raw_fatigue_score"],
+            "reason": reason,
+            "timestamp": timestamp,
+            "timestamp_ms": timestamp,
+            "source": parsed.get("raw_source") or parsed["source"],
+            "frame_source": parsed.get("frame_source"),
+            "message": message,
         }
 
     def _has_memory_db(self) -> bool:
@@ -171,8 +198,8 @@ class EmotionMonitorSkill:
         return False, "normal", ""
 
     async def run(self, trigger: dict) -> dict:
+        parsed = self._parse_trigger(trigger)
         if self._has_memory_db():
-            parsed = self._parse_trigger(trigger)
             self._insert_emotion(parsed)
             summary = self.memory.get_recent_summary(seconds=self.window_seconds)
             should_handle, reason, text = self._should_intervene_from_summary(summary)
@@ -194,11 +221,21 @@ class EmotionMonitorSkill:
                 "message": "Intervention skipped due to cooldown.",
             }
 
-        actions = await self.robot_motion.care_for_user(text)
+        payload = self._build_intervention_payload(parsed, reason, text, now_ms)
         self._last_intervention_ms = now_ms
+        if not self.execute_local_care:
+            return {
+                "handled": True,
+                "reason": reason,
+                "message": text,
+                "payload": payload,
+            }
+
+        actions = await self.robot_motion.care_for_user(text)
         return {
             "handled": True,
             "reason": reason,
             "message": text,
+            "payload": payload,
             "actions": actions,
         }

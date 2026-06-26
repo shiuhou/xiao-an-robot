@@ -122,6 +122,19 @@ class RaisingOpenClawAdapter:
         raise RuntimeError("openclaw unavailable")
 
 
+class SnapshotOpenClawAdapter:
+    def __init__(self, gateway: FakeGateway, decision: OpenClawDecision | None = None) -> None:
+        self.gateway = gateway
+        self.decision = decision or OpenClawDecision(handled=False)
+        self.events = []
+        self.calls_seen_before_openclaw = []
+
+    def handle_event(self, event) -> OpenClawDecision:
+        self.events.append(event)
+        self.calls_seen_before_openclaw = list(self.gateway.calls)
+        return self.decision
+
+
 class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
     async def test_asr_transcript_tired_text_uses_companion_fast_path(self) -> None:
         gateway = FakeGateway()
@@ -196,7 +209,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("care_result", care_metadata)
                 self.assertIsNotNone(care_metadata["expression"])
                 self.assertIsNotNone(care_metadata["motion"])
-                self.assertIsNotNone(care_metadata["tts"])
+                self.assertIsNone(care_metadata["tts"])
                 self.assertTrue(care_metadata["handled"])
                 self.assertTrue(care_metadata["success"])
 
@@ -209,9 +222,28 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
             "payload": {"text": "我有点累"},
         })
 
-        self.assertEqual([call[0] for call in gateway.calls[:3]], ["expression", "motion", "tts"])
+        self.assertEqual([call[0] for call in gateway.calls[:2]], ["expression", "motion"])
         self.assertEqual(gateway.calls[0][1], "caring")
         self.assertEqual(gateway.calls[1][1], "move_out_of_dock")
+
+    async def test_companion_fast_path_pre_response_runs_before_openclaw(self) -> None:
+        gateway = FakeGateway()
+        openclaw_adapter = SnapshotOpenClawAdapter(gateway)
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "陪陪我"},
+        })
+
+        self.assertEqual(
+            [call[0] for call in openclaw_adapter.calls_seen_before_openclaw],
+            ["expression", "motion"],
+        )
 
     async def test_companion_fast_path_is_forwarded_to_openclaw_for_followup(self) -> None:
         gateway = FakeGateway()
@@ -262,7 +294,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["handled"])
         self.assertEqual(result["route"], "link_3_companion_fast_path")
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts", "tts"])
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
         self.assertEqual(gateway.calls[-1][1], "先休息一下，我会陪着你。")
         self.assertEqual(result["openclaw_result"]["handled"], True)
         self.assertEqual(result["openclaw_result"]["executed_actions"][0]["source"], "reply_text")
@@ -285,7 +317,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "asr_emotion_triggered")
         self.assertEqual(result["route"], "link_3_companion_fast_path")
         self.assertIn("openclaw unavailable", result["openclaw_error"])
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion"])
 
     async def test_asr_transcript_normal_text_routes_to_openclaw(self) -> None:
         gateway = FakeGateway()

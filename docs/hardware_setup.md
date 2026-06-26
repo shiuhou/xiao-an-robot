@@ -70,6 +70,12 @@ pio run -e ota_bootstrap_wifi -t upload --upload-port <board-ip>
 
 Important limitation for future firmware work: `ota_bootstrap_wifi` uploads only the bootstrap image. If an agent wants to wirelessly upload a different env, that env needs its own OTA-enabled upload target and the firmware itself must keep OTA alive after boot. Minimum requirements are WiFi STA connection, `ENABLE_ARDUINO_OTA=1`, the `ota_update.cpp/h` wrapper or equivalent ArduinoOTA setup, and a regular `ota_loop()` call in the runtime loop. If those are missing, the first wireless upload can replace the bootstrap, but the next upload will require USB recovery.
 
+Mergetesting functional OTA targets now follow that rule. Use
+`robot/mergetesting` `mergetesting_display_only_ota` for the Phase 1-2
+`/control` firmware, and `mergetesting_cam_only_ota` for the verified
+camera-only `/video` smoke firmware. Do not use `ota_bootstrap_wifi` for either
+functional firmware.
+
 Verified 2026-06-25 on the Windows-hotspot route:
 
 ```powershell
@@ -197,10 +203,10 @@ pio run -e face240_wiretest
 pio run -e face240_roboeyes
 pio run -e face240_9expr_merged
 pio run -e face240
-pio run -e face240_espi
+pio run -e tftprobe_hybrid_rawinit
 ```
 
-If the 2.4 inch ST7789 module shows wrong colors, blank screen, or inverted output, use the legacy `tftprobe_*` envs on the old harness to isolate driver variant, RGB/BGR order, inversion, and raw init behavior.
+If the 2.4 inch ST7789 module shows wrong colors, blank screen, or inverted output, use `tftprobe_hybrid_rawinit` to isolate driver variant, RGB/BGR order, inversion, and raw init behavior.
 
 ## INMP441 Microphone
 

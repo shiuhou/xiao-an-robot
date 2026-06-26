@@ -5,10 +5,12 @@
 static volatile bool _frontLimitHit = false;
 static volatile bool _backLimitHit  = false;
 
-constexpr uint8_t MOTOR_CH_L_IN1 = 0;
-constexpr uint8_t MOTOR_CH_L_IN2 = 1;
-constexpr uint8_t MOTOR_CH_R_IN1 = 2;
-constexpr uint8_t MOTOR_CH_R_IN2 = 3;
+// ESP32-S3 exposes LEDC channels 0-7 in the Arduino core used here. Keep motor
+// channels in the valid range; invalid channels make ledcSetup() return 0 Hz.
+constexpr uint8_t MOTOR_CH_L_IN1 = 4;
+constexpr uint8_t MOTOR_CH_L_IN2 = 5;
+constexpr uint8_t MOTOR_CH_R_IN1 = 6;
+constexpr uint8_t MOTOR_CH_R_IN2 = 7;
 
 static const char* motorName(uint8_t motor) {
     return motor == 0 ? "left" : "right";
@@ -42,7 +44,7 @@ void MotorController::begin() {
                   PIN_MOTOR_R_IN2);
     Serial.printf("[Motor] forward map: left uses %s, right uses %s\n",
                   MOTOR_LEFT_FORWARD_USES_IN1 ? "L_IN1/GPIO1" : "L_IN2/GPIO2",
-                  MOTOR_RIGHT_FORWARD_USES_IN1 ? "R_IN1/GPIO47" : "R_IN2/GPIO38");
+                  MOTOR_RIGHT_FORWARD_USES_IN1 ? "R_IN1/GPIO3" : "R_IN2/GPIO48");
 
     // Motor output pins
     pinMode(PIN_MOTOR_L_IN1, OUTPUT);
@@ -53,15 +55,23 @@ void MotorController::begin() {
     // Attach all four motor pins to individual LEDC channels so we can PWM
     // both IN1 and IN2 independently — needed for variable speed in reverse.
     // ledcAttach(pin, freq_hz, resolution_bits) — Arduino ESP32 3.x API
-    ledcSetup(MOTOR_CH_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqL1 = ledcSetup(MOTOR_CH_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqL2 = ledcSetup(MOTOR_CH_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqR1 = ledcSetup(MOTOR_CH_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqR2 = ledcSetup(MOTOR_CH_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    if (freqL1 == 0 || freqL2 == 0 || freqR1 == 0 || freqR2 == 0) {
+        Serial.println("[Motor] ERROR: LEDC setup failed — check channel/timer conflicts");
+    }
     ledcAttachPin(PIN_MOTOR_L_IN1, MOTOR_CH_L_IN1);
     ledcAttachPin(PIN_MOTOR_L_IN2, MOTOR_CH_L_IN2);
     ledcAttachPin(PIN_MOTOR_R_IN1, MOTOR_CH_R_IN1);
     ledcAttachPin(PIN_MOTOR_R_IN2, MOTOR_CH_R_IN2);
-    Serial.println("[Motor] PWM channels attached");
+    Serial.printf("[Motor] PWM channels attached ch=%u,%u,%u,%u freq=%lu Hz\n",
+                  MOTOR_CH_L_IN1,
+                  MOTOR_CH_L_IN2,
+                  MOTOR_CH_R_IN1,
+                  MOTOR_CH_R_IN2,
+                  static_cast<unsigned long>(freqL1));
 
     if (PIN_LIMIT_FRONT >= 0) {
         pinMode(PIN_LIMIT_FRONT, INPUT_PULLUP);
@@ -123,7 +133,7 @@ void MotorController::debugDriveRaw(int lIn1, int lIn2, int rIn1, int rIn2, uint
     rIn1 = constrain(rIn1, 0, 255);
     rIn2 = constrain(rIn2, 0, 255);
 
-    Serial.printf("[MotorRaw] GPIO1/L_IN1=%d GPIO2/L_IN2=%d GPIO47/R_IN1=%d GPIO38/R_IN2=%d for %lu ms\n",
+    Serial.printf("[MotorRaw] GPIO1/L_IN1=%d GPIO2/L_IN2=%d GPIO3/R_IN1=%d GPIO48/R_IN2=%d for %lu ms\n",
                   lIn1,
                   lIn2,
                   rIn1,

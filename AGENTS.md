@@ -25,6 +25,21 @@ These instructions apply to the whole repository.
 - `docs` and `hardware` must stay aligned with actual firmware envs and wiring.
 - **`docs/agents/README.md`** is the entry point for AI agents (file registry, test matrix, snapshots).
 
+## Agent Session Protocol (Codex-first)
+
+Primary workflow for AI agents in this repo:
+
+1. **Canonical doc:** `docs/agents/01_session_protocol.md` — open/close session, three collaboration tiers, multi-agent rules.
+2. **Codex skill:** `.agents/skills/xiao-an-session/SKILL.md` — invoke on 开工/收工; user says `按 xiao-an-session 开工`.
+3. **Optional Feishu tier:** `.agents/skills/team-lark/SKILL.md` — parallel agents / human-visible tasks.
+4. **Optional memory tier:** claude-mem for Codex pitfalls only; progress still lives in Git (`00_snapshot.md`, registries, queue results).
+5. **Cursor (secondary):** only when the user asks; same `01_session_protocol.md`; optional `.cursor/rules/agent-session.mdc`.
+
+Before code or doc edits: read `docs/agents/README.md` + `00_snapshot.md` + task registry.
+Before finishing: update snapshot row + relevant registry/test matrix; output 收工摘要 per `01_session_protocol.md`.
+
+Truth priority: live source / `platformio.ini` > this file > latest `docs/project_status_*.md` > `00_snapshot.md` > registries > old docs/archive.
+
 ## Firmware Rules
 
 - Keep `robot/firmware/src/main.cpp` as the robot-body baseline entrypoint, not the DK-2500 demo entrypoint.

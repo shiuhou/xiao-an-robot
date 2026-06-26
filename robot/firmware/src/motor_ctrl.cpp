@@ -5,10 +5,12 @@
 static volatile bool _frontLimitHit = false;
 static volatile bool _backLimitHit  = false;
 
-constexpr uint8_t MOTOR_CH_L_IN1 = 0;
-constexpr uint8_t MOTOR_CH_L_IN2 = 1;
-constexpr uint8_t MOTOR_CH_R_IN1 = 2;
-constexpr uint8_t MOTOR_CH_R_IN2 = 3;
+// Use high LEDC channels (timers 2/3) so esp_camera_init() on timer 1 does not
+// clobber right-motor PWM when camera + motor are both enabled.
+constexpr uint8_t MOTOR_CH_L_IN1 = 12;
+constexpr uint8_t MOTOR_CH_L_IN2 = 13;
+constexpr uint8_t MOTOR_CH_R_IN1 = 14;
+constexpr uint8_t MOTOR_CH_R_IN2 = 15;
 
 static const char* motorName(uint8_t motor) {
     return motor == 0 ? "left" : "right";
@@ -53,15 +55,23 @@ void MotorController::begin() {
     // Attach all four motor pins to individual LEDC channels so we can PWM
     // both IN1 and IN2 independently — needed for variable speed in reverse.
     // ledcAttach(pin, freq_hz, resolution_bits) — Arduino ESP32 3.x API
-    ledcSetup(MOTOR_CH_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
-    ledcSetup(MOTOR_CH_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqL1 = ledcSetup(MOTOR_CH_L_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqL2 = ledcSetup(MOTOR_CH_L_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqR1 = ledcSetup(MOTOR_CH_R_IN1, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    const uint32_t freqR2 = ledcSetup(MOTOR_CH_R_IN2, MOTOR_PWM_FREQ_HZ, MOTOR_PWM_RES_BITS);
+    if (freqL1 == 0 || freqL2 == 0 || freqR1 == 0 || freqR2 == 0) {
+        Serial.println("[Motor] ERROR: LEDC setup failed — check channel/timer conflicts");
+    }
     ledcAttachPin(PIN_MOTOR_L_IN1, MOTOR_CH_L_IN1);
     ledcAttachPin(PIN_MOTOR_L_IN2, MOTOR_CH_L_IN2);
     ledcAttachPin(PIN_MOTOR_R_IN1, MOTOR_CH_R_IN1);
     ledcAttachPin(PIN_MOTOR_R_IN2, MOTOR_CH_R_IN2);
-    Serial.println("[Motor] PWM channels attached");
+    Serial.printf("[Motor] PWM channels attached ch=%u,%u,%u,%u freq=%lu Hz\n",
+                  MOTOR_CH_L_IN1,
+                  MOTOR_CH_L_IN2,
+                  MOTOR_CH_R_IN1,
+                  MOTOR_CH_R_IN2,
+                  static_cast<unsigned long>(freqL1));
 
     if (PIN_LIMIT_FRONT >= 0) {
         pinMode(PIN_LIMIT_FRONT, INPUT_PULLUP);

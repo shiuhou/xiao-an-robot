@@ -51,9 +51,9 @@ pio run -e ota_bootstrap_wifi -t upload --upload-port <board-ip>
 Agent handoff rule for OTA uploads:
 
 - `ota_bootstrap_wifi` is not a generic "upload any firmware" env. It only compiles and uploads `ota_bootstrap_main.cpp`.
-- To wirelessly upload a functional env such as `esp32-s3-integrated`, `motor_cam_wifi_manual`, or `face240_9expr_merged`, create/use a matching OTA upload env for that firmware.
+- To wirelessly upload a functional env such as `mergetesting_cam_only`, `motor_cam_wifi_manual`, or `face240_9expr_merged`, create/use a matching OTA upload env for that firmware.
 - The firmware being uploaded must itself preserve OTA support after reboot: connect to WiFi, enable ArduinoOTA, and call the OTA loop regularly. If it does not, the OTA bridge is overwritten and the next recovery path is USB.
-- A future pattern should be `<env>_wifi` with `upload_protocol = espota` plus that firmware's normal source set and OTA runtime support. Do not point agents at `ota_bootstrap_wifi` unless the goal is to refresh the bootstrap bridge itself.
+- A future pattern should be `<env>_wifi` or `<env>_ota` with `upload_protocol = espota` plus that firmware's normal source set and OTA runtime support. Do not point agents at `ota_bootstrap_wifi` unless the goal is to refresh the bootstrap bridge itself.
 
 Known-good command sequence from the first successful test:
 
@@ -62,5 +62,22 @@ cd robot\firmware
 pio run -e ota_bootstrap -t upload --upload-port COM19
 pio run -e ota_bootstrap_wifi -t upload --upload-port 192.168.137.197
 ```
+
+## OTA Camera Minimum Loop
+
+Verified hardware result on 2026-06-25:
+
+- Base station PC/hotspot IP: `192.168.137.1`; ESP32 IP: `192.168.137.197`.
+- Firmware env: `robot/mergetesting`, `mergetesting_cam_only_ota`.
+- Build: `pio run -e mergetesting_cam_only_ota` completed successfully.
+- Wireless upload: `pio run -e mergetesting_cam_only_ota -t upload --upload-port 192.168.137.197` completed with espota `Result: OK`.
+- Runtime result: ESP32 connected `/control`, `/video`, and `/audio`; serial showed `Camera ready QVGA320` and continuous `frame #... 320x240`.
+- Base-station result: `python -u -m base_station.ws_server.server` accepted the robot and saved `runtime/latest.jpg`.
+
+Important finding:
+
+- The initial camera OTA image reset under watchdog during camera init when the integration build still enabled extra peripherals and VGA settings.
+- The stable smoke target is now true camera-only: `MERGETEST_ENABLE_CAMERA=1`, display/motor/speaker/mic disabled, and QVGA enabled by `MERGETEST_CAMERA_USE_VGA=0`.
+- If the board is already running a crashing functional image, recover by USB-flashing `ota_bootstrap`, then OTA-upload `mergetesting_cam_only_ota` again.
 
 No wiring assumptions changed. The bootstrap only uses WiFi plus the existing DRV8833 motor GPIO constants so the wheels stay inactive during OTA.

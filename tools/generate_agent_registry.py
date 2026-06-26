@@ -34,8 +34,8 @@ def git_lines(*args: str) -> str:
 def list_source_files(base: Path, patterns: tuple[str, ...]) -> list[Path]:
     files: list[Path] = []
     for pat in patterns:
-        files.extend(sorted(base.glob(pat)))
-    return files
+        files.extend(sorted(base.rglob(pat)))
+    return sorted(set(files))
 
 
 def parse_platformio_envs(ini_path: Path) -> list[str]:

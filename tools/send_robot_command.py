@@ -16,17 +16,45 @@ from typing import Any
 DEFAULT_AGENT_URL = "ws://127.0.0.1:8765/agent"
 
 
+def _arg_value(args: argparse.Namespace, *names: str, default: Any = None) -> Any:
+    for name in names:
+        value = getattr(args, name, None)
+        if value is not None:
+            return value
+    return default
+
+
 def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
     if args.command_name == "expression":
         payload = {
             "command": "display.expression",
-            "expression": args.expression,
+            "expression": _arg_value(
+                args,
+                "expression",
+                "expression_opt",
+                "expression_arg",
+                default="caring",
+            ),
+            "duration_ms": int(_arg_value(args, "duration_ms", default=3000)),
+            "loop": bool(_arg_value(args, "loop", default=False)),
         }
     elif args.command_name == "motion":
         payload = {
             "command": "motion.execute",
-            "action": args.action,
+            "action": _arg_value(args, "action", "action_opt", "action_arg", default="move_out_of_dock"),
         }
+        params: dict[str, Any] = {}
+        speed = _arg_value(args, "speed")
+        distance_cm = _arg_value(args, "distance_cm")
+        timeout_ms = _arg_value(args, "timeout_ms")
+        if speed is not None:
+            params["speed"] = float(speed)
+        if distance_cm is not None:
+            params["distance_cm"] = float(distance_cm)
+        if params:
+            payload["params"] = params
+        if timeout_ms is not None:
+            payload["timeout_ms"] = int(timeout_ms)
     elif args.command_name == "tts":
         payload = {
             "command": "audio.play_tts",
@@ -35,13 +63,15 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
     elif args.command_name == "local":
         payload = {
             "command": "audio.play_local",
-            "sound": args.sound,
+            "sound": _arg_value(args, "sound", "sound_opt", "sound_arg", default="care_01"),
+            "volume": float(_arg_value(args, "volume", default=0.7)),
         }
     else:
         raise ValueError(f"Unsupported command: {args.command_name}")
 
-    if args.device_id:
-        payload["device_id"] = args.device_id
+    device_id = _arg_value(args, "device_id")
+    if device_id:
+        payload["device_id"] = device_id
 
     return {
         "type": "agent.command",
@@ -77,7 +107,7 @@ async def send_command(args: argparse.Namespace) -> None:
     print(json.dumps(ack, ensure_ascii=False, indent=2))
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send a local Agent command to Xiao An base_station.")
     parser.add_argument("--url", default=DEFAULT_AGENT_URL, help="Base station /agent WebSocket URL.")
     parser.add_argument("--device-id", default=None, help="Optional target robot device_id.")
@@ -85,18 +115,27 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command_name", required=True)
 
     expression = subparsers.add_parser("expression", help="Forward a display.expression command.")
-    expression.add_argument("--expression", default="caring", help="Expression name, for example caring.")
+    expression.add_argument("expression_arg", nargs="?", default=None, help="Expression name, for example caring.")
+    expression.add_argument("--expression", dest="expression_opt", default=None, help="Expression name, for example caring.")
+    expression.add_argument("--duration-ms", type=int, default=3000, help="Expression duration in milliseconds.")
+    expression.add_argument("--loop", action="store_true", help="Ask the robot to loop the expression.")
 
     motion = subparsers.add_parser("motion", help="Forward a motion.execute command.")
-    motion.add_argument("--action", default="move_out_of_dock", help="Motion action name.")
+    motion.add_argument("action_arg", nargs="?", default=None, help="Motion action name.")
+    motion.add_argument("--action", dest="action_opt", default=None, help="Motion action name.")
+    motion.add_argument("--speed", type=float, default=None, help="Motion speed from 0.0 to 1.0.")
+    motion.add_argument("--distance-cm", type=float, default=None, help="Forward travel distance in centimeters.")
+    motion.add_argument("--timeout-ms", type=int, default=None, help="Motion timeout in milliseconds.")
 
     tts = subparsers.add_parser("tts", help="Forward an audio.play_tts command.")
     tts.add_argument("--text", required=True, help="Text preview to send with the mock TTS command.")
 
     local = subparsers.add_parser("local", help="Forward an audio.play_local command.")
-    local.add_argument("--sound", default="care_01", help="Local sound id, for example care_01.")
+    local.add_argument("sound_arg", nargs="?", default=None, help="Local sound id, for example care_01.")
+    local.add_argument("--sound", dest="sound_opt", default=None, help="Local sound id, for example care_01.")
+    local.add_argument("--volume", type=float, default=0.7, help="Playback volume from 0.0 to 1.0.")
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

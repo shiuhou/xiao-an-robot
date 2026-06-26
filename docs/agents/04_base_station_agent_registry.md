@@ -87,8 +87,29 @@
 
 ## Tools — `tools/`
 
-| 脚本 | 用途 |
-|------|------|
-| `send_robot_command.py` | CLI → `/agent` → 机器人 |
-| `check_runtime_env.py` | 环境检查 |
-| `generate_agent_registry.py` | 刷新 agent 文档清单 |
+> 完整清单见 [10_repo_map.md](./10_repo_map.md) §Tools。改 CLI 时同步本表一行。
+
+| 脚本 | 用途 | 状态 |
+|------|------|------|
+| `send_robot_command.py` | CLI → `/agent` → 机器人 expression/motion/local audio | ✅ |
+| `run_integration_loop.py` | 联调 loop 编排 | 🟡 |
+| `run_ws_video_runtime.py` | WS `/video` 运行时探测 | 🟡 |
+| `send_test_video_frame.py` | 注入测试 JPEG 帧 | 🧪 |
+| `check_runtime_env.py` | Python/模型/runtime 环境检查 | ✅ |
+| `generate_agent_registry.py` | 刷新 `_generated/file_inventory.md` | ✅ |
+| `setup_models.py` | 模型下载/放置引导 | 🟡 |
+| `probe_openface_routeA_live.py` | OpenFace Route A 实机探测 | 🟡 |
+| `probe_cv_gate.py` | CV gate 探测 | 🧪 |
+| `probe_camera.py` | 相机源探测 | 🧪 |
+| `simulate_emotion_stream.py` | 模拟情绪事件流 | 🧪 |
+| `inject_emotion.py` | 注入情绪到 runtime | 🧪 |
+| `test_agent_brain.py` | Agent brain 冒烟 | 🧪 |
+| `test_emotion_trigger.py` | 情绪触发测试 | 🧪 |
+| `test_emotion_policy.py` | 情绪策略单测入口 | 🧪 |
+| `test_openclaw_tool_calls.py` | OpenClaw tool call 测试 | 🧪 |
+| `query_emotion_summary.py` | 查情绪 DB 摘要 | 🟡 |
+| `query_work_activity_summary.py` | 工作活动摘要 | 🟡 |
+| `run_reminder_scheduler.py` | 提醒调度 | 🟡 |
+| `send_frontend_message.py` | 向前端发消息 | 🧪 |
+| `summarize_route_a_trace.py` | Route A trace 摘要 | 🟡 |
+| `serial_camera_viewer.py` / `.ps1` | 串口相机查看 | 🧪 |

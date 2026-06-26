@@ -1,5 +1,7 @@
 # Xiao-An OpenFace / VLM Progress Handoff
 
+> ⚠️ **ARCHIVED 2026-06-27** — moved from repo root. Use `docs/openface_au_mapping.md`, `docs/agents/04_base_station_agent_registry.md`, and latest `project_status_*` instead.
+
 Last updated: 2026-06-18
 
 This document is meant to be uploaded or pasted into another GPT/Claude/Codex thread so the next model can understand the current OpenFace-to-xiao-an progress without needing the full zip. It is intentionally factual and code-oriented. It separates implemented behavior, verified tests, local-only artifacts, and known gaps.

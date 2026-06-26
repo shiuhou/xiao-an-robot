@@ -20,8 +20,8 @@ Current status: the architecture is staged. The `/control` route and local simul
 Implementation status:
 
 - `/control` exists and is the first hardware integration target.
-- `/audio` and `/video` routes exist on the base station, but the main ESP32 firmware does not yet stream live audio/video into them.
-- Camera, mic, speaker, TFT, and motor paths currently have isolated PlatformIO envs under `robot/firmware/platformio.ini`.
+- `/video` and `/audio` routes exist on the base station. **Live streaming is implemented in `robot/mergetesting`** split envs (`mergetesting_cam_only`, `mergetesting_mic_only`); see `docs/project_status_2026-06-26.md` and `docs/agents/03_mergetesting_registry.md`.
+- `robot/firmware` keeps isolated PlatformIO envs for single-subsystem bring-up; DK-2500 integration firmware is **`robot/mergetesting`**, not `robot/firmware/src/main.cpp`.
 
 ## OpenVINO Perception
 

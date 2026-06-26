@@ -1,0 +1,126 @@
+policy:
+  one_task_per_cycle: true
+  select_highest_priority_ready: true
+  max_fix_attempts: 2
+
+tasks:
+  - id: T00
+    title: Run full Python regression suite
+    priority: P0
+    depends_on: []
+    status: READY
+    cwd: .
+    command: [python, -m, unittest, discover, -s, tests, -p, test_*.py]
+    success_criteria: unittest exits 0
+  - id: T01
+    title: Build mergetesting display-only control firmware
+    priority: P0
+    depends_on: [T00]
+    status: READY
+    cwd: robot/mergetesting
+    command: [pio, run, -e, mergetesting_display_only]
+    success_criteria: PlatformIO exits 0
+  - id: T02
+    title: Build mergetesting face240-only firmware
+    priority: P0
+    depends_on: [T01]
+    status: READY
+    cwd: robot/mergetesting
+    command: [pio, run, -e, mergetesting_face240_only]
+    success_criteria: PlatformIO exits 0
+  - id: T03
+    title: Build mergetesting camera-only video firmware
+    priority: P0
+    depends_on: [T02]
+    status: READY
+    cwd: robot/mergetesting
+    command: [pio, run, -e, mergetesting_cam_only]
+    success_criteria: PlatformIO exits 0
+  - id: T04
+    title: Build mergetesting mic-only audio firmware
+    priority: P0
+    depends_on: [T03]
+    status: READY
+    cwd: robot/mergetesting
+    command: [pio, run, -e, mergetesting_mic_only]
+    success_criteria: PlatformIO exits 0
+  - id: T05
+    title: Decide whether full mergetesting env is safe to build
+    priority: P0
+    depends_on: [T04]
+    status: READY
+    success_criteria: record build result or explicit reason to keep split-env order
+  - id: T06
+    title: Write 2026-06-26 status and queue results
+    priority: P0
+    depends_on: [T05]
+    status: READY
+    success_criteria: docs/project_status_2026-06-26.md and queue results reflect latest verification
+  - id: T07
+    title: Prepare local mergetesting config
+    priority: P1
+    depends_on: [T06]
+    status: READY
+    success_criteria: robot/mergetesting/src/config.local.h has WiFi SSID password base station IP and is not committed
+  - id: T08
+    title: Start base station WebSocket server
+    priority: P1
+    depends_on: [T07]
+    status: READY
+    command: [python, -m, base_station.ws_server.server]
+    cwd: .
+    success_criteria: server listens on 8765 and logs robot connections
+  - id: T09
+    title: Flash display-only Phase 1-2 firmware
+    priority: P1
+    depends_on: [T08]
+    status: READY
+    success_criteria: USB upload mergetesting_display_only then serial monitor at 115200
+  - id: T10
+    title: Verify control hello and heartbeat
+    priority: P1
+    depends_on: [T09]
+    status: READY
+    success_criteria: serial shows Control connected Sent device.hello Heartbeat and base station logs Robot connected
+  - id: T11
+    title: Verify expression command path
+    priority: P1
+    depends_on: [T10]
+    status: READY
+    command: [python, tools/send_robot_command.py, expression, caring]
+    cwd: .
+    success_criteria: base station returns command ack and robot changes expression
+  - id: T12
+    title: Verify motion command path
+    priority: P1
+    depends_on: [T11]
+    status: READY
+    command: [python, tools/send_robot_command.py, motion, move_out_of_dock]
+    cwd: .
+    success_criteria: command ack and motion completed share action_id
+  - id: T13
+    title: Verify local sound command path
+    priority: P1
+    depends_on: [T12]
+    status: READY
+    command: [python, tools/send_robot_command.py, local, care_01]
+    cwd: .
+    success_criteria: command ack and MAX98357A plays care_01 tone
+  - id: T14
+    title: Flash and verify face240 display path
+    priority: P2
+    depends_on: [T13]
+    status: READY
+    success_criteria: mergetesting_face240_only uploads and face240 expression changes without watchdog reset
+  - id: T15
+    title: Flash and verify camera video path
+    priority: P2
+    depends_on: [T14]
+    status: READY
+    success_criteria: mergetesting_cam_only streams video.frame_meta and runtime/latest.jpg updates
+  - id: T16
+    title: Flash and verify mic audio path
+    priority: P2
+    depends_on: [T15]
+    status: READY
+    success_criteria: mergetesting_mic_only sends audio.chunk_meta and PCM chunks without starving heartbeat

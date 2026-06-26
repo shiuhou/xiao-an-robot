@@ -29,6 +29,20 @@ def device_hello(device_id: str) -> str:
     })
 
 
+def video_frame_meta(device_id: str = "robot-1") -> str:
+    return json.dumps({
+        "type": "video.frame_meta",
+        "ts": 1714538000001,
+        "seq": 2,
+        "payload": {
+            "device_id": device_id,
+            "frame_id": 1,
+            "width": 320,
+            "height": 240,
+        },
+    })
+
+
 class FakeControlWebSocket:
     def __init__(self, messages: list[str]):
         self.messages = messages
@@ -128,6 +142,15 @@ class WebSocketServerSessionTest(unittest.IsolatedAsyncioTestCase):
         await ws_server.handle_control(current_ws)
 
         self.assertNotIn("robot-1", ws_server.sessions)
+
+    async def test_control_accepts_video_frame_meta_extension_without_warning(self) -> None:
+        websocket = FakeControlWebSocket([
+            device_hello("robot-1"),
+            video_frame_meta("robot-1"),
+        ])
+
+        with self.assertNoLogs("ws_server", level="WARNING"):
+            await ws_server.handle_control(websocket)
 
     async def test_send_to_robot_connection_closed_does_not_delete_new_session(self) -> None:
         new_ws = FakeControlWebSocket([])

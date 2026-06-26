@@ -8,6 +8,7 @@
 #include "protocol.h"
 
 typedef std::function<void(const String& type, JsonObject payload)> OnControlMsg;
+typedef std::function<bool()> BusyProvider;
 
 class WSClient {
 public:
@@ -18,7 +19,11 @@ public:
   void sendHello();
   void sendHeartbeat(bool busy);
   void sendStatus(const char* expression, const char* motion, const char* camera, bool docked);
-  void sendCommandAck(const char* commandType, const char* status, const char* detail = nullptr);
+  void sendCommandAck(
+      const char* commandType,
+      const char* status,
+      const char* detail = nullptr,
+      const char* actionId = nullptr);
   void sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser);
   void sendErrorReport(const char* where, const char* message, const char* code = ErrorCode::UNSUPPORTED_COMMAND);
   void sendVideoFrameMeta(uint32_t frameId, uint16_t width, uint16_t height);
@@ -35,6 +40,7 @@ public:
 
   void setVideoFps(float fps);
   void setHeartbeatIntervalMs(uint32_t ms);
+  void setBusyProvider(BusyProvider provider);
 
 private:
   WebSocketsClient _control;
@@ -42,6 +48,7 @@ private:
   WebSocketsClient _audio;
 
   OnControlMsg _onControl;
+  BusyProvider _busyProvider;
   uint32_t _seq = 0;
   uint32_t _lastHb = 0;
   uint32_t _retryMs = 1000;

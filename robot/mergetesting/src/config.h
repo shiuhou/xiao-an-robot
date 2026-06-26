@@ -20,6 +20,13 @@
 #define MERGETEST_BASE_STATION_PORT 8765
 #endif
 
+#ifndef OTA_HOSTNAME
+#define OTA_HOSTNAME "xiao-an-esp32"
+#endif
+#ifndef OTA_PASSWORD
+#define OTA_PASSWORD ""
+#endif
+
 // 设备身份（发给基站同学）
 #ifndef MERGETEST_DEVICE_ID
 #define MERGETEST_DEVICE_ID "xiaoan_robot_01"

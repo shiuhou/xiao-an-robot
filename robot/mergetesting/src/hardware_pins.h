@@ -9,10 +9,10 @@
 #define PIN_MOTOR_L_IN2 2
 #endif
 #ifndef PIN_MOTOR_R_IN1
-#define PIN_MOTOR_R_IN1 47
+#define PIN_MOTOR_R_IN1 3
 #endif
 #ifndef PIN_MOTOR_R_IN2
-#define PIN_MOTOR_R_IN2 38
+#define PIN_MOTOR_R_IN2 48
 #endif
 
 // 2.4" ST7789 整合线束（与 OV2640 可同接）
@@ -35,7 +35,7 @@
 #define TFT_RST 44
 #endif
 #ifndef TFT_BL
-#define TFT_BL 48
+#define TFT_BL -1
 #endif
 #ifndef TFT_BACKLIGHT_ON
 #define TFT_BACKLIGHT_ON HIGH

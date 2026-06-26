@@ -1,0 +1,124 @@
+{
+  "generated_at": "2026-06-26T23:59:00+08:00",
+  "policy": {
+    "one_task_per_cycle": true,
+    "select_highest_priority_ready": true,
+    "max_fix_attempts": 2
+  },
+  "split_env_status": "ALL_H",
+  "split_env_completed_at": "2026-06-26",
+  "current_task": {
+    "task_id": "T16",
+    "status": "PASS_H",
+    "reason": "all split env hardware verification complete; next gate is full mergetesting (T17)"
+  },
+  "results": {
+    "T00": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "python -m unittest discover -s tests -p \"test_*.py\"",
+      "summary": "Ran 776 tests, OK (2026-06-26 preflight refresh)"
+    },
+    "T01": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_display_only",
+      "summary": "SUCCESS, RAM 14.6%, Flash 27.5%"
+    },
+    "T02": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_face240_only",
+      "summary": "SUCCESS, RAM 61.4%, Flash 27.4%"
+    },
+    "T03": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_cam_only",
+      "summary": "SUCCESS, RAM 15.6%, Flash 28.1%"
+    },
+    "T04": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_mic_only",
+      "summary": "SUCCESS, RAM 15.0%, Flash 27.6%"
+    },
+    "T05": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "pio run -e mergetesting",
+      "summary": "SUCCESS, RAM 15.9%, Flash 29.4%; compile-safe; hardware H deferred until split envs complete (now done)"
+    },
+    "T06": {
+      "status": "PASS",
+      "attempt": 1,
+      "command": "manual status update",
+      "summary": "docs/project_status_2026-06-26.md contains fresh results and hardware loop evidence"
+    },
+    "T07": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "manual config check",
+      "summary": "robot/mergetesting/src/config.local.h exists with WiFi/base-station settings; git check-ignore confirms not committed"
+    },
+    "T08": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "python -m base_station.ws_server.server",
+      "summary": "Server listened on TCP 8765; logged Robot connected and device.hello from xiaoan_robot_01"
+    },
+    "T09": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_display_only -t upload; OTA split-env uploads",
+      "summary": "USB recovery on COM19 when needed; later espota Result: OK for cam-only, mic-only, and speaker-only OTA targets"
+    },
+    "T10": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "serial monitor + base station logs",
+      "summary": "Serial showed Control connected, Sent device.hello, Heartbeat; server logged repeated Robot connected: xiaoan_robot_01"
+    },
+    "T11": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "python tools/send_robot_command.py --device-id xiaoan_robot_01 expression caring",
+      "summary": "command.ack ok; user confirmed physical display/expression change on split env bring-up"
+    },
+    "T12": {
+      "status": "PASS_H",
+      "attempt": 2,
+      "command": "python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.15 --distance-cm 1 --timeout-ms 250; motion stop; motion move_back_to_dock",
+      "summary": "After LEDC channel fix (4-7), ack and motion.completed shared action_id; user confirmed physical direction and stop"
+    },
+    "T13": {
+      "status": "PASS_H",
+      "attempt": 2,
+      "command": "pio run -e mergetesting_speaker_only_ota -t upload --upload-port 192.168.137.114; python tools/send_robot_command.py local care_01",
+      "summary": "Lazy I2S fix resolved TG1WDT; audio.play_local and mock audio.play_tts ack ok with continuing heartbeats; user confirmed audible output"
+    },
+    "T14": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_face240_only -t upload; python tools/send_robot_command.py expression caring; expression idle",
+      "summary": "2.4 inch face240 expression path verified without watchdog reset; user confirmed face change"
+    },
+    "T15": {
+      "status": "PASS_H",
+      "attempt": 1,
+      "command": "pio run -e mergetesting_cam_only_ota -t upload --upload-port xiao-an-esp32.local",
+      "summary": "Server logged /video, camera=cam_ok, Video meta 320x240; runtime/latest.jpg updated with valid JPEG SOI/EOI"
+    },
+    "T16": {
+      "status": "PASS_H",
+      "attempt": 2,
+      "command": "pio run -e mergetesting_mic_only_ota -t upload --upload-port xiao-an-esp32.local",
+      "summary": "Server logged audio.chunk_meta pcm_s16le 16kHz mono; runtime/audio_stats.json and latest_audio.pcm updated; control not starved during PCM stream"
+    }
+  },
+  "next_order": [
+    "T17 burn and verify full mergetesting combined firmware",
+    "T18 Phase 4 proactive care demo (video -> emotion -> commands)",
+    "T19 sync OpenVINO real-frame path when runtime models are staged"
+  ]
+}

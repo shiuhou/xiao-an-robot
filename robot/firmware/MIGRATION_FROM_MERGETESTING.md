@@ -1,50 +1,46 @@
-# Mergetesting → main firmware migration
+# Mergetesting Boundary Note
 
-`robot/mergetesting/` is a **DK-2500 integration fork**. Goal: fold validated modules into `robot/firmware/src/main.cpp` and retire duplicate sources.
+`robot/firmware` and `robot/mergetesting` now have separate jobs:
 
-## Status (2026-06-23)
+- `robot/firmware`: robot-body firmware, reusable hardware modules, and isolated bring-up envs.
+- `robot/mergetesting`: DK-2500/base-station integration firmware for `/control`, `/video`, and `/audio`.
 
-| Module | Mergetesting | Main firmware | Action |
-|--------|--------------|---------------|--------|
-| `motor_ctrl` | ✅ | ✅ | Sync pulse timing from mergetesting |
-| `ws_client` | ✅ 3-channel | ✅ `esp32-s3-integrated` | Use integrated env for DK-2500 |
-| `cam_stream` | ✅ WS JPEG | ✅ integrated | `captureLoop(ws)` when video connected |
-| `mic_stream` | ✅ PCM chunks | ✅ integrated | `streamLoop(ws)` when audio connected |
-| `speaker` | ✅ | ✅ `peripherals/speaker` | Used by integrated + speaker_amp_test |
-| `face240_display` | ✅ | ✅ `peripherals/face240_display` | Used by integrated_main |
-| `display` (ST7735) | ✅ | ✅ | Main `/control` env only |
+This file used to describe a plan to fold `robot/mergetesting` back into `robot/firmware`. That direction is superseded. New DK-2500 integration burns should not use firmware-side integration envs.
 
-**Step 5:** `esp32-s3-integrated` replaces mergetesting for new DK-2500 burns. Keep `robot/mergetesting/` until hardware demo sign-off.
+## Current Rule
 
-## Target layout
+When `robot/mergetesting` needs a capability:
 
-```text
-robot/firmware/src/
-├── main.cpp
-├── peripherals/          # migrated from mergetesting
-│   ├── speaker.cpp/h
-│   ├── face240_display.cpp/h
-│   └── ws_streams.cpp/h   # video + audio push helpers
-└── feature_flags.h        # ENABLE_WS_VIDEO, ENABLE_WS_AUDIO
-```
+1. Validate the robot feature in `robot/firmware` with a dedicated env.
+2. Copy or sync the minimal proven module into `robot/mergetesting/src`.
+3. Keep the integration loop, WebSocket behavior, and base-station demo commands in `robot/mergetesting`.
+4. Do not turn `robot/firmware` into the default DK-2500 demo firmware.
 
-## Migration order
+## Historical Snapshot
 
-1. Copy `speaker.cpp/h` → `src/peripherals/`, compile under `speaker_amp_test` first.
-2. Enable `ENABLE_WS_AUDIO` in a new env `esp32-s3-integrated` (extends main filter + mic/speaker).
-3. Port `cam_stream` WS push from mergetesting `main.cpp` loop.
-4. Port `face240_display` for `display.expression` on 2.4" ST7789.
-5. When `esp32-s3-integrated` passes DK-2500 demo, mark `robot/mergetesting/` as archive.
+`robot/firmware/src/integrated_main.cpp` and env `esp32-s3-integrated_legacy` are kept only as a historical snapshot from the earlier consolidation attempt. They are not the recommended path for new burns.
 
-## Verification
+## Correct Commands
+
+Robot-body feature checks:
 
 ```powershell
 cd robot\firmware
-pio run -e esp32-s3-devkitc-1
-cd ..\..
-python tests/mocks/mock_robot.py   # /control
-# After integrated env exists:
-pio run -e esp32-s3-integrated
+pio run -e motor_manual
+pio run -e motor_cam_wifi_manual
+pio run -e face240_9expr_merged
+pio run -e voice_recognition_test
+pio run -e speaker_amp_test
 ```
 
-See also: `robot/mergetesting/EXTRACTION_MAP.md`, `docs/agents/03_mergetesting_registry.md`.
+DK-2500/base-station integration:
+
+```powershell
+cd robot\mergetesting
+pio run -e mergetesting_display_only
+pio run -e mergetesting_face240_only
+pio run -e mergetesting_cam_only
+pio run -e mergetesting_mic_only
+```
+
+See also: `robot/mergetesting/EXTRACTION_MAP.md`, `robot/mergetesting/CAPABILITIES.md`, and `docs/agents/03_mergetesting_registry.md`.

@@ -1,0 +1,28 @@
+---
+description: 小安仓库 Agent 开工/收工（与 Codex xiao-an-session 共用同一套文档；Cursor 非默认启用，用户指定任务时遵循）
+alwaysApply: false
+---
+
+# Agent Session（Cursor 辅用）
+
+Canonical 流程：**`docs/agents/01_session_protocol.md`**
+
+本仓库以 **Codex + xiao-an-session skill** 为主力。仅在用户明确要求时，Cursor 按同一文档执行。
+
+## 开工 MUST
+
+1. 读 `docs/agents/README.md` + `00_snapshot.md`
+2. 按 README 路由读对应 registry
+3. `git status` 报告 dirty 状态
+4. 输出「开工对齐」块（见 01 §6.2）
+
+## 收工 MUST
+
+1. 跑验证命令并报告结果
+2. 更新 `00_snapshot` 追加行 + 相关 registry / test_matrix
+3. 输出「收工摘要」块（见 01 §7.2）
+4. `git diff --check`
+
+## 真相优先级
+
+live source > AGENTS.md > 最新 project_status > snapshot > registry > archive

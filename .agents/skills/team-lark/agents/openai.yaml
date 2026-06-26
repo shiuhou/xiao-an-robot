@@ -1,0 +1,7 @@
+interface:
+  display_name: "Team Lark"
+  short_description: "Use Feishu/Lark Base as an agent-readable team task and status system."
+  default_prompt: "Use team-lark to sync with the shared Feishu Base and summarize my team tasks."
+
+policy:
+  allow_implicit_invocation: true

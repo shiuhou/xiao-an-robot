@@ -1,5 +1,7 @@
 # Agent 文档维护规范
 
+> 开工/收工全流程见 [01_session_protocol.md](./01_session_protocol.md)。Codex 用户：`按 xiao-an-session 收工` 时按 §7 检查本表。
+
 ## 何时更新
 
 | 事件 | 更新哪些文件 |
@@ -8,6 +10,7 @@
 | mergetesting 模块变更 | `03_mergetesting_registry.md`, `EXTRACTION_MAP.md` |
 | 协议字段变更 | `docs/protocol.md`, `shared/*`, **禁止只改一处** |
 | 联调前/后 | `00_snapshot.md`, 新建 `docs/project_status_YYYY-MM-DD.md` |
+| 整库整理 / 整合 Agent | `10_repo_map.md` §7, `_generated/file_inventory.md` |
 | 测试跑通/失败 | `05_test_matrix.md` 改 P/H/F + 日期 |
 
 ## 变更记录写法
@@ -46,10 +49,13 @@ python tools/generate_agent_registry.py
 
 ## 多 Agent 并行建议
 
-1. 开工前读 `00_snapshot.md`
+详见 [01_session_protocol.md §8](./01_session_protocol.md#8-多-agent-并行规则)。摘要：
+
+1. 开工前读 `00_snapshot.md` + 用 `xiao-an-session` skill
 2. 只改自己目录；动 `shared/` 或 `protocol.md` 先通知
-3. 完工更新注册表 + test matrix 一行
-4. 勿 force-push；见根目录 `AGENTS.md`
+3. 收工更新 registry + test matrix + snapshot 一行 + 收工摘要
+4. 并行多窗口可选档位 B（`team-lark`）；Codex 踩坑可选档位 C（claude-mem）
+5. 勿 force-push；见根目录 `AGENTS.md`
 
 ## 不建议 Agent 做的文档
 

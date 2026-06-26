@@ -6,16 +6,22 @@
 #if MERGETEST_ENABLE_SPEAKER
 
 #include <driver/i2s.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <cstring>
 
 namespace {
 
 constexpr i2s_port_t SPEAKER_I2S_PORT = I2S_NUM_1;
 constexpr size_t FRAMES_PER_BUFFER = 128;
-constexpr int SPEAKER_AMPLITUDE = 4500;
+constexpr int SPEAKER_AMPLITUDE = 2400;
+constexpr TickType_t SPEAKER_WRITE_TIMEOUT_TICKS = pdMS_TO_TICKS(50);
 
 int16_t stereoBuffer[FRAMES_PER_BUFFER * 2];
 bool gReady = false;
+volatile bool gPlaying = false;
+TaskHandle_t gTaskHandle = nullptr;
+char gTaskSound[32] = {};
 
 bool installSpeakerI2S() {
   const i2s_config_t config = {
@@ -49,20 +55,60 @@ bool installSpeakerI2S() {
   return true;
 }
 
-void writeSilence(uint32_t durationMs) {
+void releaseSpeakerI2S() {
+  if (!gReady) {
+    return;
+  }
+  i2s_zero_dma_buffer(SPEAKER_I2S_PORT);
+  i2s_driver_uninstall(SPEAKER_I2S_PORT);
+  gReady = false;
+}
+
+bool ensureSpeakerReady() {
+  if (gReady) {
+    return true;
+  }
+  return speaker_init();
+}
+
+bool writeFrames(const int16_t* samples, uint32_t frames) {
+  const size_t bytesToWrite = frames * 2 * sizeof(int16_t);
+  size_t bytesWritten = 0;
+  const esp_err_t err = i2s_write(
+      SPEAKER_I2S_PORT,
+      samples,
+      bytesToWrite,
+      &bytesWritten,
+      SPEAKER_WRITE_TIMEOUT_TICKS);
+  yield();
+  if (err != ESP_OK || bytesWritten != bytesToWrite) {
+    LOGE(
+        "Speaker",
+        "I2S write failed err=%d bytes=%u/%u",
+        static_cast<int>(err),
+        static_cast<unsigned>(bytesWritten),
+        static_cast<unsigned>(bytesToWrite));
+    return false;
+  }
+  return true;
+}
+
+bool writeSilence(uint32_t durationMs) {
   memset(stereoBuffer, 0, sizeof(stereoBuffer));
   const uint32_t totalFrames = static_cast<uint32_t>(
       static_cast<uint64_t>(MERGETEST_SPEAKER_SAMPLE_RATE) * durationMs / 1000);
   uint32_t framesWritten = 0;
   while (framesWritten < totalFrames) {
     const uint32_t chunk = min<uint32_t>(FRAMES_PER_BUFFER, totalFrames - framesWritten);
-    size_t bytesWritten = 0;
-    i2s_write(SPEAKER_I2S_PORT, stereoBuffer, chunk * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
+    if (!writeFrames(stereoBuffer, chunk)) {
+      return false;
+    }
     framesWritten += chunk;
   }
+  return true;
 }
 
-void playTone(uint32_t frequencyHz, uint32_t durationMs, int amplitude = SPEAKER_AMPLITUDE) {
+bool playTone(uint32_t frequencyHz, uint32_t durationMs, int amplitude = SPEAKER_AMPLITUDE) {
   const uint32_t totalFrames = static_cast<uint32_t>(
       static_cast<uint64_t>(MERGETEST_SPEAKER_SAMPLE_RATE) * durationMs / 1000);
   uint32_t framesWritten = 0;
@@ -78,31 +124,84 @@ void playTone(uint32_t frequencyHz, uint32_t durationMs, int amplitude = SPEAKER
       stereoBuffer[i * 2] = sample;
       stereoBuffer[i * 2 + 1] = sample;
     }
-    size_t bytesWritten = 0;
-    i2s_write(SPEAKER_I2S_PORT, stereoBuffer, chunk * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
+    if (!writeFrames(stereoBuffer, chunk)) {
+      return false;
+    }
     framesWritten += chunk;
   }
+  return true;
 }
 
-void playCareChime() {
-  playTone(440, 180, 3500);
-  playTone(554, 180, 3500);
-  playTone(659, 260, 3500);
-  writeSilence(80);
+bool playCareChime() {
+  return playTone(440, 180, SPEAKER_AMPLITUDE) &&
+         playTone(554, 180, SPEAKER_AMPLITUDE) &&
+         playTone(659, 260, SPEAKER_AMPLITUDE) &&
+         writeSilence(80);
 }
 
-void playAlarmBeeps() {
+bool playAlarmBeeps() {
   for (int i = 0; i < 3; ++i) {
-    playTone(880, 120, 4000);
-    writeSilence(80);
+    if (!playTone(880, 120, SPEAKER_AMPLITUDE) || !writeSilence(80)) {
+      return false;
+    }
   }
+  return true;
 }
 
-void playWakeChime() {
-  playTone(523, 120, 3800);
-  playTone(659, 120, 3800);
-  playTone(784, 180, 3800);
-  playTone(988, 220, 3800);
+bool playWakeChime() {
+  return playTone(523, 120, SPEAKER_AMPLITUDE) &&
+         playTone(659, 120, SPEAKER_AMPLITUDE) &&
+         playTone(784, 180, SPEAKER_AMPLITUDE) &&
+         playTone(988, 220, SPEAKER_AMPLITUDE);
+}
+
+bool playLocalBlocking(const char* sound) {
+  bool ok = false;
+  if (strcmp(sound, LocalSound::CARE_01) == 0 || strcmp(sound, "wakeup_chime") == 0) {
+    ok = ensureSpeakerReady() && playCareChime();
+  } else if (strcmp(sound, LocalSound::ALARM_01) == 0 || strcmp(sound, "error_beep") == 0) {
+    ok = ensureSpeakerReady() && playAlarmBeeps();
+  } else if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
+    ok = ensureSpeakerReady() && playWakeChime();
+  }
+  releaseSpeakerI2S();
+  return ok;
+}
+
+void speakerTask(void*) {
+  char sound[sizeof(gTaskSound)] = {};
+  strncpy(sound, gTaskSound, sizeof(sound) - 1);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  const bool ok = playLocalBlocking(sound);
+  LOGI("Speaker", "play_local done %s ok=%s", sound, ok ? "true" : "false");
+  gPlaying = false;
+  gTaskHandle = nullptr;
+  vTaskDelete(nullptr);
+}
+
+bool startPlaybackTask(const char* sound) {
+  if (gPlaying) {
+    LOGW("Speaker", "play_local busy");
+    return false;
+  }
+
+  strncpy(gTaskSound, sound, sizeof(gTaskSound) - 1);
+  gTaskSound[sizeof(gTaskSound) - 1] = '\0';
+  gPlaying = true;
+  const BaseType_t created = xTaskCreate(
+      speakerTask,
+      "speaker_play",
+      4096,
+      nullptr,
+      1,
+      &gTaskHandle);
+  if (created != pdPASS) {
+    gPlaying = false;
+    gTaskHandle = nullptr;
+    LOGE("Speaker", "play_local task create failed");
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -118,44 +217,41 @@ bool speaker_init() {
 }
 
 bool speaker_play_local(const char* sound) {
-  if (!gReady || !sound) {
+  if (!sound) {
     return false;
   }
 
   LOGI("Speaker", "play_local %s", sound);
   if (strcmp(sound, LocalSound::CARE_01) == 0 || strcmp(sound, "wakeup_chime") == 0) {
-    playCareChime();
-    return true;
-  }
-  if (strcmp(sound, LocalSound::ALARM_01) == 0 || strcmp(sound, "error_beep") == 0) {
-    playAlarmBeeps();
-    return true;
-  }
-  if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
-    playWakeChime();
-    return true;
+  } else if (strcmp(sound, LocalSound::ALARM_01) == 0 || strcmp(sound, "error_beep") == 0) {
+  } else if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
+  } else {
+    LOGW("Speaker", "unsupported local sound %s", sound);
+    return false;
   }
 
-  playTone(660, 200);
-  return true;
+  return startPlaybackTask(sound);
 }
 
 bool speaker_play_tts_mock(const char* textPreview) {
-  if (!gReady) {
+  if (!ensureSpeakerReady()) {
     return false;
   }
   const size_t len = textPreview ? strlen(textPreview) : 0;
   const uint32_t ms = static_cast<uint32_t>(min<size_t>(3000, 600 + len * 80));
   LOGI("Speaker", "tts mock %u ms preview=%s", ms, textPreview ? textPreview : "");
-  playTone(520, ms / 3, 2800);
-  playTone(620, ms / 3, 2800);
-  playTone(720, ms / 3, 2800);
-  return true;
+  const bool ok = playTone(520, ms / 3, 2800) &&
+                  playTone(620, ms / 3, 2800) &&
+                  playTone(720, ms / 3, 2800);
+  releaseSpeakerI2S();
+  return ok;
 }
 
 void speaker_stop() {
+  gPlaying = false;
   if (gReady) {
     writeSilence(50);
+    releaseSpeakerI2S();
   }
 }
 

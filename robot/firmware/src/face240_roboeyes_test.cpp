@@ -30,19 +30,20 @@ static constexpr uint16_t C_CYAN_SOFT = rgb565(176, 236, 255);
 static constexpr uint16_t C_RED = rgb565(255, 58, 68);
 static constexpr uint16_t C_YELLOW = rgb565(255, 229, 55);
 
-/** Full-screen face layout (~1.38x, centered on 320x240). */
+/** Full-screen face layout (~1.12x, centered on 320x240). */
 static constexpr int16_t FACE_CX = 160;
-static constexpr int16_t FACE_CY = 108;
-static constexpr int16_t EYE_CX_L = 92;
-static constexpr int16_t EYE_CX_R = 228;
-static constexpr int16_t EYE_CY = 102;
-static constexpr int16_t EYE_W_DEF = 66;
-static constexpr int16_t EYE_H_DEF = 58;
-static constexpr int16_t MOUTH_CY = 174;
+static constexpr int16_t FACE_CY = 118;
+static constexpr int16_t EYE_CX_L = 84;
+static constexpr int16_t EYE_CX_R = 236;
+static constexpr int16_t EYE_CY = 100;
+static constexpr int16_t EYE_W_DEF = 74;
+static constexpr int16_t EYE_H_DEF = 65;
+static constexpr int16_t MOUTH_CY = 181;
+static constexpr int16_t BROW_CY = 66;
 static constexpr int16_t ARC_SEGMENTS = 64;
-static constexpr int16_t STROKE_MOUTH = 10;
-static constexpr int16_t STROKE_BROW = 8;
-static constexpr int16_t STROKE_RING = 10;
+static constexpr int16_t STROKE_MOUTH = 11;
+static constexpr int16_t STROKE_BROW = 9;
+static constexpr int16_t STROKE_RING = 11;
 
 static uint8_t frameBuffer[FRAMEBUFFER_BYTES];
 
@@ -74,7 +75,7 @@ enum MouthMode : uint8_t {
     MOUTH_SMILE_WIDE,
     MOUTH_FROWN,
     MOUTH_ROUND,
-    MOUTH_DSHAPE,
+    MOUTH_BOWL,
     MOUTH_HIDDEN,
 };
 
@@ -314,6 +315,18 @@ static void fillCircleBuffer(int16_t cx, int16_t cy, int16_t r, uint16_t color) 
     }
 }
 
+/** Filled bottom semicircle: flat top at topY, curved bottom at topY + r. */
+static void fillBottomSemicircle(int16_t cx, int16_t topY, int16_t r, uint16_t color) {
+    if (r <= 0) {
+        return;
+    }
+    const int32_t rr = static_cast<int32_t>(r) * r;
+    for (int16_t y = 0; y <= r; ++y) {
+        const int16_t span = intSqrt(rr - static_cast<int32_t>(y) * y);
+        fillRectBuffer(cx - span, topY + y, span * 2 + 1, 1, color);
+    }
+}
+
 static void fillRoundRectBuffer(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r,
                                 uint16_t color) {
     if (w <= 0 || h <= 0) {
@@ -486,34 +499,34 @@ static FacePose poseForExpression(FaceExpression face) {
     switch (face) {
         case FACE_HAPPY:
             p.color = C_CYAN_SOFT;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 10, 56, 34, MOUTH_DSHAPE);
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY, 85, 43, MOUTH_BOWL);
             break;
         case FACE_SAD:
             p.left.lid = LID_TIRED;
             p.right.lid = LID_TIRED;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY, 50, 22, MOUTH_FROWN);
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY, 56, 25, MOUTH_FROWN);
             break;
         case FACE_SURPRISED:
             p.left.h = EYE_H_DEF + 4;
             p.right.h = EYE_H_DEF + 4;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 4, 36, 36, MOUTH_ROUND);
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 4, 40, 40, MOUTH_ROUND);
             p.eyebrows = true;
             break;
         case FACE_ANGRY:
             p.left.lid = LID_ANGRY;
             p.right.lid = LID_ANGRY;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY + 2, 48, 22, MOUTH_FROWN);
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY + 2, 54, 25, MOUTH_FROWN);
             p.color = C_RED;
             break;
         case FACE_CONTENT:
             p.left.lid = LID_HAPPY;
             p.right.lid = LID_HAPPY;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 6, 58, 24, MOUTH_SMILE_WIDE);
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 6, 65, 27, MOUTH_SMILE_WIDE);
             break;
         case FACE_WINK:
-            p.right.w = 58;
-            p.right.h = 10;
-            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 4, 46, 22, MOUTH_SMILE);
+            p.right.w = 65;
+            p.right.h = 11;
+            p.mouth = makeMouth(FACE_CX, MOUTH_CY - 4, 52, 25, MOUTH_SMILE);
             break;
         case FACE_DOTS:
         case FACE_QUESTION:
@@ -614,13 +627,46 @@ static void drawPillEye(int16_t cx, int16_t cy, int16_t w, int16_t h, uint16_t c
     applyRoboLids(x, y, w, h, lid, leftEye);
 }
 
+static void applyExprIdle(FaceExpression face, uint32_t now, bool leftEye, int16_t &idleX,
+                          int16_t &idleY) {
+    switch (face) {
+        case FACE_HAPPY:
+            idleX += iround(sinf(now / 2000.0f) * 1.2f);
+            idleY += iround(cosf(now / 2400.0f) * 0.8f);
+            break;
+        case FACE_SAD:
+            idleY += iround(sinf(now / 2200.0f) * 2.2f) + 1;
+            break;
+        case FACE_SURPRISED:
+            idleX += iround(sinf(now / 520.0f) * 0.8f);
+            idleY += iround(sinf(now / 680.0f) * 1.4f);
+            break;
+        case FACE_ANGRY:
+            idleX += iround(sinf(now / 85.0f) * 2.4f);
+            idleY += iround(sinf(now / 120.0f) * 0.6f);
+            break;
+        case FACE_CONTENT:
+            idleX += iround(sinf(now / 2800.0f) * 2.0f);
+            idleY += iround(cosf(now / 3200.0f) * 0.6f);
+            break;
+        case FACE_WINK:
+            if (leftEye) {
+                idleX += iround(sinf(now / 1100.0f) * 1.0f);
+            }
+            break;
+        default:
+            break;
+    }
+}
+
 static void drawEyeShape(const EyeShape &e, uint32_t now, uint16_t color, bool leftEye) {
     if (e.mode == EYE_HIDDEN) {
         return;
     }
 
-    const int16_t idleX = iround(sinf(now / 1600.0f) * 1.5f);
-    const int16_t idleY = iround(sinf(now / 1900.0f) * 1.0f);
+    int16_t idleX = iround(sinf(now / 1600.0f) * 1.5f);
+    int16_t idleY = iround(sinf(now / 1900.0f) * 1.0f);
+    applyExprIdle(expression, now, leftEye, idleX, idleY);
     const int16_t cx = iround(e.cx) + idleX;
     const int16_t cy = iround(e.cy) + idleY;
 
@@ -640,36 +686,78 @@ static void drawEyeShape(const EyeShape &e, uint32_t now, uint16_t color, bool l
     drawPillEye(cx, drawCy, w, h, color, lid, leftEye);
 }
 
-static void drawMouthShape(const MouthShape &m, uint16_t color) {
+static void drawMouthShape(const MouthShape &m, uint32_t now, uint16_t color) {
     if (m.mode == MOUTH_HIDDEN) {
         return;
     }
-    const int16_t cx = iround(m.cx);
-    const int16_t cy = iround(m.cy);
-    const int16_t w = i16max(4, iround(m.w));
-    const int16_t h = i16max(4, iround(m.h));
+    float cx = m.cx;
+    float cy = m.cy;
+    float w = m.w;
+    float h = m.h;
+
+    switch (expression) {
+        case FACE_HAPPY:
+            if (m.mode == MOUTH_BOWL) {
+                cy += sinf(now / 900.0f) * 1.5f;
+                w += sinf(now / 1200.0f) * 1.2f;
+            }
+            break;
+        case FACE_SAD:
+            if (m.mode == MOUTH_FROWN) {
+                cy += sinf(now / 1800.0f) * 1.0f;
+            }
+            break;
+        case FACE_SURPRISED:
+            if (m.mode == MOUTH_ROUND) {
+                w += sinf(now / 420.0f) * 2.0f;
+                h += sinf(now / 420.0f) * 2.0f;
+            }
+            break;
+        case FACE_ANGRY:
+            if (m.mode == MOUTH_FROWN) {
+                cx += sinf(now / 90.0f) * 1.8f;
+            }
+            break;
+        case FACE_CONTENT:
+            if (m.mode == MOUTH_SMILE_WIDE) {
+                w += sinf(now / 1400.0f) * 1.5f;
+            }
+            break;
+        case FACE_WINK:
+            if (m.mode == MOUTH_SMILE) {
+                cy += sinf(now / 700.0f) * 1.0f;
+            }
+            break;
+        default:
+            break;
+    }
+
+    const int16_t icx = iround(cx);
+    const int16_t icy = iround(cy);
+    const int16_t iw = i16max(4, iround(w));
+    const int16_t ih = i16max(4, iround(h));
 
     switch (m.mode) {
         case MOUTH_SMILE:
-            drawArc(cx, cy - h / 3, i16max(20, w / 2), PI * 0.20f, PI * 0.80f, STROKE_MOUTH - 1,
-                    color);
+            drawArc(icx, icy - ih / 3, i16max(22, iw / 2), PI * 0.20f, PI * 0.80f,
+                    STROKE_MOUTH - 1, color);
             break;
         case MOUTH_SMILE_WIDE:
-            drawArc(cx, cy - h / 3, i16max(28, w / 2), PI * 0.18f, PI * 0.82f, STROKE_MOUTH,
+            drawArc(icx, icy - ih / 3, i16max(31, iw / 2), PI * 0.18f, PI * 0.82f, STROKE_MOUTH,
                     color);
             break;
         case MOUTH_FROWN:
-            drawArc(cx, cy + h / 3, i16max(22, w / 2), PI * 1.17f, PI * 1.83f, STROKE_MOUTH,
+            drawArc(icx, icy + ih / 3, i16max(25, iw / 2), PI * 1.17f, PI * 1.83f, STROKE_MOUTH,
                     color);
             break;
         case MOUTH_ROUND:
-            drawRoundRing(cx, cy, i16max(16, w / 2), STROKE_RING, color);
+            drawRoundRing(icx, icy, i16max(18, iw / 2), STROKE_RING, color);
             break;
-        case MOUTH_DSHAPE: {
-            const int16_t rw = w;
-            const int16_t rh = h;
-            fillRoundRectBuffer(cx - rw / 2, cy - rh / 2, rw, rh, rh / 2, color);
-            fillCircleBuffer(cx, cy - rh / 2, rw / 2 + 2, C_BG);
+        case MOUTH_BOWL: {
+            const int16_t r = i16max(12, iw / 2);
+            const int16_t bottomY = icy;
+            const int16_t topY = bottomY - r;
+            fillBottomSemicircle(icx, topY, r, color);
             break;
         }
         default:
@@ -678,49 +766,42 @@ static void drawMouthShape(const MouthShape &m, uint16_t color) {
 }
 
 static void drawSurpriseBrows(uint32_t now) {
-    const int16_t wobble = iround(sinf(now / 650.0f) * 1.0f);
-    drawArc(EYE_CX_L, 72 + wobble, 24, PI * 1.22f, PI * 1.78f, STROKE_BROW, C_CYAN_SOFT);
-    drawArc(EYE_CX_R, 72 + wobble, 24, PI * 1.22f, PI * 1.78f, STROKE_BROW, C_CYAN_SOFT);
+    const int16_t wobble = iround(sinf(now / 520.0f) * 1.8f);
+    drawArc(EYE_CX_L, BROW_CY + wobble, 27, PI * 1.22f, PI * 1.78f, STROKE_BROW, C_CYAN_SOFT);
+    drawArc(EYE_CX_R, BROW_CY + wobble, 27, PI * 1.22f, PI * 1.78f, STROKE_BROW, C_CYAN_SOFT);
 }
 
 static void drawSymbolDots(uint32_t now) {
     const uint32_t t = now - expressionStartMs;
     const uint8_t active = (t / 300UL) % 3UL;
     for (uint8_t i = 0; i < 3; ++i) {
-        const int16_t r = (i == active) ? 15 : 11;
-        fillCircleBuffer(96 + i * 64, FACE_CY + 8, r, C_RED);
+        const int16_t r = (i == active) ? 17 : 12;
+        fillCircleBuffer(88 + i * 72, FACE_CY + 10, r, C_RED);
     }
 }
 
 static void drawSymbolQuestion(uint32_t now) {
     const uint32_t t = now - expressionStartMs;
-    const int16_t pulse = iround(sinf(t / 450.0f) * 1.0f);
+    const int16_t pulse = iround(sinf(t / 450.0f) * 0.8f);
     const int16_t stroke = 16;
-    const int16_t stemCx = FACE_CX + 6;
+    const int16_t sx = FACE_CX;
+    const int16_t cy = 76;
+    const int16_t r = 45 + pulse / 2;
+    const float a0 = PI;
+    const float a1 = a0 + PI * 1.5f;
 
-    // Upper curl: top arc (0.12π→1.06π), opening downward — not the bottom ⌣ arc.
-    const int16_t hookCx = stemCx - 4;
-    const int16_t hookCy = 50;
-    const int16_t hookR = 58 + pulse / 2;
-    drawArc(hookCx, hookCy, hookR, PI * 0.12f, PI * 1.06f, stroke, C_YELLOW);
+    drawArc(sx, cy, r, a0, a1, stroke, C_YELLOW);
+    drawLineThick(sx, cy + r, sx, 162, stroke, C_YELLOW);
 
-    // Vertical stem — gap below curl opening.
-    const int16_t stemW = 22;
-    const int16_t stemH = 44;
-    const int16_t stemX = stemCx - stemW / 2;
-    const int16_t stemY = 118;
-    fillRoundRectBuffer(stemX, stemY, stemW, stemH, stemW / 2, C_YELLOW);
-
-    // Dot — gap below stem.
-    const int16_t dotR = 15 + (pulse > 0 ? 1 : 0);
-    fillCircleBuffer(stemCx, 192, dotR, C_YELLOW);
+    const int16_t dotR = 13 + (pulse > 0 ? 1 : 0);
+    fillCircleBuffer(sx, 186, dotR, C_YELLOW);
 }
 
 static void drawSymbolAlert(uint32_t now) {
     const uint32_t t = now - expressionStartMs;
-    const int16_t pulse = iround(sinf(t / 240.0f) * 2.0f);
-    fillRoundRectBuffer(FACE_CX - 14 - pulse / 2, 52, 28 + pulse, 108, 14, C_RED);
-    fillCircleBuffer(FACE_CX, 184, 16 + (pulse > 0 ? 1 : 0), C_RED);
+    const int16_t pulse = iround(sinf(t / 240.0f) * 2.5f);
+    fillRoundRectBuffer(FACE_CX - 16 - pulse / 2, 58, 32 + pulse, 118, 16, C_RED);
+    fillCircleBuffer(FACE_CX, 192, 18 + (pulse > 0 ? 1 : 0), C_RED);
 }
 
 static void setExpression(FaceExpression next, bool manual) {
@@ -788,7 +869,7 @@ static void renderRoboEyesFrame(uint32_t now) {
     }
     drawEyeShape(currentPose.left, now, currentPose.color, true);
     drawEyeShape(currentPose.right, now, currentPose.color, false);
-    drawMouthShape(currentPose.mouth, currentPose.color);
+    drawMouthShape(currentPose.mouth, now, currentPose.color);
 }
 
 static void drawRoboEye(const EyeBox &box, bool rightSide) {

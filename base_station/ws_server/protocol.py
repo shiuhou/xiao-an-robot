@@ -118,7 +118,7 @@ def make_play_tts(audio_id: str, audio_url: str,
         "text_preview": text_preview,
     })
 
-def make_play_local(sound: str, volume: float = 0.8) -> dict:
+def make_play_local(sound: str, volume: float = 0.7) -> dict:
     return build_message(MessageType.AUDIO_PLAY_LOCAL, {
         "sound":  sound,
         "volume": volume,

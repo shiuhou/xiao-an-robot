@@ -74,28 +74,41 @@ void WSClient::_connectAll() {
     return;
   }
 
+#if MERGETEST_ENABLE_CAMERA
   LOGI("WS", "Connecting video ws://%s:%u/video", _host, _port);
   _video.begin(_host, _port, "/video");
   _video.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
     _onVideoEvent(type, payload, length);
   });
   _video.setReconnectInterval(RETRY_MIN_MS);
+#else
+  LOGI("WS", "Video channel disabled");
+#endif
 
+#if MERGETEST_ENABLE_MIC
   LOGI("WS", "Connecting audio ws://%s:%u/audio", _host, _port);
   _audio.begin(_host, _port, "/audio");
   _audio.onEvent([this](WStype_t type, uint8_t* payload, size_t length) {
     _onAudioEvent(type, payload, length);
   });
   _audio.setReconnectInterval(RETRY_MIN_MS);
+#else
+  LOGI("WS", "Audio channel disabled");
+#endif
 }
 
 void WSClient::loop() {
   _control.loop();
+#if MERGETEST_ENABLE_CAMERA
   _video.loop();
+#endif
+#if MERGETEST_ENABLE_MIC
   _audio.loop();
+#endif
 
   if (_controlConnected && (millis() - _lastHb >= _heartbeatMs)) {
-    sendHeartbeat(false);
+    const bool busy = _busyProvider ? _busyProvider() : false;
+    sendHeartbeat(busy);
     _lastHb = millis();
   }
 }
@@ -110,6 +123,10 @@ void WSClient::setHeartbeatIntervalMs(uint32_t ms) {
   if (ms >= 500) {
     _heartbeatMs = ms;
   }
+}
+
+void WSClient::setBusyProvider(BusyProvider provider) {
+  _busyProvider = provider;
 }
 
 void WSClient::sendControl(JsonDocument& doc) {
@@ -135,10 +152,25 @@ void WSClient::sendHello() {
   payload["wifi_rssi"] = WiFi.RSSI();
 
   JsonArray caps = payload["capabilities"].to<JsonArray>();
+#if MERGETEST_ENABLE_DISPLAY
   caps.add("display");
+#endif
+#if MERGETEST_ENABLE_MOTOR
   caps.add("motion");
+#endif
+#if MERGETEST_ENABLE_SPEAKER
   caps.add("speaker");
+#endif
+#if MERGETEST_ENABLE_CAMERA
   caps.add("camera");
+#endif
+#if MERGETEST_ENABLE_MIC
+  caps.add("mic");
+  caps.add("audio_in");
+#endif
+#if ENABLE_ARDUINO_OTA
+  caps.add("ota");
+#endif
 
   sendControl(doc);
   LOGI("WS", "Sent device.hello device_id=%s", MERGETEST_DEVICE_ID);
@@ -174,12 +206,19 @@ void WSClient::sendStatus(const char* expression, const char* motion, const char
   sendControl(doc);
 }
 
-void WSClient::sendCommandAck(const char* commandType, const char* status, const char* detail) {
+void WSClient::sendCommandAck(
+    const char* commandType,
+    const char* status,
+    const char* detail,
+    const char* actionId) {
   auto doc = buildMsg(MsgType::COMMAND_ACK, _seq++);
   auto payload = doc["payload"].to<JsonObject>();
   payload["device_id"] = MERGETEST_DEVICE_ID;
   payload["command_type"] = commandType ? commandType : "unknown";
   payload["status"] = status ? status : "ok";
+  if (actionId && actionId[0]) {
+    payload["action_id"] = actionId;
+  }
   if (detail && detail[0]) {
     payload["detail"] = detail;
   }

@@ -16,20 +16,38 @@ These instructions apply to the whole repository.
 
 ## Project Shape
 
-- `robot/firmware` is the ESP32-S3 firmware and hardware bring-up area.
-- `robot/mergetesting` is the DK-2500 integration firmware (WebSocket `/control` `/video` `/audio`).
+- `robot/firmware` is the ESP32-S3 robot-body firmware and isolated hardware bring-up area.
+- `robot/mergetesting` is the DK-2500/base-station integration firmware (WebSocket `/control` `/video` `/audio`).
+- `robot/mergetesting` may copy or sync proven modules from `robot/firmware`, but DK-2500 integration behavior belongs in `robot/mergetesting`.
 - `base_station` is the DK-2500 WebSocket, perception, ASR/emotion runtime area.
 - `agent` contains Agent brain, gateway, skills, memory/context shell, and local tools.
 - `shared` contains protocol constants, schema, and examples.
 - `docs` and `hardware` must stay aligned with actual firmware envs and wiring.
 - **`docs/agents/README.md`** is the entry point for AI agents (file registry, test matrix, snapshots).
 
+## Agent Session Protocol (Codex-first)
+
+Primary workflow for AI agents in this repo:
+
+1. **Canonical doc:** `docs/agents/01_session_protocol.md` — open/close session, three collaboration tiers, multi-agent rules.
+2. **Codex skill:** `.agents/skills/xiao-an-session/SKILL.md` — invoke on 开工/收工; user says `按 xiao-an-session 开工`.
+3. **Optional Feishu tier:** `.agents/skills/team-lark/SKILL.md` — parallel agents / human-visible tasks.
+4. **Optional memory tier:** claude-mem for Codex pitfalls only; progress still lives in Git (`00_snapshot.md`, registries, queue results).
+5. **Cursor (secondary):** only when the user asks; same `01_session_protocol.md`; optional `.cursor/rules/agent-session.mdc`.
+
+Before code or doc edits: read `docs/agents/README.md` + `00_snapshot.md` + task registry.
+Before finishing: update snapshot row + relevant registry/test matrix; output 收工摘要 per `01_session_protocol.md`.
+
+Truth priority: live source / `platformio.ini` > this file > latest `docs/project_status_*.md` > `00_snapshot.md` > registries > old docs/archive.
+
 ## Firmware Rules
 
-- Keep `robot/firmware/src/main.cpp` as the main `/control` integration entrypoint.
+- Keep `robot/firmware/src/main.cpp` as the robot-body baseline entrypoint, not the DK-2500 demo entrypoint.
+- DK-2500/base-station integration work belongs in `robot/mergetesting`; do not add new `/control` `/video` `/audio` integration entrypoints to `robot/firmware`.
 - New hardware experiments should use a dedicated `*_main.cpp` or test file plus a dedicated PlatformIO env in `robot/firmware/platformio.ini`.
 - Use `build_src_filter` so isolated test entrypoints are excluded from `esp32-s3-devkitc-1`.
 - Do not collapse isolated hardware experiments into `main.cpp`.
+- If `mergetesting` needs a robot feature, first validate it in `robot/firmware`, then copy/sync the minimal proven module into `robot/mergetesting`.
 - Validate firmware with specific envs, not broad `pio run`.
 - Do not run multiple PlatformIO builds in parallel from the same `robot/firmware` workspace because they share `.pio/build`.
 
@@ -50,7 +68,16 @@ Current important envs:
 - Archived sources: `robot/firmware/archive/`, experiments: `robot/firmware/experiments/`.
 - `voice_recognition_test`: INMP441 electrical/RMS test, not real ASR.
 - `speaker_amp_test`: MAX98357A tone test.
-- `esp32-s3-integrated`: DK-2500 `/control` + `/video` + `/audio` + face240 (replaces mergetesting for new burns).
+- `esp32-s3-integrated_legacy`: historical firmware-side DK-2500 integration snapshot; do not use for new burns. Use `robot/mergetesting` instead.
+
+Current mergetesting envs:
+
+- `mergetesting`: DK-2500 integration baseline.
+- `mergetesting_display_only`: Phase 1-2 display/motor/speaker/WebSocket path.
+- `mergetesting_face240_only`: Phase 2 2.4" face path.
+- `mergetesting_cam_only`: Phase 3 OV2640 JPEG `/video` path.
+- `mergetesting_mic_only`: INMP441 PCM `/audio` path.
+- `mergetesting_base64_video`: `/video` base64 fallback.
 
 ## Hardware Assumptions
 
@@ -81,7 +108,16 @@ pio run -e motor_cam_wifi_manual
 pio run -e face240_integrated
 pio run -e face240_wiretest
 pio run -e face240_9expr_merged
-pio run -e esp32-s3-integrated
+```
+
+Mergetesting:
+
+```powershell
+cd robot\mergetesting
+pio run -e mergetesting_display_only
+pio run -e mergetesting_face240_only
+pio run -e mergetesting_cam_only
+pio run -e mergetesting_mic_only
 ```
 
 Face display helper:

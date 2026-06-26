@@ -14,6 +14,7 @@ import json
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Dict, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -42,6 +43,30 @@ logger = logging.getLogger("ws_server")
 # Active robot sessions: device_id -> session dict
 sessions: Dict[str, dict] = {}
 video_frame_source = None
+audio_runtime_dir = Path("runtime")
+audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
+MAX_SAFE_SPEED = 0.2
+MAX_SAFE_DISTANCE_CM = 2.0
+MAX_SAFE_TIMEOUT_MS = 500
+
+
+def _initial_audio_stats() -> dict:
+    return {
+        "format": "pcm_s16le",
+        "sample_rate": 16000,
+        "channels": 1,
+        "chunks": 0,
+        "bytes": 0,
+        "latest_chunk_bytes": 0,
+        "latest_file_bytes": 0,
+        "latest_file_max_bytes": audio_latest_pcm_max_bytes,
+        "last_chunk_id": None,
+        "last_meta": None,
+        "updated_at": None,
+    }
+
+
+audio_runtime_stats = _initial_audio_stats()
 
 
 def set_video_frame_source(source):
@@ -54,6 +79,130 @@ def reset_state_for_tests() -> None:
 
     sessions.clear()
     set_video_frame_source(None)
+    reset_audio_runtime_stats()
+
+
+def reset_audio_runtime_stats() -> None:
+    """Reset in-memory audio counters used by /audio observability."""
+
+    global audio_runtime_stats
+    audio_runtime_stats = _initial_audio_stats()
+
+
+def _audio_latest_pcm_path() -> Path:
+    return audio_runtime_dir / "latest_audio.pcm"
+
+
+def _audio_stats_path() -> Path:
+    return audio_runtime_dir / "audio_stats.json"
+
+
+def _clamp_number(value, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(number, maximum))
+
+
+def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(number, maximum))
+
+
+def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int]:
+    raw_params = payload.get("params", {})
+    if not isinstance(raw_params, dict):
+        raw_params = {}
+
+    timeout_ms = _clamp_int(
+        payload.get("timeout_ms"),
+        MAX_SAFE_TIMEOUT_MS,
+        1,
+        MAX_SAFE_TIMEOUT_MS,
+    )
+
+    if action == MotionAction.MOVE_OUT_OF_DOCK:
+        return {
+            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
+            "distance_cm": _clamp_number(
+                raw_params.get("distance_cm"),
+                MAX_SAFE_DISTANCE_CM,
+                0.0,
+                MAX_SAFE_DISTANCE_CM,
+            ),
+        }, timeout_ms
+
+    if action == MotionAction.MOVE_BACK_TO_DOCK:
+        return {
+            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
+        }, timeout_ms
+
+    return raw_params, int(payload.get("timeout_ms", 5000) or 5000)
+
+
+def _write_audio_stats() -> None:
+    try:
+        audio_runtime_dir.mkdir(parents=True, exist_ok=True)
+        _audio_stats_path().write_text(
+            json.dumps(audio_runtime_stats, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.warning("Failed to write audio stats: %s", exc)
+
+
+def _trim_latest_audio_file(path: Path) -> int:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return 0
+
+    if size <= audio_latest_pcm_max_bytes:
+        return size
+
+    try:
+        data = path.read_bytes()[-audio_latest_pcm_max_bytes:]
+        path.write_bytes(data)
+        return len(data)
+    except OSError as exc:
+        logger.warning("Failed to trim latest audio PCM: %s", exc)
+        return size
+
+
+def record_audio_chunk(pcm_frame: bytes) -> None:
+    """Persist one PCM chunk and update bounded runtime observability stats."""
+
+    if not pcm_frame:
+        return
+
+    audio_runtime_stats["chunks"] += 1
+    audio_runtime_stats["bytes"] += len(pcm_frame)
+    audio_runtime_stats["latest_chunk_bytes"] = len(pcm_frame)
+    audio_runtime_stats["updated_at"] = time.time()
+
+    try:
+        audio_runtime_dir.mkdir(parents=True, exist_ok=True)
+        latest_path = _audio_latest_pcm_path()
+        with latest_path.open("ab") as pcm_file:
+            pcm_file.write(pcm_frame)
+        audio_runtime_stats["latest_file_bytes"] = _trim_latest_audio_file(latest_path)
+    except OSError as exc:
+        logger.warning("Failed to write latest audio PCM: %s", exc)
+
+    _write_audio_stats()
+
+
+def record_audio_chunk_meta(payload: dict) -> None:
+    """Record the latest audio.chunk_meta message sent on /control."""
+
+    audio_runtime_stats["last_chunk_id"] = payload.get("chunk_id")
+    audio_runtime_stats["last_meta"] = dict(payload)
+    audio_runtime_stats["updated_at"] = time.time()
+    _write_audio_stats()
 
 
 def remove_session_if_current(device_id: str, websocket: ServerConnection) -> bool:
@@ -75,6 +224,49 @@ async def handle_control(websocket: ServerConnection):
                 data = json.loads(raw)
             except json.JSONDecodeError:
                 logger.warning("Failed to parse JSON, ignoring")
+                continue
+
+            raw_type = data.get("type")
+            payload = data.get("payload", {})
+            if raw_type == "command.ack":
+                logger.info(
+                    "Command ack: type=%s status=%s",
+                    payload.get("command_type"),
+                    payload.get("status"),
+                )
+                continue
+
+            if raw_type == "video.frame_meta":
+                logger.info(
+                    "Video meta: frame_id=%s %sx%s",
+                    payload.get("frame_id"),
+                    payload.get("width"),
+                    payload.get("height"),
+                )
+                continue
+
+            if raw_type == "video.frame":
+                frame_data = payload.get("data", "")
+                logger.info(
+                    "Video frame base64: frame_id=%s bytes=%s",
+                    payload.get("frame_id"),
+                    len(frame_data) if isinstance(frame_data, str) else 0,
+                )
+                continue
+
+            if raw_type == "audio.chunk_meta":
+                record_audio_chunk_meta(payload)
+                logger.info(
+                    "Audio meta: chunk_id=%s format=%s sample_rate=%s channels=%s",
+                    payload.get("chunk_id"),
+                    payload.get("format"),
+                    payload.get("sample_rate"),
+                    payload.get("channels"),
+                )
+                continue
+
+            if raw_type == "asr.transcript.mock":
+                logger.info("ASR mock transcript: %s", payload.get("text"))
                 continue
 
             try:
@@ -123,32 +315,6 @@ async def handle_control(websocket: ServerConnection):
 
             elif msg_type == MessageType.ERROR_REPORT:
                 logger.warning(f"Robot error [{payload.get('code')}]: {payload.get('message')}")
-
-            elif raw.get("type") == "command.ack":
-                logger.info(
-                    "Command ack: type=%s status=%s",
-                    payload.get("command_type"),
-                    payload.get("status"),
-                )
-
-            elif raw.get("type") == "video.frame_meta":
-                logger.info(
-                    "Video meta: frame_id=%s %sx%s",
-                    payload.get("frame_id"),
-                    payload.get("width"),
-                    payload.get("height"),
-                )
-
-            elif raw.get("type") == "video.frame":
-                data = payload.get("data", "")
-                logger.info(
-                    "Video frame base64: frame_id=%s bytes=%s",
-                    payload.get("frame_id"),
-                    len(data) if isinstance(data, str) else 0,
-                )
-
-            elif raw.get("type") == "asr.transcript.mock":
-                logger.info("ASR mock transcript: %s", payload.get("text"))
 
     except ConnectionClosed:
         logger.info(f"Robot disconnected: {device_id}")
@@ -200,11 +366,12 @@ def build_robot_message(command_payload: dict) -> dict:
 
     if command == MessageType.MOTION_EXECUTE.value:
         action = MotionAction(command_payload.get("action", MotionAction.STOP.value))
+        params, timeout_ms = _safe_motion_payload(action, command_payload)
         return make_motion(
             action_id=command_payload.get("action_id", f"agent-{uuid.uuid4().hex[:8]}"),
             action=action,
-            params=command_payload.get("params", {}),
-            timeout_ms=int(command_payload.get("timeout_ms", 5000)),
+            params=params,
+            timeout_ms=timeout_ms,
         )
 
     if command == MessageType.AUDIO_PLAY_TTS.value:
@@ -212,15 +379,15 @@ def build_robot_message(command_payload: dict) -> dict:
         audio_id = command_payload.get("audio_id", f"tts-{uuid.uuid4().hex[:8]}")
         return make_play_tts(
             audio_id=audio_id,
-            audio_url=command_payload.get("audio_url", f"mock://tts/{audio_id}.mp3"),
+            audio_url=command_payload.get("audio_url", f"mock://tts/{audio_id}"),
             duration_ms=int(command_payload.get("duration_ms", max(1000, len(text) * 180))),
             text_preview=text,
         )
 
     if command == MessageType.AUDIO_PLAY_LOCAL.value:
         return make_play_local(
-            sound=command_payload.get("sound", "wakeup_chime"),
-            volume=float(command_payload.get("volume", 0.8)),
+            sound=command_payload.get("sound", "care_01"),
+            volume=float(command_payload.get("volume", 0.7)),
         )
 
     raise ValueError(f"Unsupported agent command: {command}")
@@ -286,8 +453,13 @@ async def handle_audio(websocket: ServerConnection):
     try:
         async for frame in websocket:
             if isinstance(frame, bytes):
-                # TODO: pipe PCM frames to VAD -> ASR pipeline
-                pass
+                record_audio_chunk(frame)
+                logger.debug(
+                    "Audio chunk: bytes=%s total_chunks=%s total_bytes=%s",
+                    len(frame),
+                    audio_runtime_stats["chunks"],
+                    audio_runtime_stats["bytes"],
+                )
     except ConnectionClosed:
         logger.info("Audio stream disconnected")
 
@@ -296,6 +468,42 @@ async def handle_video(websocket: ServerConnection):
     """Handle /video channel: receive JPEG frames from robot."""
     logger.info("Video stream connected")
     latest_path = None
+    pending_header: Optional[tuple[int, int]] = None
+
+    async def process_video_packet(packet: bytes) -> None:
+        if len(packet) < 8:
+            logger.warning("Invalid /video frame: packet shorter than header")
+            return
+
+        length = int.from_bytes(packet[0:4], "big")
+        timestamp = int.from_bytes(packet[4:8], "big")
+        jpeg_data = packet[8:8 + length]
+        if len(jpeg_data) != length:
+            logger.warning("Invalid /video frame: JPEG payload length does not match header")
+            return
+
+        logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+
+        if latest_path and jpeg_data:
+            try:
+                latest_path.write_bytes(jpeg_data)
+            except OSError as exc:
+                logger.warning("Failed to write latest video frame: %s", exc)
+
+        if video_frame_source is not None:
+            try:
+                decoded = await video_frame_source.push_packet(packet)
+                logger.debug(
+                    "Decoded /video frame: frame_id=%s size=%sx%s",
+                    decoded.get("frame_id"),
+                    decoded.get("width"),
+                    decoded.get("height"),
+                )
+            except VideoFrameDecodeError as exc:
+                logger.warning("Invalid /video frame: %s", exc)
+            except Exception:
+                logger.exception("Unexpected error while processing /video frame")
+
     try:
         from pathlib import Path
 
@@ -309,31 +517,24 @@ async def handle_video(websocket: ServerConnection):
             if not isinstance(frame, bytes):
                 continue
 
-            if len(frame) > 8:
+            if pending_header is not None:
+                expected_length, timestamp = pending_header
+                pending_header = None
+                packet = (
+                    expected_length.to_bytes(4, "big")
+                    + timestamp.to_bytes(4, "big")
+                    + frame[:expected_length]
+                )
+                await process_video_packet(packet)
+                continue
+
+            if len(frame) == 8:
                 length = int.from_bytes(frame[0:4], "big")
                 timestamp = int.from_bytes(frame[4:8], "big")
-                jpeg_data = frame[8:8 + length]
-                logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+                pending_header = (length, timestamp)
+                continue
 
-                if latest_path and jpeg_data:
-                    try:
-                        latest_path.write_bytes(jpeg_data)
-                    except OSError as exc:
-                        logger.warning("Failed to write latest video frame: %s", exc)
-
-            if video_frame_source is not None:
-                try:
-                    decoded = await video_frame_source.push_packet(frame)
-                    logger.debug(
-                        "Decoded /video frame: frame_id=%s size=%sx%s",
-                        decoded.get("frame_id"),
-                        decoded.get("width"),
-                        decoded.get("height"),
-                    )
-                except VideoFrameDecodeError as exc:
-                    logger.warning("Invalid /video frame: %s", exc)
-                except Exception:
-                    logger.exception("Unexpected error while processing /video frame")
+            await process_video_packet(frame)
     except ConnectionClosed:
         logger.info("Video stream disconnected")
 

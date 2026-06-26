@@ -4,22 +4,42 @@
 
 ## Env 矩阵
 
-| env | DISPLAY | CAMERA | MIC | 用途 |
-|-----|---------|--------|-----|------|
-| `mergetesting` | ST7735 | 开 | 关 | 默认（引脚冲突，慎用） |
-| `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1–2 |
-| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 大屏表情 demo |
-| `mergetesting_cam_only` | 关 | 开 | 关 | **Phase 3 传画** |
-| `mergetesting_mic_only` | ST7735 | 关 | 开 | PCM → `/audio` |
-| `mergetesting_base64_video` | 开 | 开 | 关 | video base64 fallback |
+| env | DISPLAY | CAMERA | MIC | 用途 | H |
+|-----|---------|--------|-----|------|---|
+| `mergetesting` | ST7735 | 开 | 关 | 默认合并 baseline | — |
+| `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1–2 `/control` | ✅ 2026-06-26 |
+| `mergetesting_display_only_ota` | ST7735 | 关 | 关 | Phase 1-2 OTA upload | ✅ 2026-06-26 |
+| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control` | ✅ 2026-06-26 |
+| `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
+| `mergetesting_cam_only` | 关 | 开 | 关 | **Phase 3 传画** QVGA | ✅ 2026-06-26 |
+| `mergetesting_cam_only_ota` | 关 | 开 | 关 | camera OTA + `/video` 落图 | ✅ 2026-06-26 |
+| `mergetesting_mic_only` | 关 | 关 | 开 | PCM → `/audio` | ✅ 2026-06-26 |
+| `mergetesting_mic_only_ota` | 关 | 关 | 开 | mic OTA + PCM stream | ✅ 2026-06-26 |
+| `mergetesting_motor_only` | 关 | 关 | 关 | motion 隔离 | ✅ 2026-06-26 |
+| `mergetesting_motor_only_ota` | 关 | 关 | 关 | motor OTA | ✅ P |
+| `mergetesting_speaker_only` | 关 | 关 | 关 | speaker 隔离 | ✅ 2026-06-26 |
+| `mergetesting_speaker_only_ota` | 关 | 关 | 关 | speaker OTA（hotspot 需 `--host_ip`） | ✅ 2026-06-26 |
+| `mergetesting_full_face240` | ST7789 | 开 | 开 | face240 + 全子系统合并 | 🟡 P smoke |
+| `mergetesting_full_face240_ota` | ST7789 | 开 | 开 | 上述合并 OTA | 🟡 P smoke |
+| `mergetesting_base64_video` | 开 | 开 | 关 | video base64 fallback | — |
+| `mergetesting_control_base` | 关 | 关 | 关 | control+OTA 基座（无 display/cam/mic） | ✅ P |
+| `mergetesting_control_ping` | 关 | 关 | 关 | 最小 `/control` ping（无 motor/speaker） | ✅ P |
+| `mergetesting_control_ping_ota` | 关 | 关 | 关 | control ping OTA | ✅ P |
+| `mergetesting_control_only` | 关 | 关 | 关 | motor+speaker+control（无 display/cam/mic） | ✅ P |
+| `mergetesting_control_only_ota` | 关 | 关 | 关 | control-only OTA | ✅ P |
 
-编译验证（2026-06-22）：`display_only`, `face240_only`, `cam_only` → SUCCESS。
+编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/project_status_2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07–T16 全部 PASS_H）。`mergetesting_full_face240(_ota)` 已做软件 smoke，合并全 H 仍待确认。
 
 ## 源文件注册表
 
 | 文件 | 来源 | 状态 | 职责 |
 |------|------|------|------|
-| `main.cpp` | 新建 + firmware main 逻辑 | ✅ | WiFi/WS/命令/串口本地测试 |
+| `main.cpp` | thin Arduino entrypoint | ✅ | 只转发 `setup()` / `loop()` 到 `MergetestingApp` |
+| `app/mergetesting_app.cpp/h` | app layer | ✅ | WiFi/OTA/WS/camera/mic/serial mock runtime wiring |
+| `services/robot_state.cpp/h` | service layer | ✅ | expression/motion/camera/busy/docked/transport state |
+| `services/status_service.cpp/h` | service layer | ✅ | `device.status`, `command.ack`, `error.report`, `motion.completed` |
+| `services/motion_service.cpp/h` | service layer | ✅ | non-blocking `motion.execute`, stop interrupt, action_id ack/completion |
+| `services/command_router.cpp/h` | service layer | ✅ | `/control` command dispatch |
 | `config.h` | 新建 | ✅ | WiFi、device_id、硬件开关 |
 | `hardware_pins.h` | 汇总 wiring | ✅ | 电机/TFT/I2S 引脚 |
 | `protocol.h` | firmware + 扩展 | ✅ | + `command.ack`, `video.frame*` |
@@ -33,14 +53,15 @@
 | `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ | PCM chunk → `/audio` |
 | `debug_log.h` | 新建 | ✅ | LOGI/LOGE 宏 |
 
-## `main.cpp` loop 顺序
+## `MergetestingApp` loop 顺序
 
 1. `maintainWiFi()`
 2. `wsClient.loop()` — heartbeat 2s
-3. `display_tick()` — face240 动画帧
-4. `pollSerialMockAsr()` — mock/expr/motion/sound
-5. `mic.streamLoop()` — 若启用
-6. `cam.captureLoop()` — 若 control 已连接
+3. `_motion.loop()` — non-blocking motion completion
+4. `display_tick()` — face240 动画帧
+5. `pollSerialMockAsr()` — mock/expr/motion/sound
+6. `mic.streamLoop()` — 若启用
+7. `cam.captureLoop()` — 若 control 已连接
 
 ## 串口本地测试（无基站）
 

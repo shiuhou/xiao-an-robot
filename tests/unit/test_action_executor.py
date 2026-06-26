@@ -16,8 +16,11 @@ class FakeRobotMotionSkill:
         self.say_calls = []
         self.expression_calls = []
         self.move_out_calls = 0
+        self.move_out_args = []
         self.return_to_dock_calls = 0
+        self.return_to_dock_args = []
         self.care_calls = []
+        self.care_args = []
 
     def say(self, text: str) -> dict:
         self.say_calls.append(text)
@@ -27,16 +30,36 @@ class FakeRobotMotionSkill:
         self.expression_calls.append(expression)
         return {"ok": True}
 
-    def move_out_of_dock(self) -> dict:
+    def move_out_of_dock(self, speed=None, distance_cm=None, timeout_ms=None) -> dict:
         self.move_out_calls += 1
+        self.move_out_args.append({
+            "speed": speed,
+            "distance_cm": distance_cm,
+            "timeout_ms": timeout_ms,
+        })
         return {"ok": True}
 
-    def return_to_dock(self) -> dict:
+    def return_to_dock(self, speed=None, timeout_ms=None) -> dict:
         self.return_to_dock_calls += 1
+        self.return_to_dock_args.append({
+            "speed": speed,
+            "timeout_ms": timeout_ms,
+        })
         return {"ok": True}
 
-    def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+    def care_for_user(
+        self,
+        text: str = "你已经工作很久了，休息一下吧。",
+        speed=None,
+        distance_cm=None,
+        timeout_ms=None,
+    ) -> list[dict]:
         self.care_calls.append(text)
+        self.care_args.append({
+            "speed": speed,
+            "distance_cm": distance_cm,
+            "timeout_ms": timeout_ms,
+        })
         return [{"ok": True, "action": "care_for_user"}]
 
 
@@ -52,13 +75,19 @@ class OfflineRobotMotionSkill(FakeRobotMotionSkill):
     def show_expression(self, expression: str) -> dict:
         raise RuntimeError("No online robot connected on /control")
 
-    def move_out_of_dock(self) -> dict:
+    def move_out_of_dock(self, speed=None, distance_cm=None, timeout_ms=None) -> dict:
         raise RuntimeError("No online robot connected on /control")
 
-    def return_to_dock(self) -> dict:
+    def return_to_dock(self, speed=None, timeout_ms=None) -> dict:
         raise RuntimeError("No online robot connected on /control")
 
-    def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+    def care_for_user(
+        self,
+        text: str = "你已经工作很久了，休息一下吧。",
+        speed=None,
+        distance_cm=None,
+        timeout_ms=None,
+    ) -> list[dict]:
         raise RuntimeError("No online robot connected on /control")
 
 
@@ -71,16 +100,36 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
         self.expression_calls.append(expression)
         return {"ok": True}
 
-    async def move_out_of_dock(self) -> dict:
+    async def move_out_of_dock(self, speed=None, distance_cm=None, timeout_ms=None) -> dict:
         self.move_out_calls += 1
+        self.move_out_args.append({
+            "speed": speed,
+            "distance_cm": distance_cm,
+            "timeout_ms": timeout_ms,
+        })
         return {"ok": True}
 
-    async def return_to_dock(self) -> dict:
+    async def return_to_dock(self, speed=None, timeout_ms=None) -> dict:
         self.return_to_dock_calls += 1
+        self.return_to_dock_args.append({
+            "speed": speed,
+            "timeout_ms": timeout_ms,
+        })
         return {"ok": True}
 
-    async def care_for_user(self, text: str = "你已经工作很久了，休息一下吧。") -> list[dict]:
+    async def care_for_user(
+        self,
+        text: str = "你已经工作很久了，休息一下吧。",
+        speed=None,
+        distance_cm=None,
+        timeout_ms=None,
+    ) -> list[dict]:
         self.care_calls.append(text)
+        self.care_args.append({
+            "speed": speed,
+            "distance_cm": distance_cm,
+            "timeout_ms": timeout_ms,
+        })
         return [{"ok": True, "action": "care_for_user"}]
 
 
@@ -304,6 +353,11 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         await executor.execute(decision)
 
         self.assertEqual(robot_motion.move_out_calls, 1)
+        self.assertEqual(robot_motion.move_out_args, [{
+            "speed": None,
+            "distance_cm": None,
+            "timeout_ms": None,
+        }])
 
     async def test_xiaoan_robot_move_out_tool_call_calls_motion(self) -> None:
         robot_motion = FakeRobotMotionSkill()
@@ -318,6 +372,25 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_motion.move_out_calls, 1)
         self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.move_out")
 
+    async def test_xiaoan_robot_move_out_tool_call_forwards_safety_args(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(
+                name="xiaoan.robot.move_out",
+                arguments={"speed": 1.0, "distance_cm": 99, "timeout_ms": 9000},
+            )],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(robot_motion.move_out_args, [{
+            "speed": 1.0,
+            "distance_cm": 99,
+            "timeout_ms": 9000,
+        }])
+
     async def test_robot_return_to_dock_tool_call_calls_motion(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -330,6 +403,24 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.return_to_dock_calls, 1)
 
+    async def test_xiaoan_robot_return_to_dock_tool_call_forwards_safety_args(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(
+                name="xiaoan.robot.return_to_dock",
+                arguments={"speed": 1.0, "timeout_ms": 9000},
+            )],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(robot_motion.return_to_dock_args, [{
+            "speed": 1.0,
+            "timeout_ms": 9000,
+        }])
+
     async def test_xiaoan_robot_care_tool_call_runs_care_sequence(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -341,6 +432,11 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         result = await executor.execute(decision)
 
         self.assertEqual(robot_motion.care_calls, ["休息一下"])
+        self.assertEqual(robot_motion.care_args, [{
+            "speed": None,
+            "distance_cm": None,
+            "timeout_ms": None,
+        }])
         action = result["executed_actions"][0]
         self.assertEqual(action["name"], "xiaoan.robot.care")
         self.assertEqual(action["result"]["tool"], "xiaoan.robot.care")
@@ -358,6 +454,30 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.care_calls, ["legacy"])
         self.assertEqual(result["executed_actions"][0]["name"], "robot.care")
+
+    async def test_xiaoan_robot_care_tool_call_forwards_safety_args(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(
+                name="xiaoan.robot.care",
+                arguments={
+                    "text": "legacy",
+                    "speed": 1.0,
+                    "distance_cm": 99,
+                    "timeout_ms": 9000,
+                },
+            )],
+        )
+
+        await executor.execute(decision)
+
+        self.assertEqual(robot_motion.care_args, [{
+            "speed": 1.0,
+            "distance_cm": 99,
+            "timeout_ms": 9000,
+        }])
 
     async def test_xiaoan_breathing_start_runs_local_guidance(self) -> None:
         robot_motion = FakeRobotMotionSkill()

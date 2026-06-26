@@ -70,7 +70,11 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         raw = await asyncio.wait_for(websocket.recv(), timeout=2)
         return json.loads(raw)
 
-    async def send_agent_command_and_assert_forwarded(self, payload: dict, expected_forwarded_type: str) -> dict:
+    async def send_agent_command_and_assert_forwarded(
+        self,
+        payload: dict,
+        expected_forwarded_type: str,
+    ) -> dict:
         await asyncio.wait_for(
             self.agent.send(json.dumps({
                 "type": "agent.command",
@@ -94,26 +98,71 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
             {
                 "command": "display.expression",
                 "expression": "caring",
+                "duration_ms": 3000,
+                "loop": False,
             },
             "display.expression",
         )
 
         self.assertEqual(robot_message["payload"]["expression"], "caring")
+        self.assertEqual(robot_message["payload"]["duration_ms"], 3000)
+        self.assertFalse(robot_message["payload"]["loop"])
 
     async def test_motion_execute_command_is_forwarded(self) -> None:
         robot_message = await self.send_agent_command_and_assert_forwarded(
             {
                 "command": "motion.execute",
                 "action": "move_out_of_dock",
+                "action_id": "agent-test-001",
             },
             "motion.execute",
         )
 
         self.assertEqual(robot_message["payload"]["action"], "move_out_of_dock")
-        self.assertIn("action_id", robot_message["payload"])
+        self.assertEqual(robot_message["payload"]["action_id"], "agent-test-001")
+        self.assertEqual(robot_message["payload"]["params"], {
+            "speed": 0.2,
+            "distance_cm": 2.0,
+        })
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
 
-    async def test_audio_play_tts_command_is_forwarded(self) -> None:
-        text = "你已经工作很久了，休息一下吧。"
+    async def test_motion_execute_command_clamps_hardware_safety_params(self) -> None:
+        robot_message = await self.send_agent_command_and_assert_forwarded(
+            {
+                "command": "motion.execute",
+                "action": "move_out_of_dock",
+                "params": {
+                    "speed": 1.0,
+                    "distance_cm": 99,
+                },
+                "timeout_ms": 10000,
+            },
+            "motion.execute",
+        )
+
+        self.assertEqual(robot_message["payload"]["params"], {
+            "speed": 0.2,
+            "distance_cm": 2.0,
+        })
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
+
+    async def test_audio_play_local_commands_are_forwarded(self) -> None:
+        for sound in ("care_01", "alarm_01", "wake_01"):
+            with self.subTest(sound=sound):
+                robot_message = await self.send_agent_command_and_assert_forwarded(
+                    {
+                        "command": "audio.play_local",
+                        "sound": sound,
+                        "volume": 0.7,
+                    },
+                    "audio.play_local",
+                )
+
+                self.assertEqual(robot_message["payload"]["sound"], sound)
+                self.assertAlmostEqual(robot_message["payload"]["volume"], 0.7)
+
+    async def test_audio_play_tts_command_is_forwarded_as_mock_tone(self) -> None:
+        text = "hello xiao an"
         robot_message = await self.send_agent_command_and_assert_forwarded(
             {
                 "command": "audio.play_tts",
@@ -125,6 +174,8 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_message["payload"]["text_preview"], text)
         self.assertIn("audio_id", robot_message["payload"])
         self.assertIn("audio_url", robot_message["payload"])
+        self.assertTrue(robot_message["payload"]["audio_url"].startswith("mock://tts/"))
+        self.assertFalse(robot_message["payload"]["audio_url"].endswith(".mp3"))
 
 
 if __name__ == "__main__":

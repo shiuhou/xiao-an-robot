@@ -245,7 +245,12 @@ class ActionExecutor:
 
         if canonical_name == "xiaoan.robot.move_out":
             try:
-                result = await self._call(self.robot_motion_skill.move_out_of_dock)
+                result = await self._call_with_supported_kwargs(
+                    self.robot_motion_skill.move_out_of_dock,
+                    speed=arguments.get("speed"),
+                    distance_cm=arguments.get("distance_cm"),
+                    timeout_ms=arguments.get("timeout_ms"),
+                )
             except Exception as exc:
                 self._record_robot_tool_failure(
                     tool_call=tool_call,
@@ -273,7 +278,11 @@ class ActionExecutor:
 
         if canonical_name == "xiaoan.robot.return_to_dock":
             try:
-                result = await self._call(self.robot_motion_skill.return_to_dock)
+                result = await self._call_with_supported_kwargs(
+                    self.robot_motion_skill.return_to_dock,
+                    speed=arguments.get("speed"),
+                    timeout_ms=arguments.get("timeout_ms"),
+                )
             except Exception as exc:
                 self._record_robot_tool_failure(
                     tool_call=tool_call,
@@ -301,13 +310,23 @@ class ActionExecutor:
 
         if canonical_name == "xiaoan.robot.care":
             text = arguments.get("text")
+            motion_kwargs = {
+                "speed": arguments.get("speed"),
+                "distance_cm": arguments.get("distance_cm"),
+                "timeout_ms": arguments.get("timeout_ms"),
+            }
             try:
-                result = await self._call(
-                    self.robot_motion_skill.care_for_user,
-                    text,
-                ) if text else await self._call(
-                    self.robot_motion_skill.care_for_user,
-                )
+                if text:
+                    result = await self._call_with_supported_kwargs(
+                        self.robot_motion_skill.care_for_user,
+                        text,
+                        **motion_kwargs,
+                    )
+                else:
+                    result = await self._call_with_supported_kwargs(
+                        self.robot_motion_skill.care_for_user,
+                        **motion_kwargs,
+                    )
             except Exception as exc:
                 self._record_robot_tool_failure(
                     tool_call=tool_call,
@@ -478,6 +497,39 @@ class ActionExecutor:
         if inspect.isawaitable(result):
             return await result
         return result
+
+    async def _call_with_supported_kwargs(self, function, *args, **kwargs):
+        filtered_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if value is not None
+        }
+        if filtered_kwargs:
+            try:
+                signature = inspect.signature(function)
+            except (TypeError, ValueError):
+                pass
+            else:
+                parameters = signature.parameters.values()
+                accepts_var_kwargs = any(
+                    parameter.kind == inspect.Parameter.VAR_KEYWORD
+                    for parameter in parameters
+                )
+                if not accepts_var_kwargs:
+                    accepted = {
+                        name
+                        for name, parameter in signature.parameters.items()
+                        if parameter.kind in {
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                            inspect.Parameter.KEYWORD_ONLY,
+                        }
+                    }
+                    filtered_kwargs = {
+                        key: value
+                        for key, value in filtered_kwargs.items()
+                        if key in accepted
+                    }
+        return await self._call(function, *args, **filtered_kwargs)
 
     async def _call_expression(
         self,

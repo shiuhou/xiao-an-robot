@@ -66,7 +66,20 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "required": [],
-            "properties": {},
+            "properties": {
+                "speed": {
+                    "type": "number",
+                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                },
+                "distance_cm": {
+                    "type": "number",
+                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                },
+            },
         },
         "returns": {
             "ok": "boolean",
@@ -84,7 +97,16 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "required": [],
-            "properties": {},
+            "properties": {
+                "speed": {
+                    "type": "number",
+                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                },
+            },
         },
         "returns": {
             "ok": "boolean",
@@ -114,6 +136,18 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
                 "reason": {
                     "type": "string",
                     "description": "Optional reason code for the care action.",
+                },
+                "speed": {
+                    "type": "number",
+                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                },
+                "distance_cm": {
+                    "type": "number",
+                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
                 },
             },
         },

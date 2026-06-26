@@ -17,14 +17,21 @@ python tools/check_runtime_env.py
 | Robot Motion Skill | `tests/integration/test_robot_motion_skill.py` | 命令构建 | P |
 | Emotion 流水线 | `tests/integration/test_emotion_runtime.py` 等 | mock 源 | P |
 | Protocol schema | `tests/unit/test_protocol_schema.py` | schema 一致 | P |
+| Mergetesting layering | `tests/unit/test_mergetesting_layering.py` | thin `main.cpp`, service files, busy heartbeat, non-blocking motion, split envs, OTA | P |
+| WS video source | `tests/unit/test_ws_video_source.py`, `test_ws_server_video_source.py` | QVGA JPEG, frame_meta, binary send | P |
+| WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM send | P |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
 
 ## 固件编译（勿并行同 workspace 多 env）
 
+`robot/firmware` checks are for robot-body feature bring-up only. DK-2500/base-station integration checks are under `robot/mergetesting`.
+
 | env | 命令 | 编译 | 硬件 H |
 |-----|------|------|--------|
 | `esp32-s3-devkitc-1` | `pio run -e esp32-s3-devkitc-1` | P | — |
+| `ota_bootstrap` | `pio run -e ota_bootstrap` | P | H optional: USB first flash |
+| `ota_bootstrap_wifi` | `pio run -e ota_bootstrap_wifi` | P | H optional: OTA upload after WiFi ready |
 | `motor_cam_wifi_manual` | `pio run -e motor_cam_wifi_manual` | P | H 可选 |
 | `face240_wiretest` | `pio run -e face240_wiretest` | P | H |
 | `face240_9expr_merged` | `pio run -e face240_9expr_merged` | P | H |
@@ -33,20 +40,36 @@ python tools/check_runtime_env.py
 
 ## Mergetesting
 
+Use these envs for `/control`, `/video`, and `/audio` integration with `base_station`.
+
 ```powershell
 cd robot\mergetesting
 pio run -e mergetesting_display_only
+pio run -e mergetesting_display_only_ota
 pio run -e mergetesting_face240_only
 pio run -e mergetesting_cam_only
+pio run -e mergetesting_cam_only_ota
 pio run -e mergetesting_mic_only
+pio run -e mergetesting_mic_only_ota
+pio run -e mergetesting
 ```
 
-| env | 编译 2026-06-22 | 联调 H |
-|-----|-----------------|--------|
-| `mergetesting_display_only` | P | — |
-| `mergetesting_face240_only` | P | — |
-| `mergetesting_cam_only` | P | — |
-| `mergetesting_mic_only` | — | — |
+| env | 编译 | 联调 H |
+|-----|------|--------|
+| `mergetesting_display_only` | P: 2026-06-26 Phase 1-2 hardening | H: `/control` hello/heartbeat/commands, 2026-06-26 |
+| `mergetesting_display_only_ota` | P: 2026-06-26 | H: espota upload path verified during split-env loop, 2026-06-26 |
+| `mergetesting_face240_only` | P: 2026-06-26 | H: expression caring/idle, no watchdog reset, 2026-06-26 |
+| `mergetesting_cam_only` | P: 2026-06-26 app/services split | H: QVGA JPEG + `video.frame_meta`, 2026-06-26 |
+| `mergetesting_cam_only_ota` | P: 2026-06-26 | H: espota upload, `/video`, `runtime/latest.jpg` valid JPEG, 2026-06-26 |
+| `mergetesting_mic_only` | P: 2026-06-26 | H: PCM `/audio`, heartbeat not starved, 2026-06-26 |
+| `mergetesting_mic_only_ota` | P: 2026-06-26 | H: espota upload + PCM stream, 2026-06-26 |
+| `mergetesting_motor_only` | P: 2026-06-26 | H: LEDC fix, motion ack/completed + physical direction, 2026-06-26 |
+| `mergetesting_speaker_only` | P: 2026-06-26 | H: lazy I2S fix, `audio.play_local`/mock TTS audible, 2026-06-26 |
+| `mergetesting_speaker_only_ota` | P: 2026-06-26 | H: Windows hotspot `--host_ip=192.168.137.1`, 2026-06-26 |
+| `mergetesting_face240_only_ota` | P: 2026-06-26 | H: espota upload + expression path, 2026-06-26 |
+| `mergetesting_full_face240` | P: 2026-06-26 combined face240 + all subs | 🟡: software smoke only; full H pending |
+| `mergetesting_full_face240_ota` | P: 2026-06-26 | 🟡: OTA smoke + `/video`/`/audio`/command ack; audible/motor in combined env pending |
+| `mergetesting` | P: 2026-06-26 combined baseline | —: burn after split env H (split envs now all H) |
 
 ## 固件工具脚本
 
@@ -58,11 +81,12 @@ pio run -e mergetesting_mic_only
 
 ## 端到端联调验收（人工）
 
-| Phase | 验收项 | 通过标准 |
-|-------|--------|----------|
-| 1 | `/control` | 5min heartbeat；重连 |
-| 2 | 命令 | 每条 `command.ack`；表情/电机/音 |
-| 3 | `/video` | `runtime/latest.jpg` 更新 |
-| 4 | 关怀闭环 | fatigue → OpenClaw → 三命令 |
+| Phase | 验收项 | 通过标准 | 状态 |
+|-------|--------|----------|------|
+| 1 | `/control` | 5min heartbeat；断线后 capped exponential reconnect；重连后重新 `device.hello` | H: 2026-06-26 |
+| 2 | 命令 | 每条 `command.ack`；motion 带 action_id；stop 打断前一动作并回 `motion.completed: interrupted`；未知命令/JSON 不崩 | H: 2026-06-26 |
+| 3 | `/video` | `runtime/latest.jpg` 更新 | H: 2026-06-26 |
+| 3b | `/audio` | `audio.chunk_meta` + PCM；heartbeat 不被饿死 | H: 2026-06-26 |
+| 4 | 关怀闭环 | fatigue → OpenClaw → 三命令 | — |
 
 **Agent 更新规则：** 跑过测试后在本表改 P/H/F 并注明日期。

@@ -15,17 +15,18 @@ sequenceDiagram
 ```
 
 **烧录：** `mergetesting_display_only`
+**OTA：** `mergetesting_display_only_ota`（仅当板上已有 OTA-enabled firmware）
 **基站：** `python -m base_station.ws_server.server`
 
 ## Phase 2 — 基站控车
 
 ```powershell
-python tools/send_robot_command.py expression --expression caring
-python tools/send_robot_command.py motion --action move_out_of_dock
-python tools/send_robot_command.py local --sound care_01
+python tools/send_robot_command.py expression caring
+python tools/send_robot_command.py motion move_out_of_dock
+python tools/send_robot_command.py local care_01
 ```
 
-ESP32 回：`command.ack` +（motion）`motion.completed`
+ESP32 回：每条命令 `command.ack`；motion ack/completed 带同一个 `action_id`；`stop` 会打断前一动作并回 `motion.completed` / `result: interrupted`。
 
 ## Phase 3 — 视频回传
 

@@ -2,7 +2,7 @@
 
 This page is the canonical wiring reference for Xiao An bench and integrated harnesses.
 
-Updated: **2026-06-22 integrated map**. Power distribution details: [power.md](power.md).
+Updated: **2026-06-25 doc sync over the 2026-06-22 integrated map**. Power distribution details: [power.md](power.md).
 
 Hardware target:
 
@@ -211,7 +211,7 @@ Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for no
 
 | Goal | Env | Notes |
 | --- | --- | --- |
-| TFT / face tests (integrated harness) | `face240_wiretest`, `face240`, `face240_9expr_merged`, `face240_espi`, `tftprobe_*`, `display_test` | Camera + TFT can coexist |
+| TFT / face tests (integrated harness) | `face240_wiretest`, `face240`, `face240_9expr_merged`, `tftprobe_hybrid_rawinit`, `display_test` | Camera + TFT can coexist |
 | Legacy TFT bench (old harness) | `face240_legacy`, `display_test_legacy` | Do not use with camera on GPIO9–12 |
 | Alias | `face240_integrated` | Same as `face240_wiretest` |
 | Camera + motor + WiFi demo | `motor_cam_wifi_manual` | SSID `XiaoAn-Motor`, password `12345678`, UI `http://192.168.4.1/` |
@@ -219,6 +219,8 @@ Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for no
 | Speaker test | `speaker_amp_test` | |
 | Motor bench | `motor_bench_once`, `motor_manual`, `motor_wifi_manual` | |
 | Main `/control` firmware | `esp32-s3-devkitc-1` | |
+| DK-2500 `/control` Phase 1-2 | `mergetesting_display_only`, `mergetesting_display_only_ota` | In `robot/mergetesting`; OTA target requires OTA-enabled firmware already running |
+| DK-2500 `/video` camera smoke | `mergetesting_cam_only`, `mergetesting_cam_only_ota` | Camera-only target; preserves verified JPEG WebSocket route |
 
 ## Integrated vs Legacy TFT Pins
 

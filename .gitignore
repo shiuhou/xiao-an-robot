@@ -60,10 +60,18 @@ Thumbs.db
 .pioenvs/
 .piolibdeps/
 robot/firmware/compile_commands.json
+robot/firmware/src/config.local.h
 robot/mergetesting/src/config.local.h
 .worktrees/
 worktrees/
 base_station/config.yaml
-.agents/
+
+# Agent local cache only — skills/ are tracked (see docs/agents/01_session_protocol.md)
+.agents/*
+!.agents/skills/
+!.agents/skills/**
+
+# IDE / language-server caches
+**/.cache/
 
 runtime/

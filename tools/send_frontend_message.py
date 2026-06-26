@@ -28,10 +28,15 @@ def build_frontend_event(text: str, session_id: str = "default") -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send one simulated frontend message to XiaoAnBrain.")
-    parser.add_argument("--text", required=True, help="Frontend message text.")
+    parser.add_argument("message", nargs="?", help="Frontend message text.")
+    parser.add_argument("--text", help="Frontend message text.")
     parser.add_argument("--session-id", default="default", help="Frontend session id.")
     parser.add_argument("--verbose", action="store_true", help="Accepted for local debugging; output is always JSON.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.text = args.text or args.message
+    if not args.text:
+        parser.error("message text is required")
+    return args
 
 
 async def main() -> None:

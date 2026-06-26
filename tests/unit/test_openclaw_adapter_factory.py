@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from agent.core.brain import XiaoAnBrain
+from agent.core.gateway_openclaw_adapter import GatewayOpenClawAdapter
 from agent.core.http_openclaw_adapter import HttpOpenClawAdapter
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
@@ -89,6 +90,28 @@ class OpenClawAdapterFactoryTest(unittest.TestCase):
 
         self.assertIsInstance(adapter, HttpOpenClawAdapter)
         self.assertEqual(adapter.timeout_sec, 5.0)
+
+    def test_gateway_backend_returns_gateway_adapter(self) -> None:
+        adapter = build_openclaw_adapter_from_env({
+            "XIAO_AN_OPENCLAW_BACKEND": "gateway",
+        })
+
+        self.assertIsInstance(adapter, GatewayOpenClawAdapter)
+        self.assertEqual(adapter.gateway_url, "ws://127.0.0.1:18789")
+        self.assertEqual(adapter.agent, "xiaoan-runtime")
+
+    def test_gateway_backend_reads_url_agent_and_timeout(self) -> None:
+        adapter = build_openclaw_adapter_from_env({
+            "XIAO_AN_OPENCLAW_BACKEND": "gateway",
+            "XIAO_AN_OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:19999",
+            "XIAO_AN_OPENCLAW_AGENT": "xiaoan-runtime-test",
+            "XIAO_AN_OPENCLAW_GATEWAY_TIMEOUT_SEC": "1.5",
+        })
+
+        self.assertIsInstance(adapter, GatewayOpenClawAdapter)
+        self.assertEqual(adapter.gateway_url, "ws://127.0.0.1:19999")
+        self.assertEqual(adapter.agent, "xiaoan-runtime-test")
+        self.assertEqual(adapter.timeout_sec, 1.5)
 
     def test_unknown_backend_raises_value_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "strange"):

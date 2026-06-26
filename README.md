@@ -23,6 +23,8 @@ Current working direction:
 Canonical boundary: [docs/openclaw_ownership_boundary.md](docs/openclaw_ownership_boundary.md).
 OpenClaw-facing robot tool manifest:
 [docs/openclaw_tool_manifest.md](docs/openclaw_tool_manifest.md).
+Gateway bridge MVP:
+[docs/openclaw_gateway_bridge.md](docs/openclaw_gateway_bridge.md).
 
 OpenClaw `xiaoan-runtime` owns user profile, long-term memory, scheduled
 reminders, tasks, morning briefs, daily reports, natural-language replies, and

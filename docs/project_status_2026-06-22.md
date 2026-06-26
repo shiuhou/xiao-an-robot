@@ -17,6 +17,10 @@ are `xiaoan.robot.say`, `xiaoan.robot.expression`, `xiaoan.robot.move_out`,
 `xiaoan.runtime.status`; legacy memory/task/reminder/summary/work-context tools
 remain compatibility-only.
 
+Step 30.3 update: `XIAO_AN_OPENCLAW_BACKEND=gateway` enables the real WebSocket
+OpenClaw Gateway bridge for `xiaoan-runtime`. Details and the manual smoke test
+are in [openclaw_gateway_bridge.md](openclaw_gateway_bridge.md).
+
 ## Git / Workspace State
 
 - Current branch: `main`.

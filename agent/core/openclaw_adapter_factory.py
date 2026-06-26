@@ -5,6 +5,12 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
+from agent.core.gateway_openclaw_adapter import (
+    DEFAULT_OPENCLAW_AGENT,
+    DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC,
+    DEFAULT_OPENCLAW_GATEWAY_URL,
+    GatewayOpenClawAdapter,
+)
 from agent.core.http_openclaw_adapter import HttpOpenClawAdapter
 from agent.core.openclaw_adapter import FakeOpenClawAdapter
 
@@ -36,6 +42,23 @@ def build_openclaw_adapter_from_env(environ: Mapping[str, str] | None = None):
             base_url=active_environ.get("XIAO_AN_OPENCLAW_URL", DEFAULT_OPENCLAW_URL),
             endpoint=active_environ.get("XIAO_AN_OPENCLAW_ENDPOINT", DEFAULT_OPENCLAW_ENDPOINT),
             timeout_sec=_parse_timeout(active_environ.get("XIAO_AN_OPENCLAW_TIMEOUT_SEC")),
+        )
+
+    if backend == "gateway":
+        return GatewayOpenClawAdapter(
+            gateway_url=active_environ.get(
+                "XIAO_AN_OPENCLAW_GATEWAY_URL",
+                DEFAULT_OPENCLAW_GATEWAY_URL,
+            ),
+            agent=active_environ.get(
+                "XIAO_AN_OPENCLAW_AGENT",
+                DEFAULT_OPENCLAW_AGENT,
+            ),
+            timeout_sec=_parse_timeout(
+                active_environ.get("XIAO_AN_OPENCLAW_TIMEOUT_SEC")
+                or active_environ.get("XIAO_AN_OPENCLAW_GATEWAY_TIMEOUT_SEC")
+                or str(DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC),
+            ),
         )
 
     raise ValueError(f"Unknown OpenClaw backend: {backend}")

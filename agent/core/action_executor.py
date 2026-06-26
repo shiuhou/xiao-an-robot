@@ -78,12 +78,18 @@ class ActionExecutor:
         skipped_actions: list[dict] = []
 
         if not decision.handled:
-            return {
+            result = {
                 "handled": False,
                 "reply_text": decision.reply_text,
                 "executed_actions": executed_actions,
                 "skipped_actions": skipped_actions,
             }
+            if decision.raw is not None:
+                result["openclaw_raw"] = decision.raw
+                error = decision.raw.get("error") if isinstance(decision.raw, dict) else None
+                if error:
+                    result["openclaw_error"] = str(error)
+            return result
 
         if decision.reply_text:
             arguments = {"text": decision.reply_text}

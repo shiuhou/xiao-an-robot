@@ -71,6 +71,18 @@ Business operations can also return specific errors such as
 
 ## Service And Chat
 
+By default, chat uses the fake OpenClaw backend. To route `POST /api/chat`
+through a real OpenClaw Gateway, start the API with:
+
+```bash
+XIAO_AN_OPENCLAW_BACKEND=gateway \
+XIAO_AN_OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789 \
+XIAO_AN_OPENCLAW_AGENT=xiaoan-runtime \
+python -m base_station.api.server --host 127.0.0.1 --port 8787 --db-path agent/data/xiao_an.db --verbose
+```
+
+Bridge details: [openclaw_gateway_bridge.md](openclaw_gateway_bridge.md).
+
 ### `GET /api/health`
 
 Checks whether the HTTP service is running.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from agent.core.openclaw_adapter import (
     OpenClawDecision,
     OpenClawToolCall,
 )
+from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.core.project_memory import ProjectMemoryService
 from agent.core.xiaoan_tool_manifest import tool_manifest
 from agent.skills.robot_motion import RobotMotionSkill
@@ -79,6 +81,14 @@ DEPRECATED_LOCAL_FEATURES = [
 ]
 
 
+def build_api_openclaw_adapter(environ: dict[str, str] | None = None) -> Any:
+    active_environ = os.environ if environ is None else environ
+    backend = active_environ.get("XIAO_AN_OPENCLAW_BACKEND", "fake").strip().lower()
+    if backend in {"", "fake"}:
+        return FakeOpenClawAdapter(decision=OpenClawDecision(handled=False))
+    return build_openclaw_adapter_from_env(active_environ)
+
+
 class ApiRuntime:
     """Own the lightweight services shared by API requests."""
 
@@ -125,9 +135,7 @@ class ApiRuntime:
             memory=self.emotion_memory,
             gateway_url=self.robot_ws_url,
             db_path=self.db_path,
-            openclaw_adapter=FakeOpenClawAdapter(
-                decision=OpenClawDecision(handled=False),
-            ),
+            openclaw_adapter=build_api_openclaw_adapter(),
             action_executor=self.action_executor,
             context_builder=self.context_builder,
             context_memory=self.memory_store,

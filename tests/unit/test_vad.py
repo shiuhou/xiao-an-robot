@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from base_station.perception.vad import (
     EnergyVADBackend,
@@ -93,6 +97,16 @@ class VoiceActivityDetectorTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "requires a local --vad-model-path"):
             backend.analyze({})
+
+    def test_silero_backend_missing_torch_raises_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_path = Path(temp_dir) / "silero_vad.jit"
+            model_path.write_bytes(b"fake")
+            backend = SileroVADBackend(model_path=str(model_path))
+
+            with patch.dict(sys.modules, {"torch": None}):
+                with self.assertRaisesRegex(ImportError, "requires torch installed"):
+                    backend.analyze({})
 
 
 if __name__ == "__main__":

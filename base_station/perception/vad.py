@@ -1,8 +1,4 @@
-"""Voice activity detection interface placeholders.
-
-Future real VAD will use Silero-VAD. This module only defines interfaces and
-fake detectors for local tests; it does not load real models.
-"""
+"""Voice activity detection interfaces and local test backends."""
 
 from __future__ import annotations
 
@@ -116,7 +112,10 @@ class SileroVADBackend:
             __import__("torch")
         except ImportError as exc:
             raise ImportError("Silero VAD requires torch installed in the project .venv.") from exc
-        raise RuntimeError("Silero VAD backend shell is present, but real inference is not wired in Step 42.")
+        raise RuntimeError(
+            "Silero VAD model path and torch are present, but real Silero inference is not wired yet. "
+            "Use energy VAD for Step 43 real SenseVoice audio-file smoke."
+        )
 
 
 class SileroVoiceActivityDetector(VoiceActivitySource):

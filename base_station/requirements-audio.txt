@@ -1,0 +1,7 @@
+funasr
+torch
+torchaudio
+soundfile
+numpy
+addict
+matplotlib

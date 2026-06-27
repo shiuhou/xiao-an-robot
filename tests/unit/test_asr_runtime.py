@@ -185,6 +185,24 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(output["vad"]["speech_detected"])
         self.assertNotIn("asr", output)
 
+    async def test_audio_file_empty_asr_returns_empty_transcript_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            write_wav(audio_path)
+
+            event, output = build_audio_file_event(
+                audio_path=str(audio_path),
+                vad_backend="fake",
+                vad_pattern="speech",
+                asr_backend="fake",
+                fake_transcript="   ",
+            )
+
+        self.assertIsNone(event)
+        self.assertEqual(output["event_type"], "asr.empty_transcript")
+        self.assertEqual(output["reason"], "asr_empty_transcript")
+        self.assertEqual(output["asr"]["text"], "   ")
+
     async def test_audio_file_missing_raises_clear_error(self) -> None:
         with self.assertRaisesRegex(FileNotFoundError, "Audio file does not exist"):
             build_audio_file_event(audio_path="runtime/manual_samples/missing.wav")

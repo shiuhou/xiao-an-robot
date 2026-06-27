@@ -1,0 +1,5 @@
+openvino
+optimum-intel[openvino]
+transformers
+qwen-vl-utils
+Pillow

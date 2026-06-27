@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-27T20:55:00+08:00",
+  "generated_at": "2026-06-27T22:30:00+08:00",
   "policy": {
     "one_task_per_cycle": true,
     "select_highest_priority_ready": true,
@@ -9,8 +9,8 @@
   "split_env_completed_at": "2026-06-26",
   "current_task": {
     "task_id": "T18",
-    "status": "READY_FOR_GATEWAY_DEMO",
-    "reason": "care-demo face240 hardware preflight passed; OpenClaw Gateway ws://127.0.0.1:18789 was not running in this session"
+    "status": "PASS_H_LOCAL__DK2500_HANDOFF_DEBUG",
+    "reason": "local full-face240 final demo passed with condition-based motion waits; DK2500/OpenClaw can send commands but still needs motion.completed chain verification"
   },
   "results": {
     "T00": {
@@ -122,14 +122,15 @@
       "summary": "Added mergetesting_full_face240 and mergetesting_full_face240_ota. Full build and OTA passed on 2026-06-26. Rechecked on 2026-06-27 after hotspot recovery: full speaker/display/video/audio passed. Motor-only confirmed full-speed 5s forward after bench command clamping was understood. Full face240 was USB-flashed on COM19 at 460800 after 921600 proved unstable, then /control,/audio,/video all reconnected from 192.168.137.25. Full motion command ran from 17:43:43.088 to 17:43:48.121 with command.ack and motion.completed success; user confirmed physical forward movement."
     },
     "T18": {
-      "status": "READY_FOR_GATEWAY_DEMO",
-      "attempt": 2,
-      "command": "python -m unittest discover -s tests -p \"test_*.py\"; pio run -e mergetesting_care_demo_face240; pio run -e mergetesting_care_demo_face240 -t upload --upload-port COM19; python tools/send_robot_command.py --device-id xiaoan_robot_01 expression caring; python tools/send_robot_command.py --device-id xiaoan_robot_01 tts --text \"测试\"; python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock; python tools/send_robot_command.py --device-id xiaoan_robot_01 local care_01",
-      "summary": "OpenClaw Step 33 hardware preflight completed with a dedicated mergetesting_care_demo_face240 env: face240+motor+speaker+/control enabled, camera/mic disabled. Full unit discovery ran 843 tests OK; care-demo env build/upload passed. Server logged camera=cam_off, display.expression caring ack ok, audio.play_tts mock ack ok, motion.execute ack ok, motion.completed success, and audio.play_local care_01 ack ok. User confirmed expression/TTS observation before motion. Follow-up motor calibration found the old 0.2/2cm/500ms envelope only caused short vibration; use speed=0.56 and about 1000-1200ms for a reliable 10cm dock exit, with 0.52 as the minimum effective positive speed. The actual emotion_runtime gateway demo remains pending because OpenClaw Gateway :18789 was not listening."
+      "status": "PASS_H_LOCAL__DK2500_HANDOFF_DEBUG",
+      "attempt": 3,
+      "command": "pio run -e mergetesting_full_face240 -t upload --upload-port COM19; local runner sent move_out_of_dock speed=0.56 duration_ms=2000 and waited for matching motion.completed; then turn left speed=0.56 duration_ms=500; display.expression happy; audio.play_local care_01",
+      "summary": "Local final demo passed on 2026-06-27 with mergetesting_full_face240: /control,/video,/audio connected; latest.jpg and latest_audio.pcm updated; forward and left turn were sequenced by matching action_id/motion.completed, not fixed sleeps; user confirmed physical forward movement, left turn, expression change, and audible care_01. Motor calibration: speed below about 0.5 is unreliable; speed=0.56 duration_ms=2000 is the demo forward setting; speed=0.8 also moved after battery/power recovery. audio.play_tts remains mock tone, not spoken TTS; reliable audible cue is audio.play_local care_01. After config.local.h was updated for DK2500 IP, mergetesting_full_face240 was USB-flashed again on COM19. DK2500/OpenClaw handoff reached display.expression happy and motion=turn, but DK2500 did not observe motion.completed for manual-turn-left-2318 before reconnects; next split is direct tools/send_robot_command.py on DK2500 vs ESP32 serial completed vs OpenClaw waiting layer."
     }
   },
   "next_order": [
-    "T18 Phase 4 proactive care demo (video -> emotion -> commands)",
+    "DK2500 direct /agent smoke: expression, motion left, motion forward, care_01 with matching motion.completed",
+    "OpenClaw Gateway waits/forwards motion.completed after DK2500 direct smoke passes",
     "T19 sync OpenVINO real-frame path when runtime models are staged"
   ]
 }

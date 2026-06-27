@@ -485,6 +485,8 @@ Split env evidence summary:
 
 Remaining gate: Phase 4 end-to-end demo (`/video` -> emotion/OpenVINO -> OpenClaw -> robot commands).
 
+2026-06-27 hardware-demo and DK2500 handoff details now live in `docs/project_status_2026-06-27.md`.
+
 ## Repository Cleanup — 2026-06-27
 
 Integrator pass (Codex `01_session_protocol` §9). Details: `docs/agents/10_repo_map.md` §7.

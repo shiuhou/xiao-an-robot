@@ -14,9 +14,10 @@ from typing import Any
 
 
 DEFAULT_AGENT_URL = "ws://127.0.0.1:8765/agent"
-MAX_SAFE_SPEED = 0.2
+MAX_SAFE_SPEED = 0.56
 MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_TIMEOUT_MS = 500
+MAX_SAFE_DURATION_MS = 2000
+MAX_SAFE_TIMEOUT_MS = 2200
 
 
 def _arg_value(args: argparse.Namespace, *names: str, default: Any = None) -> Any:
@@ -65,9 +66,12 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
         params: dict[str, Any] = {}
         speed = _arg_value(args, "speed")
         distance_cm = _arg_value(args, "distance_cm")
+        duration_ms = _arg_value(args, "duration_ms")
         timeout_ms = _arg_value(args, "timeout_ms")
         if speed is not None:
             params["speed"] = _clamp_number(speed, MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED)
+        if duration_ms is not None:
+            params["duration_ms"] = _clamp_int(duration_ms, MAX_SAFE_DURATION_MS, 1, MAX_SAFE_DURATION_MS)
         if distance_cm is not None:
             params["distance_cm"] = _clamp_number(
                 distance_cm,
@@ -149,6 +153,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     motion.add_argument("--action", dest="action_opt", default=None, help="Motion action name.")
     motion.add_argument("--speed", type=float, default=None, help="Motion speed from 0.0 to 1.0.")
     motion.add_argument("--distance-cm", type=float, default=None, help="Forward travel distance in centimeters.")
+    motion.add_argument("--duration-ms", type=int, default=None, help="Motion duration in milliseconds.")
     motion.add_argument("--timeout-ms", type=int, default=None, help="Motion timeout in milliseconds.")
 
     tts = subparsers.add_parser("tts", help="Forward an audio.play_tts command.")

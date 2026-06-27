@@ -45,9 +45,10 @@ sessions: Dict[str, dict] = {}
 video_frame_source = None
 audio_runtime_dir = Path("runtime")
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
-MAX_SAFE_SPEED = 0.2
+MAX_SAFE_SPEED = 0.56
 MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_TIMEOUT_MS = 500
+MAX_SAFE_DURATION_MS = 2000
+MAX_SAFE_TIMEOUT_MS = 2200
 
 
 def _initial_audio_stats() -> dict:
@@ -126,15 +127,19 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
     )
 
     if action == MotionAction.MOVE_OUT_OF_DOCK:
-        return {
+        params = {
             "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
-            "distance_cm": _clamp_number(
+        }
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), MAX_SAFE_DURATION_MS, 1, MAX_SAFE_DURATION_MS)
+        else:
+            params["distance_cm"] = _clamp_number(
                 raw_params.get("distance_cm"),
                 MAX_SAFE_DISTANCE_CM,
                 0.0,
                 MAX_SAFE_DISTANCE_CM,
-            ),
-        }, timeout_ms
+            )
+        return params, timeout_ms
 
     if action == MotionAction.MOVE_BACK_TO_DOCK:
         return {

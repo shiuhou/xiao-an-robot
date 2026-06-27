@@ -48,6 +48,10 @@ audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
 MAX_SAFE_SPEED = 0.2
 MAX_SAFE_DISTANCE_CM = 2.0
 MAX_SAFE_TIMEOUT_MS = 500
+BENCH_MAX_SPEED = 1.0
+BENCH_MAX_TIMEOUT_MS = 10000
+BENCH_MAX_DISTANCE_CM = 100.0
+BENCH_MAX_DURATION_MS = 10000
 
 
 def _initial_audio_stats() -> dict:
@@ -118,28 +122,62 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
     if not isinstance(raw_params, dict):
         raw_params = {}
 
+    bench = bool(payload.get("bench"))
+    max_speed = BENCH_MAX_SPEED if bench else MAX_SAFE_SPEED
+    max_timeout = BENCH_MAX_TIMEOUT_MS if bench else MAX_SAFE_TIMEOUT_MS
+    max_distance = BENCH_MAX_DISTANCE_CM if bench else MAX_SAFE_DISTANCE_CM
+    max_duration = BENCH_MAX_DURATION_MS if bench else MAX_SAFE_TIMEOUT_MS
+    default_timeout = max_timeout if bench else MAX_SAFE_TIMEOUT_MS
+
     timeout_ms = _clamp_int(
         payload.get("timeout_ms"),
-        MAX_SAFE_TIMEOUT_MS,
+        default_timeout,
         1,
-        MAX_SAFE_TIMEOUT_MS,
+        max_timeout,
     )
 
     if action == MotionAction.MOVE_OUT_OF_DOCK:
-        return {
-            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
-            "distance_cm": _clamp_number(
-                raw_params.get("distance_cm"),
-                MAX_SAFE_DISTANCE_CM,
+        params: dict = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+        elif not bench:
+            params["speed"] = MAX_SAFE_SPEED
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        distance_value = raw_params.get("distance_cm", raw_params.get("distance"))
+        if distance_value is not None:
+            params["distance_cm"] = _clamp_number(
+                distance_value,
+                max_distance,
                 0.0,
-                MAX_SAFE_DISTANCE_CM,
-            ),
-        }, timeout_ms
+                max_distance,
+            )
+        elif not bench:
+            params["distance_cm"] = MAX_SAFE_DISTANCE_CM
+        return params, timeout_ms
 
     if action == MotionAction.MOVE_BACK_TO_DOCK:
-        return {
-            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
-        }, timeout_ms
+        params = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+        elif not bench:
+            params["speed"] = MAX_SAFE_SPEED
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        return params, timeout_ms
+
+    if action == MotionAction.TURN:
+        params = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+        elif not bench:
+            params["speed"] = MAX_SAFE_SPEED
+        angle_value = raw_params.get("angle_deg", raw_params.get("angle"))
+        if angle_value is not None:
+            params["angle_deg"] = _clamp_number(angle_value, 0.0, -360.0, 360.0)
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        return params, timeout_ms
 
     return raw_params, int(payload.get("timeout_ms", 5000) or 5000)
 

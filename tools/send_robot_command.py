@@ -17,6 +17,22 @@ DEFAULT_AGENT_URL = "ws://127.0.0.1:8765/agent"
 MAX_SAFE_SPEED = 0.2
 MAX_SAFE_DISTANCE_CM = 2.0
 MAX_SAFE_TIMEOUT_MS = 500
+BENCH_MAX_SPEED = 1.0
+BENCH_MAX_TIMEOUT_MS = 10000
+BENCH_MAX_DISTANCE_CM = 100.0
+BENCH_MAX_DURATION_MS = 10000
+DEFAULT_TURN_ANGLE_DEG = 30.0
+
+
+MOTION_ALIASES = {
+    "forward": "move_out_of_dock",
+    "fwd": "move_out_of_dock",
+    "back": "move_back_to_dock",
+    "backward": "move_back_to_dock",
+    "reverse": "move_back_to_dock",
+    "left": "turn",
+    "right": "turn",
+}
 
 
 def _arg_value(args: argparse.Namespace, *names: str, default: Any = None) -> Any:
@@ -43,6 +59,16 @@ def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(number, maximum))
 
 
+def _motion_action(raw_action: Any) -> tuple[str, float | None]:
+    action = str(raw_action or "move_out_of_dock")
+    normalized = MOTION_ALIASES.get(action, action)
+    if action == "left":
+        return normalized, -DEFAULT_TURN_ANGLE_DEG
+    if action == "right":
+        return normalized, DEFAULT_TURN_ANGLE_DEG
+    return normalized, None
+
+
 def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
     if args.command_name == "expression":
         payload = {
@@ -58,27 +84,44 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
             "loop": bool(_arg_value(args, "loop", default=False)),
         }
     elif args.command_name == "motion":
+        bench = bool(getattr(args, "bench", False))
+        max_speed = BENCH_MAX_SPEED if bench else MAX_SAFE_SPEED
+        max_timeout = BENCH_MAX_TIMEOUT_MS if bench else MAX_SAFE_TIMEOUT_MS
+        max_distance = BENCH_MAX_DISTANCE_CM if bench else MAX_SAFE_DISTANCE_CM
+        max_duration = BENCH_MAX_DURATION_MS if bench else MAX_SAFE_TIMEOUT_MS
+        raw_action = _arg_value(args, "action", "action_opt", "action_arg", default="move_out_of_dock")
+        action, default_param = _motion_action(raw_action)
         payload = {
             "command": "motion.execute",
-            "action": _arg_value(args, "action", "action_opt", "action_arg", default="move_out_of_dock"),
+            "action": action,
         }
+        if bench:
+            payload["bench"] = True
         params: dict[str, Any] = {}
         speed = _arg_value(args, "speed")
         distance_cm = _arg_value(args, "distance_cm")
+        duration_ms = _arg_value(args, "duration_ms")
+        angle_deg = _arg_value(args, "angle_deg")
         timeout_ms = _arg_value(args, "timeout_ms")
         if speed is not None:
-            params["speed"] = _clamp_number(speed, MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED)
+            params["speed"] = _clamp_number(speed, max_speed, 0.0, max_speed)
         if distance_cm is not None:
             params["distance_cm"] = _clamp_number(
                 distance_cm,
-                MAX_SAFE_DISTANCE_CM,
+                max_distance,
                 0.0,
-                MAX_SAFE_DISTANCE_CM,
+                max_distance,
             )
+        if duration_ms is not None:
+            params["duration_ms"] = _clamp_int(duration_ms, max_duration, 1, max_duration)
+        if action == "turn":
+            turn_param = angle_deg if angle_deg is not None else default_param
+            if turn_param is not None:
+                params["angle_deg"] = _clamp_number(turn_param, 0.0, -360.0, 360.0)
         if params:
             payload["params"] = params
         if timeout_ms is not None:
-            payload["timeout_ms"] = _clamp_int(timeout_ms, MAX_SAFE_TIMEOUT_MS, 1, MAX_SAFE_TIMEOUT_MS)
+            payload["timeout_ms"] = _clamp_int(timeout_ms, max_timeout, 1, max_timeout)
     elif args.command_name == "tts":
         payload = {
             "command": "audio.play_tts",
@@ -149,7 +192,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     motion.add_argument("--action", dest="action_opt", default=None, help="Motion action name.")
     motion.add_argument("--speed", type=float, default=None, help="Motion speed from 0.0 to 1.0.")
     motion.add_argument("--distance-cm", type=float, default=None, help="Forward travel distance in centimeters.")
+    motion.add_argument("--duration-ms", type=int, default=None, help="Open-loop motion duration in milliseconds.")
+    motion.add_argument("--angle-deg", type=float, default=None, help="Turn angle for left/right/turn commands.")
     motion.add_argument("--timeout-ms", type=int, default=None, help="Motion timeout in milliseconds.")
+    motion.add_argument(
+        "--bench",
+        action="store_true",
+        help="Bench mode: allow speed up to 1.0 and timeout up to 10s (wheels lifted, external VM).",
+    )
 
     tts = subparsers.add_parser("tts", help="Forward an audio.play_tts command.")
     tts.add_argument("--text", required=True, help="Text preview to send with the mock TTS command.")

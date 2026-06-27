@@ -280,7 +280,8 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("_motion.loop();", app_cpp)
         self.assertNotIn("delay(", motion_cpp)
         self.assertNotIn("_motor.execute(", motion_cpp)
-        self.assertIn('completeActive("interrupted")', motion_cpp)
+        self.assertIn('return clampDuration(timeoutMs, timeoutMs);', motion_cpp)
+        self.assertIn("no distance => run for timeout_ms", motion_cpp)
         self.assertIn('payload["action_id"]', ws_cpp)
 
     def test_local_sound_reports_unsupported_sound(self) -> None:
@@ -502,10 +503,11 @@ class MergetestingLayeringTest(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("MOTOR_CH_L_IN1 = 0", motor_cpp)
-        self.assertIn("MOTOR_CH_L_IN2 = 1", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN1 = 2", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN2 = 3", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_L_IN1 0", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_L_IN2 1", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_R_IN1 2", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_R_IN2 3", motor_cpp)
+        self.assertIn("MERGETEST_MOTOR_CH_L_IN1", motor_cpp)
         self.assertIn("Invalid channels make ledcSetup() return 0 Hz", motor_cpp)
         self.assertIn("away from OV2640 XCLK on LEDC_CHANNEL_7", motor_cpp)
         self.assertIn("config->ledc_channel = LEDC_CHANNEL_7", camera_config)
@@ -516,12 +518,19 @@ class MergetestingLayeringTest(unittest.TestCase):
         platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
             encoding="utf-8"
         )
+        motor_only_body = platformio.split("[env:mergetesting_motor_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
 
         self.assertIn("#define PIN_MOTOR_L_IN1 1", pins)
         self.assertIn("#define PIN_MOTOR_L_IN2 2", pins)
         self.assertIn("#define PIN_MOTOR_R_IN1 3", pins)
         self.assertIn("#define PIN_MOTOR_R_IN2 48", pins)
         self.assertIn("-DTFT_BL=-1", platformio)
+        self.assertIn("-DMERGETEST_MOTOR_CH_L_IN1=4", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_L_IN2=5", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_R_IN1=6", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_R_IN2=7", motor_only_body)
 
 
 if __name__ == "__main__":

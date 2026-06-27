@@ -9,10 +9,23 @@ static volatile bool _backLimitHit  = false;
 // channels in the valid range and away from OV2640 XCLK on LEDC_CHANNEL_7.
 // Invalid channels make ledcSetup() return 0 Hz; shared channels can silently
 // leave the full camera+motor firmware with a motion ack but no wheel output.
-constexpr uint8_t MOTOR_CH_L_IN1 = 0;
-constexpr uint8_t MOTOR_CH_L_IN2 = 1;
-constexpr uint8_t MOTOR_CH_R_IN1 = 2;
-constexpr uint8_t MOTOR_CH_R_IN2 = 3;
+#ifndef MERGETEST_MOTOR_CH_L_IN1
+#define MERGETEST_MOTOR_CH_L_IN1 0
+#endif
+#ifndef MERGETEST_MOTOR_CH_L_IN2
+#define MERGETEST_MOTOR_CH_L_IN2 1
+#endif
+#ifndef MERGETEST_MOTOR_CH_R_IN1
+#define MERGETEST_MOTOR_CH_R_IN1 2
+#endif
+#ifndef MERGETEST_MOTOR_CH_R_IN2
+#define MERGETEST_MOTOR_CH_R_IN2 3
+#endif
+
+constexpr uint8_t MOTOR_CH_L_IN1 = MERGETEST_MOTOR_CH_L_IN1;
+constexpr uint8_t MOTOR_CH_L_IN2 = MERGETEST_MOTOR_CH_L_IN2;
+constexpr uint8_t MOTOR_CH_R_IN1 = MERGETEST_MOTOR_CH_R_IN1;
+constexpr uint8_t MOTOR_CH_R_IN2 = MERGETEST_MOTOR_CH_R_IN2;
 
 static const char* motorName(uint8_t motor) {
     return motor == 0 ? "left" : "right";

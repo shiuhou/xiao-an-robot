@@ -93,6 +93,57 @@ class SendRobotCommandTest(unittest.TestCase):
             "timeout_ms": 500,
         })
 
+    def test_motion_bench_mode_allows_longer_full_speed_without_distance(self) -> None:
+        payload = self.build_payload_from_argv([
+            "motion",
+            "forward",
+            "--bench",
+            "--speed",
+            "1.0",
+            "--duration-ms",
+            "5000",
+            "--timeout-ms",
+            "5000",
+        ])
+
+        self.assertEqual(payload, {
+            "command": "motion.execute",
+            "action": "move_out_of_dock",
+            "bench": True,
+            "params": {
+                "speed": 1.0,
+                "duration_ms": 5000,
+            },
+            "timeout_ms": 5000,
+        })
+
+    def test_motion_direction_aliases_map_to_protocol_actions(self) -> None:
+        cases = {
+            "forward": ("move_out_of_dock", {}),
+            "back": ("move_back_to_dock", {}),
+            "left": ("turn", {"angle_deg": -30.0}),
+            "right": ("turn", {"angle_deg": 30.0}),
+        }
+
+        for alias, (action, extra_params) in cases.items():
+            with self.subTest(alias=alias):
+                payload = self.build_payload_from_argv([
+                    "motion",
+                    alias,
+                    "--bench",
+                    "--speed",
+                    "0.4",
+                    "--duration-ms",
+                    "1200",
+                    "--timeout-ms",
+                    "1500",
+                ])
+
+                expected_params = {"speed": 0.4, "duration_ms": 1200, **extra_params}
+                self.assertEqual(payload["action"], action)
+                self.assertEqual(payload["params"], expected_params)
+                self.assertEqual(payload["timeout_ms"], 1500)
+
     def test_local_sound_positional_command_defaults_to_safe_volume(self) -> None:
         payload = self.build_payload_from_argv(["local", "care_01"])
 

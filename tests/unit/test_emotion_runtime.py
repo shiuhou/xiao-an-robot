@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import tempfile
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +18,18 @@ from base_station.monitor.emotion_runtime import (
 )
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
+
+
+def write_test_png(path: Path) -> None:
+    try:
+        import cv2  # type: ignore[import-not-found]
+        import numpy as np  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise unittest.SkipTest(f"OpenCV/numpy not available for image fixture: {exc}") from exc
+
+    image = np.zeros((1, 1, 3), dtype=np.uint8)
+    if not cv2.imwrite(str(path), image):
+        raise RuntimeError(f"failed to write test image: {path}")
 
 
 class FakeEventLoop:
@@ -192,6 +206,65 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         args = parse_args(["--model-backend", "openvino_qwen_vl"])
 
         self.assertEqual(args.model_backend, "openvino_qwen_vl")
+
+    async def test_image_file_source_arg_requires_image_path(self) -> None:
+        with self.assertRaisesRegex(ValueError, "--image-path is required"):
+            create_emotion_source(
+                source="image_file",
+                pattern="neutral",
+                count=1,
+                interval_seconds=0,
+                model_backend="qwen_vl",
+            )
+
+    async def test_image_file_source_with_qwen_vl_fake_backend_outputs_frame_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            write_test_png(image_path)
+            source = create_emotion_source(
+                source="image_file",
+                image_path=str(image_path),
+                pattern="tired",
+                count=1,
+                interval_seconds=0,
+                model_backend="qwen_vl",
+            )
+
+            event_loop = FakeEventLoop()
+            runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+            await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["source"], "fake_qwen_vl")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["frame_source"], "image_file")
+        self.assertEqual(sample["frame_id"], 1)
+        self.assertEqual(sample["width"], 1)
+        self.assertEqual(sample["height"], 1)
+
+    async def test_image_file_vlm_gate_with_qwen_vl_fake_backend_is_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image_path = Path(temp_dir) / "image.png"
+            write_test_png(image_path)
+            source = create_emotion_source(
+                source="image_file",
+                image_path=str(image_path),
+                pattern="tired",
+                count=1,
+                interval_seconds=0,
+                model_backend="mock",
+                enable_vlm_gate=True,
+                vlm_backend="qwen_vl",
+            )
+
+            event_loop = FakeEventLoop()
+            runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
+            await runtime.run()
+
+        sample = event_loop.samples[0]
+        self.assertEqual(sample["frame_source"], "image_file")
+        self.assertEqual(sample["vlm_triggered"], True)
+        self.assertEqual(sample["vlm"]["expression_label"], "tired")
 
     async def test_model_root_alias_maps_to_model_path(self) -> None:
         args = parse_args(["--model-backend", "openvino", "--model-root", "models/face.xml"])

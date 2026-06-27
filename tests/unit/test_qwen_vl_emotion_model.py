@@ -36,6 +36,8 @@ class QwenVLEmotionModelTest(unittest.TestCase):
             "frame_source",
             "frame_id",
             "timestamp_ms",
+            "width",
+            "height",
         })
         self.assertEqual(sample["emotion_tag"], "neutral")
         self.assertEqual(sample["source"], "fake_qwen_vl")
@@ -67,6 +69,8 @@ class QwenVLEmotionModelTest(unittest.TestCase):
         self.assertEqual(sample["frame_source"], "opencv_camera")
         self.assertEqual(sample["frame_id"], 11)
         self.assertEqual(sample["timestamp_ms"], 999)
+        self.assertEqual(sample["width"], 640)
+        self.assertEqual(sample["height"], 480)
 
     def test_missing_timestamp_generates_timestamp_ms(self) -> None:
         frame = make_frame()

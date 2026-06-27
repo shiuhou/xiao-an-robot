@@ -25,6 +25,7 @@ from base_station.perception.fake_camera import FakeCameraFrameSource
 from base_station.perception.fake_face_emotion import FakeFaceEmotionSource
 from base_station.perception.opencv_camera import OpenCVCameraFrameSource
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
+from base_station.perception.static_image_source import StaticImageFrameSource
 from base_station.perception.vlm_trigger_gate import VLMTriggerGate
 
 OpenVINOFaceEmotionModel = None
@@ -445,6 +446,7 @@ def create_emotion_source(
     camera_index: int = 0,
     camera_width: int | None = None,
     camera_height: int | None = None,
+    image_path: str | None = None,
     model_backend: str = "mock",
     model_path: str | None = None,
     device: str = "CPU",
@@ -465,6 +467,40 @@ def create_emotion_source(
 
     if source == "fake_camera":
         frame_source = FakeCameraFrameSource(
+            count=count,
+            interval_seconds=interval_seconds,
+        )
+        pipeline = build_cv_pipeline(
+            model_backend=model_backend,
+            pattern=pattern,
+            model_path=model_path,
+            device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
+        )
+        if enable_vlm_gate:
+            vlm_model = create_vlm_emotion_model(
+                vlm_backend=vlm_backend,
+                pattern=pattern,
+                vlm_model_path=vlm_model_path,
+                device=device,
+            )
+            return VLMGatedCameraEmotionSource(
+                frame_source=frame_source,
+                cv_pipeline=pipeline,
+                gate=VLMTriggerGate(),
+                context_builder=EmotionContextBuilder(),
+                vlm_model=vlm_model,
+                memory=history_memory,
+                force_vlm=force_vlm,
+            )
+        return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
+
+    if source == "image_file":
+        if not image_path:
+            raise ValueError("--image-path is required when --source image_file")
+        frame_source = StaticImageFrameSource(
+            image_path=image_path,
             count=count,
             interval_seconds=interval_seconds,
         )
@@ -531,7 +567,7 @@ def create_emotion_source(
 
     raise ValueError(
         "Unsupported emotion source: "
-        f"{source}. Currently supported sources: fake_face, fake_camera, opencv_camera."
+        f"{source}. Currently supported sources: fake_face, fake_camera, image_file, opencv_camera."
     )
 
 
@@ -547,6 +583,7 @@ def create_runtime(
     camera_index: int = 0,
     camera_width: int | None = None,
     camera_height: int | None = None,
+    image_path: str | None = None,
     model_backend: str = "mock",
     model_path: str | None = None,
     device: str = "CPU",
@@ -577,6 +614,7 @@ def create_runtime(
         camera_index=camera_index,
         camera_width=camera_width,
         camera_height=camera_height,
+        image_path=image_path,
         model_backend=model_backend,
         model_path=model_path,
         device=device,
@@ -635,7 +673,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument(
         "--source",
         default="fake_face",
-        choices=["fake_face", "fake_camera", "opencv_camera"],
+        choices=["fake_face", "fake_camera", "image_file", "opencv_camera"],
         help="Emotion source.",
     )
     parser.add_argument(
@@ -652,6 +690,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index.")
     parser.add_argument("--camera-width", type=int, default=None, help="Optional OpenCV camera width.")
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
+    parser.add_argument("--image-path", default=None, help="Static PNG/JPG/JPEG path for --source image_file.")
     parser.add_argument(
         "--model-backend",
         choices=["mock", "openvino", "qwen_vl", "openvino_qwen_vl", "openface_ov"],
@@ -705,6 +744,7 @@ async def main(args: argparse.Namespace | None = None) -> None:
             camera_index=args.camera_index,
             camera_width=args.camera_width,
             camera_height=args.camera_height,
+            image_path=args.image_path,
             model_backend=args.model_backend,
             model_path=args.model_path,
             device=args.device,

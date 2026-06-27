@@ -1,8 +1,11 @@
-"""Unit tests for Qwen VL OpenVINO runner placeholder."""
+"""Unit tests for Qwen VL OpenVINO runner."""
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 from base_station.perception.qwen_vl_openvino_runner import (
     QwenVLOpenVINORunner,
@@ -30,10 +33,10 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "max_new_tokens"):
             QwenVLOpenVINORunner(model_dir="models/qwen", max_new_tokens=0)
 
-    def test_load_raises_not_implemented_with_openvino_hint(self) -> None:
+    def test_load_missing_model_dir_raises_clear_error(self) -> None:
         runner = QwenVLOpenVINORunner(model_dir="models/qwen")
 
-        with self.assertRaisesRegex(NotImplementedError, "OpenVINO|Optimum Intel"):
+        with self.assertRaisesRegex(FileNotFoundError, "Qwen2.5-VL OpenVINO model directory"):
             runner.load()
 
     def test_generate_empty_prompt_raises_value_error(self) -> None:
@@ -42,11 +45,31 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "prompt"):
             runner.generate(image="image", prompt="   ")
 
-    def test_generate_valid_prompt_raises_not_implemented(self) -> None:
+    def test_load_missing_dependencies_raises_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = QwenVLOpenVINORunner(model_dir=temp_dir)
+
+            with patch(
+                "base_station.perception.qwen_vl_openvino_runner.import_module",
+                side_effect=ImportError("missing"),
+            ):
+                with self.assertRaisesRegex(ImportError, "missing package"):
+                    runner.load()
+
+    def test_generate_valid_prompt_reports_missing_model_dir_not_not_implemented(self) -> None:
         runner = QwenVLOpenVINORunner(model_dir="models/qwen")
 
-        with self.assertRaisesRegex(NotImplementedError, "not implemented"):
+        with self.assertRaisesRegex(FileNotFoundError, "model directory"):
             runner.generate(image="image", prompt="Analyze emotion.")
+
+    def test_model_path_file_raises_runtime_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "model.xml"
+            path.write_text("<xml />", encoding="utf-8")
+            runner = QwenVLOpenVINORunner(model_dir=str(path))
+
+            with self.assertRaisesRegex(RuntimeError, "not a directory"):
+                runner.load()
 
     def test_build_emotion_analysis_prompt_returns_string(self) -> None:
         prompt = build_emotion_analysis_prompt()

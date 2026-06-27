@@ -94,11 +94,16 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
         prompt = build_emotion_analysis_prompt()
 
         self.assertIn("Return JSON only", prompt)
+        self.assertIn("Output JSON only", prompt)
+        self.assertIn("Do not include markdown fences", prompt)
+        self.assertIn("Do not include explanation outside JSON", prompt)
+        self.assertIn("required keys", prompt)
         self.assertIn("emotion_tag", prompt)
         self.assertIn("confidence", prompt)
         self.assertIn("fatigue_score", prompt)
         self.assertIn("visual_reason", prompt)
         self.assertIn("vlm_observation", prompt)
+        self.assertIn("confidence below 0.5", prompt)
 
     def test_prompt_contains_allowed_emotion_tags(self) -> None:
         prompt = build_emotion_analysis_prompt()

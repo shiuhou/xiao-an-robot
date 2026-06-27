@@ -334,9 +334,8 @@ class ProbeOpenFaceRouteATraceTest(unittest.TestCase):
     def test_build_final_sample_for_triggered_vlm_matches_runtime_contract(self) -> None:
         """build_final_sample must mirror VLMGatedCameraEmotionSource.samples():
 
-        top-level emotion_tag/confidence/fatigue_score/source stay on the CV
-        sample; the VLM result is only ever attached as a nested ``vlm`` field
-        and must never override those top-level fields.
+        top-level source stays on the CV sample; emotion_tag/confidence/
+        fatigue_score follow the runtime conservative fusion policy.
         """
         cv_sample = {
             "source": "openface_fatigue_metrics",
@@ -360,17 +359,17 @@ class ProbeOpenFaceRouteATraceTest(unittest.TestCase):
 
         final_sample = trace.build_final_sample(cv_sample, gate_result, vlm_result)
 
-        # Top-level fields stay sourced from the CV sample, never the VLM result.
         self.assertEqual(final_sample["source"], "openface_fatigue_metrics")
-        self.assertEqual(final_sample["emotion_tag"], "neutral")
-        self.assertEqual(final_sample["confidence"], 0.4)
-        self.assertEqual(final_sample["fatigue_score"], 42.0)
+        self.assertEqual(final_sample["emotion_tag"], "tired")
+        self.assertEqual(final_sample["confidence"], 0.9)
+        self.assertEqual(final_sample["fatigue_score"], 0.8)
+        self.assertEqual(final_sample["fusion"]["decision"], "vlm_promoted_negative")
         self.assertEqual(final_sample["fatigue_level"], "medium")
         self.assertEqual(final_sample["observation_quality"], 0.88)
         self.assertEqual(final_sample["presence_state"], "present")
         self.assertEqual(final_sample["evidence_codes"], ["PERCLOS_HIGH"])
 
-        # VLM output is nested, never promoted to the top level.
+        # VLM output is nested and the original CV sample is preserved.
         self.assertEqual(final_sample["vlm_triggered"], True)
         self.assertEqual(final_sample["vlm_trigger_reason"], "force")
         self.assertEqual(final_sample["cv_sample"], cv_sample)
@@ -378,10 +377,9 @@ class ProbeOpenFaceRouteATraceTest(unittest.TestCase):
         self.assertEqual(final_sample["vlm"]["executed"], True)
         self.assertEqual(final_sample["vlm"]["expression_label"], "tired")
         self.assertEqual(final_sample["vlm"]["confidence"], 0.9)
-        self.assertNotEqual(final_sample.get("emotion_tag"), final_sample["vlm"]["expression_label"])
         self.assertNotIn("polarity", final_sample)
 
-    def test_build_final_sample_vlm_does_not_override_top_level_fatigue_or_emotion(self) -> None:
+    def test_build_final_sample_low_confidence_vlm_does_not_override_top_level(self) -> None:
         cv_sample = {
             "source": "openface_fatigue_metrics",
             "emotion_tag": "neutral",

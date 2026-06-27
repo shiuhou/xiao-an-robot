@@ -215,12 +215,16 @@ class QwenVLOpenVINORunner:
 def build_emotion_analysis_prompt(context: dict | None = None) -> str:
     lines = [
         "Analyze the user's visible emotional state from the image.",
-        "Return JSON only, with these fields:",
+        "Output JSON only.",
+        "Return JSON only.",
+        "Do not include markdown fences.",
+        "Do not include explanation outside JSON.",
+        "Return one JSON object with these required keys:",
         json.dumps({field: "<value>" for field in OUTPUT_FIELDS}, ensure_ascii=False),
-        "emotion_tag must be one of: " + ", ".join(EMOTION_TAGS) + ".",
+        "emotion_tag must be exactly one of: " + ", ".join(EMOTION_TAGS) + ".",
         "confidence and fatigue_score must be numbers from 0.0 to 1.0.",
-        "visual_reason should explain visible evidence briefly.",
-        "vlm_observation should summarize the user's apparent state briefly.",
+        "visual_reason and vlm_observation must be brief.",
+        "If the image is unclear or the user's state cannot be judged, use unknown or neutral with confidence below 0.5.",
     ]
 
     if context:

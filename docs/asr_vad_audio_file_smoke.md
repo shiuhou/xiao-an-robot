@@ -13,7 +13,11 @@ This step does not use a real microphone, ESP32, firmware flashing, real camera,
 - `audio_file` reads a local PCM WAV file.
 - `fake` VAD and fake ASR are the default smoke backends.
 - `energy` VAD is a simple local threshold backend with no model dependency.
-- `silero` VAD and `sensevoice` ASR are shells only in Step 42; they require local model paths and never auto-download models.
+- Step 42 introduced fake/energy audio-file smoke.
+- Step 43.1 verified real SenseVoice audio-file ASR.
+- Step 43.2 verifies real Silero VAD through the `silero-vad` pip package.
+  The Silero pip route does not require `--vad-model-path`; it uses the package
+  model loaded by `load_silero_vad`.
 - Tests generate temporary WAV files and do not commit audio samples.
 
 ## Legacy Pattern And Text
@@ -137,5 +141,8 @@ curl "http://127.0.0.1:8787/api/status"
 - `Silero dependency missing`: Step 42 only provides the shell; no model download happens automatically.
 - `OpenClaw Gateway not running`: agent mode cannot deliver `companion.request` or normal ASR events to `xiaoan-runtime`.
 - `mock_robot offline`: tool runs may fail or no robot action will be acknowledged.
+
+For the real Silero + real SenseVoice audio-file smoke, see
+`docs/silero_vad_audio_file_smoke.md`.
 
 Do not commit `runtime/manual_samples` audio, model files, databases, logs, `.venv`, `frontend/dist`, or `node_modules`.

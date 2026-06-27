@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import math
 import struct
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -14,9 +16,11 @@ from base_station.monitor.asr_runtime import (
     build_asr_event,
     build_audio_file_event,
     build_output,
+    create_vad_backend,
     resolve_transcript,
     run_once,
 )
+from tests.unit.test_vad import fake_torch_module
 
 
 def write_wav(path: Path, *, sample_rate: int = 16000, seconds: float = 1.0, sine: bool = True) -> None:
@@ -243,6 +247,34 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(output["event_type"], "asr.no_speech")
         self.assertFalse(output["vad"]["speech_detected"])
+
+    async def test_silero_vad_backend_no_longer_requires_model_path(self) -> None:
+        backend = create_vad_backend("silero", threshold=0.5)
+
+        self.assertIsNone(backend.model_path)
+        self.assertEqual(backend.threshold, 0.5)
+
+    async def test_audio_file_silero_no_speech_skips_asr(self) -> None:
+        fake_module = types.ModuleType("silero_vad")
+        fake_module.load_silero_vad = lambda: "fake-model"
+        fake_module.get_speech_timestamps = lambda wav, model, **kwargs: []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "silence.wav"
+            write_wav(audio_path, sine=False)
+            with patch.dict(sys.modules, {"silero_vad": fake_module, "torch": fake_torch_module()}):
+                event, output = build_audio_file_event(
+                    audio_path=str(audio_path),
+                    vad_backend="silero",
+                    asr_backend="fake",
+                    fake_transcript="这句话不应该出现",
+                )
+
+        self.assertIsNone(event)
+        self.assertEqual(output["event_type"], "asr.no_speech")
+        self.assertEqual(output["vad"]["backend"], "silero")
+        self.assertFalse(output["vad"]["speech_detected"])
+        self.assertNotIn("asr", output)
 
     async def test_run_once_openclaw_pattern_exposes_openclaw_route(self) -> None:
         brain = FakeBrain(

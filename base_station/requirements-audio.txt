@@ -6,3 +6,4 @@ numpy
 huggingface_hub
 addict
 matplotlib
+silero-vad

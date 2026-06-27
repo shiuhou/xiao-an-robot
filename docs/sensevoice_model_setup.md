@@ -137,13 +137,11 @@ If ASR text contains `累`, the expected route is `link_3_companion_fast_path` w
 
 ## Silero Status
 
-Step 43.1 does not require real Silero. Use energy VAD plus real SenseVoice for the smoke.
+Step 43.1 does not require real Silero. Step 43.2 wires real Silero for local
+WAV smoke through the `silero-vad` pip package and `load_silero_vad`; no
+separate Silero model file is required for that route.
 
-Future options:
-
-- Option A: use the `silero-vad` pip package and `load_silero_vad`.
-- Option B: use `torch.hub` with `snakers4/silero-vad`.
-- Option C: use an ONNX Runtime Silero model file.
+See `docs/silero_vad_audio_file_smoke.md`.
 
 ## Common Errors
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import struct
+import warnings
 
 
 def _audio_duration(audio_clip: dict) -> int:
@@ -96,26 +96,105 @@ class EnergyVADBackend:
 
 
 class SileroVADBackend:
-    """Silero VAD shell; never downloads models automatically."""
+    """Silero VAD backend using the `silero-vad` pip package."""
+
+    _model = None
 
     def __init__(self, model_path: str | None = None, threshold: float = 0.5):
         self.model_path = model_path
         self.threshold = threshold
+        self._warned_model_path_ignored = False
 
     def analyze(self, audio_clip: dict) -> dict:
-        if not self.model_path:
-            raise RuntimeError("Silero VAD requires a local --vad-model-path; automatic download is disabled.")
-        path = Path(self.model_path).expanduser()
-        if not path.exists():
-            raise FileNotFoundError(f"Silero VAD model file does not exist: {self.model_path}")
+        if self.model_path and not self._warned_model_path_ignored:
+            warnings.warn(
+                "Silero VAD uses the silero-vad pip package model; --vad-model-path is recorded but ignored.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            self._warned_model_path_ignored = True
+
+        sample_rate = int(audio_clip.get("sample_rate") or 0)
+        if sample_rate not in {8000, 16000}:
+            raise RuntimeError(
+                "Silero VAD supports 8000 Hz or 16000 Hz PCM WAV audio. "
+                f"Got sample_rate={sample_rate}; convert the file to 16 kHz mono PCM WAV."
+            )
+
+        sample_width = int(audio_clip.get("sample_width") or 0)
+        channels = max(1, int(audio_clip.get("channels") or 1))
+        wav = self._pcm_to_float_tensor(
+            audio_clip.get("pcm_bytes") or b"",
+            sample_width=sample_width,
+            channels=channels,
+        )
+
         try:
-            __import__("torch")
+            from silero_vad import get_speech_timestamps, load_silero_vad
+        except ImportError as exc:
+            raise ImportError(
+                "Silero VAD requires the silero-vad package installed in the project .venv. "
+                "Install it with: .venv/bin/python -m pip install -r base_station/requirements-audio.txt"
+            ) from exc
+
+        model = self._load_model(load_silero_vad)
+        try:
+            timestamps = get_speech_timestamps(
+                wav,
+                model,
+                sampling_rate=sample_rate,
+                return_seconds=True,
+                threshold=self.threshold,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Silero VAD inference failed: {type(exc).__name__}: {exc}") from exc
+
+        normalized_timestamps = [dict(item) for item in (timestamps or [])]
+        speech = bool(normalized_timestamps)
+        start_ms = int(round(float(normalized_timestamps[0]["start"]) * 1000)) if speech else None
+        end_ms = int(round(float(normalized_timestamps[-1]["end"]) * 1000)) if speech else None
+        return {
+            "speech_detected": speech,
+            "confidence": 1.0 if speech else 0.0,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+            "reason": "silero",
+            "backend": "silero",
+            "timestamps": normalized_timestamps,
+            "sample_rate": sample_rate,
+            "threshold": self.threshold,
+            "model_path": self.model_path,
+        }
+
+    @classmethod
+    def _load_model(cls, load_silero_vad):
+        if cls._model is None:
+            try:
+                cls._model = load_silero_vad()
+            except Exception as exc:
+                raise RuntimeError(f"Silero VAD model load failed: {type(exc).__name__}: {exc}") from exc
+        return cls._model
+
+    @staticmethod
+    def _pcm_to_float_tensor(pcm_bytes: bytes, *, sample_width: int, channels: int):
+        if sample_width != 2:
+            raise RuntimeError(f"Silero VAD supports 16-bit PCM WAV only, got sample_width={sample_width}.")
+
+        try:
+            import torch
         except ImportError as exc:
             raise ImportError("Silero VAD requires torch installed in the project .venv.") from exc
-        raise RuntimeError(
-            "Silero VAD model path and torch are present, but real Silero inference is not wired yet. "
-            "Use energy VAD for Step 43 real SenseVoice audio-file smoke."
-        )
+
+        if not pcm_bytes:
+            return torch.empty(0, dtype=torch.float32)
+
+        usable = len(pcm_bytes) - (len(pcm_bytes) % 2)
+        values = struct.unpack("<" + "h" * (usable // 2), pcm_bytes[:usable])
+        tensor = torch.tensor(values, dtype=torch.float32)
+        if channels > 1:
+            frame_count = tensor.numel() // channels
+            tensor = tensor[: frame_count * channels].reshape(frame_count, channels).mean(dim=1)
+        return tensor / 32768.0
 
 
 class SileroVoiceActivityDetector(VoiceActivitySource):

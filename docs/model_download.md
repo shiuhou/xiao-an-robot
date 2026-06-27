@@ -66,7 +66,10 @@ This downloads the public Hugging Face model `FunAudioLLM/SenseVoiceSmall` to:
 base_station/models/sensevoice-small
 ```
 
-Silero VAD model format is still pending a later decision. Step 43.1 uses energy VAD with real SenseVoice ASR.
+Silero VAD Step 43.2 uses the `silero-vad` pip package and the package model
+loaded by `load_silero_vad`. It does not require a separate local Silero model
+file for the audio-file smoke. See
+`docs/silero_vad_audio_file_smoke.md`.
 
 ## Current Runtime Status
 
@@ -75,7 +78,7 @@ Silero VAD model format is still pending a later decision. Step 43.1 uses energy
 | OpenVINO face emotion model | CV emotion backend | Interface and tests exist; real postprocessing still staged. |
 | Head pose model | Future posture/fatigue feature | Placeholder path only. |
 | SenseVoiceSmall ASR | Speech transcript source | Step 43.1 uses `tools/setup_audio_models.py` to prepare `FunAudioLLM/SenseVoiceSmall`, then runs real audio-file ASR smoke. |
-| Silero VAD | Voice activity detection | Step 42 fake/energy VAD software chain exists; real Silero model format remains pending. |
+| Silero VAD | Voice activity detection | Step 43.2 uses the `silero-vad` pip package for real local WAV VAD; no separate Silero model file is required for this route. |
 | Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Real static-image OpenVINO Qwen inference has been verified on DK-2500; VLM gate / OpenClaw proactive care is verified in Step 41. |
 
 ## Git Rules

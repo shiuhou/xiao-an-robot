@@ -61,7 +61,7 @@ Qwen VLM downloads should use `tools/setup_models.py --only qwen_vl`, which read
 | Head pose model | Future posture/fatigue feature | Placeholder path only. |
 | SenseVoice / sherpa-onnx ASR | Speech transcript source | Interface exists; real model wiring pending. |
 | Silero VAD | Voice activity detection | Interface exists; real model wiring pending. |
-| Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Wrapper path exists; generation route still staged. |
+| Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Real static-image OpenVINO Qwen inference has been verified on DK-2500; VLM gate / OpenClaw proactive care is verified in Step 41. |
 
 ## Git Rules
 

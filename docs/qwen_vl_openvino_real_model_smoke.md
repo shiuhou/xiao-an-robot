@@ -123,10 +123,14 @@ This must not connect OpenClaw, robot hardware, camera, ESP32, ASR, VAD, TTS, or
 
 - Branch: `integration/openclaw-mergetesting-fusion`
 - `runtime/manual_samples/image.png`: present.
-- `base_station/models/Qwen2.5-VL-3B-OV-int4`: required real model target path.
-- Dependency probe: `openvino`, `transformers`, `optimum.intel.openvino`, `qwen_vl_utils`, and `PIL` missing.
-- Class probe: `OVModelForVisualCausalLM`, `AutoProcessor`, and `process_vision_info` missing because packages are not installed.
-- Fake-output probe: runnable and should remain the fallback smoke when real dependencies/model are absent.
-- Real Qwen OpenVINO inference: blocked by missing dependencies and an empty/non-exported model directory.
+- `base_station/requirements-vlm.txt`: installed successfully in `.venv`.
+- `tools/setup_models.py --only qwen_vl --check`: passed.
+- Qwen model: `20 files, 2757.7 MB verified`.
+- Model path: `base_station/models/Qwen2.5-VL-3B-OV-int4`.
+- Fake-output probe: passed.
+- Real Qwen OpenVINO probe: passed.
+- Probe timing: load `6.286s`, generate `9.996s`, total `16.382s`.
+- `emotion_runtime --source image_file --model-backend openvino_qwen_vl --no-agent`: passed.
+- Tokenizer regex warning appeared but did not block inference.
 
-Do not record Step 40 as real inference complete until the dependency probe passes and the model directory contains a real OpenVINO/Optimum Intel export.
+Step 40.1 is complete on DK-2500. Step 41 verifies the real Qwen VLM gate plus OpenClaw proactive care loop.

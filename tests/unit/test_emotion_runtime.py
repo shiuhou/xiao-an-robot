@@ -443,8 +443,10 @@ class _FixedContextBuilder:
 class _FixedVlm:
     def __init__(self, prediction):
         self._prediction = prediction
+        self.last_frame = None
 
     def predict(self, frame, context=None):
+        self.last_frame = frame
         return dict(self._prediction)
 
 
@@ -491,7 +493,11 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "executed": True,
             "status": "ok",
             "expression_label": "tired",
+            "emotion_tag": "tired",
             "confidence": 0.9,
+            "fatigue_score": 0.8,
+            "visual_reason": "eyes heavy",
+            "vlm_observation": "needs rest",
             "evidence": [],
             "face_observation": "needs rest",
             "message": "",
@@ -514,11 +520,30 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "executed": True,
             "status": "ok",
             "expression_label": "neutral",
+            "emotion_tag": "neutral",
             "confidence": None,
+            "fatigue_score": None,
+            "visual_reason": "",
+            "vlm_observation": "",
             "evidence": [],
             "face_observation": "",
             "message": "",
         })
+
+    async def test_payload_free_frame_gets_synthetic_payload_for_vlm(self):
+        vlm = _FixedVlm({"expression_label": "neutral"})
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"source": "fake_camera", "width": 64, "height": 48, "payload": None}),
+            cv_pipeline=_FixedCvPipeline({"source": "fake_face", "emotion_tag": "tired", "fatigue_score": 0.85}),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=vlm,
+        )
+
+        sample = [item async for item in source.samples()][0]
+
+        self.assertEqual(sample["source"], "fake_face")
+        self.assertIsNotNone(vlm.last_frame["payload"])
 
     async def test_triggered_negative_vlm_is_nested_and_does_not_override_cv(self):
         sample = await self._run_one(

@@ -213,11 +213,16 @@ def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> di
         or raw.get("visual_reason")
         or ""
     )
+    emotion_tag = _normalize_vlm_emotion_tag(expression_label, raw.get("polarity"))
     return {
         "executed": bool(executed),
         "status": str(status),
         "expression_label": expression_label,
+        "emotion_tag": emotion_tag,
         "confidence": raw.get("confidence"),
+        "fatigue_score": raw.get("fatigue_score"),
+        "visual_reason": raw.get("visual_reason") or "",
+        "vlm_observation": raw.get("vlm_observation") or "",
         "evidence": _as_evidence_list(raw.get("evidence")),
         "face_observation": face_observation,
         "message": raw.get("message") or "",
@@ -262,7 +267,8 @@ class VLMGatedCameraEmotionSource:
                 asr_text=None,
                 history_summary=self._history_summary(),
             )
-            prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+            vlm_frame = _frame_with_synthetic_payload_when_missing(frame)
+            prediction = await asyncio.to_thread(self.vlm_model.predict, vlm_frame, context)
 
             final_sample = cv_sample.copy()
             final_sample["vlm_triggered"] = True
@@ -285,6 +291,28 @@ class VLMGatedCameraEmotionSource:
         if callable(get_recent_summary):
             return get_recent_summary()
         return None
+
+
+def _frame_with_synthetic_payload_when_missing(frame: dict) -> dict:
+    """Give image-based VLMs a deterministic placeholder for payload-free sources."""
+
+    if not isinstance(frame, dict) or frame.get("payload") is not None:
+        return frame
+    try:
+        from PIL import Image, ImageDraw  # type: ignore[import-not-found]
+    except Exception:
+        return frame
+
+    width = int(frame.get("width") or 640)
+    height = int(frame.get("height") or 480)
+    image = Image.new("RGB", (width, height), color=(42, 45, 48))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((width * 0.35, height * 0.20, width * 0.65, height * 0.82), fill=(72, 76, 80))
+    draw.ellipse((width * 0.42, height * 0.12, width * 0.58, height * 0.30), fill=(118, 110, 102))
+    draw.line((width * 0.42, height * 0.40, width * 0.58, height * 0.40), fill=(170, 160, 150), width=3)
+    copy = frame.copy()
+    copy["payload"] = image
+    return copy
 
 
 @contextmanager

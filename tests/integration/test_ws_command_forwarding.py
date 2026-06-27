@@ -121,10 +121,10 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_message["payload"]["action"], "move_out_of_dock")
         self.assertEqual(robot_message["payload"]["action_id"], "agent-test-001")
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.2,
-            "distance_cm": 2.0,
+            "speed": 0.56,
+            "distance_cm": 10.0,
         })
-        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 1200)
 
     async def test_motion_execute_command_clamps_hardware_safety_params(self) -> None:
         robot_message = await self.send_agent_command_and_assert_forwarded(
@@ -141,12 +141,12 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.2,
-            "distance_cm": 2.0,
+            "speed": 0.56,
+            "distance_cm": 10.0,
         })
-        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 1200)
 
-    async def test_motion_bench_command_is_still_clamped_to_software_limits(self) -> None:
+    async def test_motion_bench_command_forwards_full_speed_and_timeout(self) -> None:
         robot_message = await self.send_agent_command_and_assert_forwarded(
             {
                 "command": "motion.execute",
@@ -162,10 +162,10 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.2,
-            "duration_ms": 500,
+            "speed": 1.0,
+            "duration_ms": 5000,
         })
-        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 5000)
 
     async def test_motion_bench_turn_keeps_angle_duration_and_speed(self) -> None:
         robot_message = await self.send_agent_command_and_assert_forwarded(
@@ -184,11 +184,11 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.2,
+            "speed": 0.4,
             "angle_deg": -30.0,
-            "duration_ms": 500,
+            "duration_ms": 1200,
         })
-        self.assertEqual(robot_message["payload"]["timeout_ms"], 500)
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 1500)
 
     async def test_audio_play_local_commands_are_forwarded(self) -> None:
         for sound in ("care_01", "alarm_01", "wake_01"):

@@ -9,12 +9,13 @@ from __future__ import annotations
 from agent.core.gateway import RobotGateway
 
 
-MAX_SAFE_SPEED = 0.2
-MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_TIMEOUT_MS = 500
-DEFAULT_SAFE_SPEED = 0.2
-DEFAULT_SAFE_DISTANCE_CM = 2.0
-DEFAULT_SAFE_TIMEOUT_MS = 500
+MIN_SAFE_SPEED = 0.52
+MAX_SAFE_SPEED = 0.56
+MAX_SAFE_DISTANCE_CM = 10.0
+MAX_SAFE_TIMEOUT_MS = 1200
+DEFAULT_SAFE_SPEED = 0.56
+DEFAULT_SAFE_DISTANCE_CM = 10.0
+DEFAULT_SAFE_TIMEOUT_MS = 1200
 
 
 def _clamp_number(value, default: float, minimum: float, maximum: float) -> float:
@@ -48,7 +49,7 @@ def safe_motion_params(
     include_distance: bool = False,
 ) -> tuple[dict, int]:
     params = {
-        "speed": _clamp_motion_speed(speed, DEFAULT_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
+        "speed": _clamp_motion_speed(speed, DEFAULT_SAFE_SPEED, MIN_SAFE_SPEED, MAX_SAFE_SPEED),
     }
     if include_distance:
         params["distance_cm"] = _clamp_number(

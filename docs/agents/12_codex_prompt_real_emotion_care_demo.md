@@ -61,7 +61,7 @@ Terminal 3:
 
 ## 实机预期（care 触发时）
 1. 屏幕：caring 表情
-2. 电机：move_out_of_dock 短移。本融合分支当前软件安全上限为 speed<=0.2、distance_cm<=2、timeout_ms<=500；队友分支记录的 2026-06-27 实机校准值需下一步真机安全联调再确认。
+2. 电机：move_out_of_dock 约 10cm 短移（2026-06-27 实测校准：speed=0.56, timeout≈1000-1200ms；0.56 才能可靠走出 base）
 3. 喇叭：audio.play_tts mock tone（OpenClaw 回复文本），不是 care_01
 4. 第 2/3 帧 tired：cooldown skipped
 5. DB 有 emotion.intervention + robot.care_action

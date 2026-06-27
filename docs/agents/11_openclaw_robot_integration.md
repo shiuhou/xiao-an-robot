@@ -1,8 +1,7 @@
 # OpenClaw ↔ Mergetesting 实机联调说明
 
-> 对照队友分支记录与本地 `integration/openclaw-mergetesting-fusion` 融合状态。
+> 对照队友分支 `integration/openclaw-mergetesting-fusion`（zzy182）与本地 `mergetestint_robot`。
 > 最后更新：2026-06-27
-> 本文件中的 ESP32 真机结果来自队友分支记录；本次融合仅做软件验证，真实机器人联调待下一步执行。
 
 ## 结论（先看这个）
 
@@ -10,15 +9,15 @@
 
 | 步骤 | OpenClaw care 动作 | `/control` 消息 type | 你 split-env 已验证 |
 |------|-------------------|----------------------|---------------------|
-| 1 | `xiaoan.robot.expression` → caring | `display.expression` | 队友分支记录：T11 face240 / display |
-| 2 | `xiaoan.robot.move_out` | `motion.execute` action=`move_out_of_dock` | 队友分支记录：T12 motor |
-| 3 | `xiaoan.robot.say` | `audio.play_tts`（固件 mock tone） | 队友分支记录：T13 speaker（TTS mock） |
+| 1 | `xiaoan.robot.expression` → caring | `display.expression` | ✅ T11 face240 / display |
+| 2 | `xiaoan.robot.move_out` | `motion.execute` action=`move_out_of_dock` | ✅ T12 motor |
+| 3 | `xiaoan.robot.say` | `audio.play_tts`（固件 mock tone） | ✅ T13 speaker（TTS mock） |
 
 **唯一差异：** 你单独测 local 音效时用 `audio.play_local` + `care_01`；OpenClaw care demo 默认走 **`audio.play_tts`**（带 `text_preview`），mergetesting 固件在 `command_router.cpp` 里用 `speaker_play_tts_mock()` 播放，不是 `care_01` 本地 wav。
 
 ## 消息路径对比
 
-### 手动测试路径（队友分支已 H，本机待真机验证）
+### 你手动测试（已 H）
 
 ```text
 tools/send_robot_command.py
@@ -74,10 +73,10 @@ python -m base_station.monitor.emotion_runtime `
   --db-path agent/data/step33_demo.db --verbose
 ```
 
-## 实机预期行为（care_for_user 三连，待本机真机验证）
+## 实机预期行为（care_for_user 三连）
 
 1. **表情**：2.4" 或 128×160 屏切到 **caring**（env 需开 display/face240）
-2. **电机**：**move_out_of_dock** 短移。本融合分支软件默认安全上限为 speed<=0.2、distance_cm<=2、timeout_ms<=500；队友分支记录中另有 2026-06-27 实机校准值，需下一步真机安全联调再确认是否采用。
+2. **电机**：**move_out_of_dock** 约 10cm 短移（2026-06-27 实测校准：speed=0.56，timeout≈1000-1200ms；0.56 才能可靠走出 base）
 3. **发声**：**audio.play_tts** → 固件 `speaker_play_tts_mock(text_preview)`，不是 care_01 文件
 
 若 OpenClaw 回复文本较长，TTS mock 会随 `text_preview` 播放；与 `local care_01` 音色可能不同。

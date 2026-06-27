@@ -2,13 +2,6 @@
 
 This file records the 2026-06-27 Xiao-An hardware bring-up, full mergetesting demo, and DK2500/OpenClaw handoff. The session continued past midnight locally, but the work described here happened on the 2026-06-27 hardware validation day.
 
-Integration note, 2026-06-28:
-
-- This document was imported from the teammate `mergetestint_robot` hardware handoff record.
-- The current `integration/openclaw-mergetesting-fusion` software safety envelope remains intentionally conservative: `speed <= 0.2`, `distance_cm <= 2`, and `timeout_ms <= 500`.
-- Hardware calibration values such as `speed=0.56`, `duration_ms=2000`, and `--bench` are historical teammate test records, not the current fusion branch default safety policy.
-- Raising the fusion branch motion envelope for real ESP32 floor movement needs a separate safety decision and verification pass.
-
 ## Summary
 
 Status at end of day:
@@ -97,7 +90,7 @@ Practical calibration found during floor testing:
 - `speed=0.8` also moved after battery/power recovery.
 - Earlier `0.2`, `distance_cm=2`, and `timeout_ms=500` settings only produced short vibration or no visible motion.
 
-Teammate branch hardware notes had aligned its local command path around this calibration. The current OpenClaw fusion branch intentionally keeps the software command path clamped lower until the next real ESP32 safety pass:
+Code/docs already aligned in the current branch through the earlier 2026-06-27 commit:
 
 - `tools/send_robot_command.py`
 - `base_station/ws_server/server.py`
@@ -143,9 +136,9 @@ Current diagnosis:
 - If ESP32 serial does not show matching `motion.completed` and the robot reconnects, inspect firmware reset/power/watchdog.
 - If DK server logs have `motion.completed` but OpenClaw does not, inspect the OpenClaw Gateway/agent event forwarding layer.
 
-## Recommended DK2500 Direct Smoke From Teammate Record
+## Recommended DK2500 Direct Smoke
 
-Before testing OpenClaw's higher-level tool path, the teammate record recommended bypassing OpenClaw and running direct repo commands on the DK2500 base-station checkout. In the current fusion branch these commands are documentation of the hardware-calibrated path only; the active Python safety layer clamps motion to `speed <= 0.2`, `distance_cm <= 2`, and `timeout_ms <= 500`.
+Before testing OpenClaw's higher-level tool path, bypass OpenClaw and run direct repo commands on the DK2500 base-station checkout:
 
 ```powershell
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression happy

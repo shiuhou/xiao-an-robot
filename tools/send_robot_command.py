@@ -14,10 +14,14 @@ from typing import Any
 
 
 DEFAULT_AGENT_URL = "ws://127.0.0.1:8765/agent"
-MAX_SAFE_SPEED = 0.2
-MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_DURATION_MS = 500
-MAX_SAFE_TIMEOUT_MS = 500
+MIN_SAFE_SPEED = 0.52
+MAX_SAFE_SPEED = 0.56
+MAX_SAFE_DISTANCE_CM = 10.0
+MAX_SAFE_TIMEOUT_MS = 1200
+BENCH_MAX_SPEED = 1.0
+BENCH_MAX_TIMEOUT_MS = 10000
+BENCH_MAX_DISTANCE_CM = 100.0
+BENCH_MAX_DURATION_MS = 10000
 DEFAULT_TURN_ANGLE_DEG = 30.0
 
 
@@ -89,11 +93,11 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
         }
     elif args.command_name == "motion":
         bench = bool(getattr(args, "bench", False))
-        max_speed = MAX_SAFE_SPEED
-        min_speed = 0.0
-        max_timeout = MAX_SAFE_TIMEOUT_MS
-        max_distance = MAX_SAFE_DISTANCE_CM
-        max_duration = MAX_SAFE_DURATION_MS
+        max_speed = BENCH_MAX_SPEED if bench else MAX_SAFE_SPEED
+        min_speed = 0.0 if bench else MIN_SAFE_SPEED
+        max_timeout = BENCH_MAX_TIMEOUT_MS if bench else MAX_SAFE_TIMEOUT_MS
+        max_distance = BENCH_MAX_DISTANCE_CM if bench else MAX_SAFE_DISTANCE_CM
+        max_duration = BENCH_MAX_DURATION_MS if bench else MAX_SAFE_TIMEOUT_MS
         raw_action = _arg_value(args, "action", "action_opt", "action_arg", default="move_out_of_dock")
         action, default_param = _motion_action(raw_action)
         payload = {
@@ -181,25 +185,10 @@ async def send_command(args: argparse.Namespace) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send a local Agent command to Xiao An base_station.")
-    parser.add_argument("--url", default=None, help="Base station /agent WebSocket URL.")
-    parser.add_argument("--host", default="127.0.0.1", help="Base station host used when --url is omitted.")
-    parser.add_argument("--port", type=int, default=8765, help="Base station port used when --url is omitted.")
+    parser.add_argument("--url", default=DEFAULT_AGENT_URL, help="Base station /agent WebSocket URL.")
     parser.add_argument("--device-id", default=None, help="Optional target robot device_id.")
-    parser.add_argument("--expression", dest="legacy_expression", default=None, help="Legacy shortcut for expression command.")
-    parser.add_argument("--motion", dest="legacy_motion", default=None, help="Legacy shortcut for motion command.")
-    parser.add_argument("--tts", dest="legacy_tts", default=None, help="Legacy shortcut for TTS command.")
-    parser.add_argument("--speed", type=float, default=None, help="Legacy shortcut motion speed.")
-    parser.add_argument("--distance-cm", type=float, default=None, help="Legacy shortcut motion distance in centimeters.")
-    parser.add_argument("--duration-ms", type=int, default=None, help="Legacy shortcut motion duration in milliseconds.")
-    parser.add_argument("--angle-deg", type=float, default=None, help="Legacy shortcut turn angle.")
-    parser.add_argument("--timeout-ms", type=int, default=None, help="Legacy shortcut motion timeout in milliseconds.")
-    parser.add_argument(
-        "--bench",
-        action="store_true",
-        help="Accepted for compatibility; commands are still clamped to software safety limits.",
-    )
 
-    subparsers = parser.add_subparsers(dest="command_name")
+    subparsers = parser.add_subparsers(dest="command_name", required=True)
 
     expression = subparsers.add_parser("expression", help="Forward a display.expression command.")
     expression.add_argument("expression_arg", nargs="?", default=None, help="Expression name, for example caring.")
@@ -218,7 +207,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     motion.add_argument(
         "--bench",
         action="store_true",
-        help="Accepted for compatibility; commands are still clamped to software safety limits.",
+        help="Bench mode: allow speed up to 1.0 and timeout up to 10s (wheels lifted, external VM).",
     )
 
     tts = subparsers.add_parser("tts", help="Forward an audio.play_tts command.")
@@ -229,27 +218,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     local.add_argument("--sound", dest="sound_opt", default=None, help="Local sound id, for example care_01.")
     local.add_argument("--volume", type=float, default=0.7, help="Playback volume from 0.0 to 1.0.")
 
-    args = parser.parse_args(argv)
-    args.url = args.url or f"ws://{args.host}:{args.port}/agent"
-
-    if args.command_name is None:
-        if args.legacy_expression is not None:
-            args.command_name = "expression"
-            args.expression_opt = args.legacy_expression
-            args.expression_arg = None
-            args.loop = False
-            args.duration_ms = args.duration_ms or 3000
-        elif args.legacy_motion is not None:
-            args.command_name = "motion"
-            args.action_opt = args.legacy_motion
-            args.action_arg = None
-        elif args.legacy_tts is not None:
-            args.command_name = "tts"
-            args.text = args.legacy_tts
-        else:
-            parser.error("one command is required: expression, motion, tts, local, or a legacy shortcut")
-
-    return args
+    return parser.parse_args(argv)
 
 
 if __name__ == "__main__":

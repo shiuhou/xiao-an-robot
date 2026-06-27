@@ -285,9 +285,9 @@ pio run -e mergetesting_mic_only_ota
 pio run -e mergetesting_mic_only_ota -t upload --upload-port xiao-an-esp32.local
 python -m base_station.ws_server.server
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression idle
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.2 --distance-cm 2 --timeout-ms 500
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.56 --distance-cm 10 --timeout-ms 1200
 python tools\send_robot_command.py --device-id xiaoan_robot_01 motion stop
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.2 --timeout-ms 500
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.56 --timeout-ms 1200
 Get-Item runtime\latest.jpg
 Get-Content runtime\audio_stats.json
 ```

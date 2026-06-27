@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-26T23:59:00+08:00",
+  "generated_at": "2026-06-27T15:35:00+08:00",
   "policy": {
     "one_task_per_cycle": true,
     "select_highest_priority_ready": true,
@@ -8,9 +8,9 @@
   "split_env_status": "ALL_H",
   "split_env_completed_at": "2026-06-26",
   "current_task": {
-    "task_id": "T16",
-    "status": "PASS_H",
-    "reason": "all split env hardware verification complete; next gate is full mergetesting (T17)"
+    "task_id": "T17",
+    "status": "PASS_H_PARTIAL",
+    "reason": "full face240 speaker/display/video/audio passed current hardware smoke; full motor not rerun in this env"
   },
   "results": {
     "T00": {
@@ -114,10 +114,17 @@
       "attempt": 2,
       "command": "pio run -e mergetesting_mic_only_ota -t upload --upload-port xiao-an-esp32.local",
       "summary": "Server logged audio.chunk_meta pcm_s16le 16kHz mono; runtime/audio_stats.json and latest_audio.pcm updated; control not starved during PCM stream"
+    },
+    "T17": {
+      "status": "PASS_H_PARTIAL",
+      "attempt": 2,
+      "command": "pio run -e mergetesting_full_face240; pio run -e mergetesting_full_face240_ota -t upload --upload-port 192.168.137.114; python tools/send_robot_command.py local care_01; python tools/send_robot_command.py expression happy; python tools/send_robot_command.py expression idle",
+      "summary": "Added mergetesting_full_face240 and mergetesting_full_face240_ota. Full build and OTA passed on 2026-06-26. Rechecked on 2026-06-27 after hotspot recovery with ESP at 192.168.137.14: server had three established ESP connections, /video and /audio meta continued, latest.jpg/latest_audio.pcm updated, audio.play_local returned firmware command.ack ok and user did not stop the sound test, display.expression happy/idle returned firmware command.ack ok with status changes. Full motor was not rerun in this env because the robot was not explicitly confirmed lifted."
     }
   },
   "next_order": [
-    "T17 burn and verify full mergetesting combined firmware",
+    "Optionally rerun full motor while robot is lifted",
+    "Decide whether full face240 firmware can be marked final PASS_H",
     "T18 Phase 4 proactive care demo (video -> emotion -> commands)",
     "T19 sync OpenVINO real-frame path when runtime models are staged"
   ]

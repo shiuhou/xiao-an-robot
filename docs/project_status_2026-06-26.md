@@ -405,6 +405,18 @@ No protocol change was made. The existing message types remained `display.expres
   - `python tools\send_robot_command.py local care_01` on full -> server logged `Command ack: type=audio.play_local status=ok`; latest human audible confirmation still pending.
   - Full `/audio` and `/video` evidence: server logged continuing `Audio meta: ... pcm_s16le` and `Video meta: ... 320x240`; `runtime/latest.jpg` and `runtime/latest_audio.pcm` updated.
 
+### 2026-06-27 Full Smoke Recheck
+
+- Initial recheck failed because the Windows hotspot interface was not active: PC had no `192.168.137.1`, `/agent` returned `No online robot connected on /control`, and no ESP TCP connection existed.
+- After the hotspot came back, `xiao-an-esp32.local` resolved to `192.168.137.14` instead of the previous `192.168.137.114`.
+- Current full firmware runtime evidence:
+  - `Get-NetTCPConnection -LocalPort 8765` showed three established ESP connections from `192.168.137.14`, matching `/control`, `/audio`, and `/video`.
+  - Server logged current `Audio meta: ... pcm_s16le` and `Video meta: ... 320x240`.
+  - `runtime/latest.jpg` and `runtime/latest_audio.pcm` updated at `2026-06-27 15:34`.
+  - `python tools\send_robot_command.py local care_01` returned agent ack ok, and server logged `Command ack: type=audio.play_local status=ok`; user did not stop the test, so this run is treated as full speaker H under the stated "I will stop you if no sound" rule.
+  - `python tools\send_robot_command.py expression happy` and `python tools\send_robot_command.py expression idle` returned agent ack ok, and server logged firmware `Command ack: type=display.expression status=ok` plus status changes to `happy` and `idle`.
+- Current full status: face240/display, speaker, camera, and mic are verified in the full env. Full motor has not been re-run in this env during the 2026-06-27 smoke because the robot was not explicitly confirmed lifted for this step.
+
 ### Next Steps
 
 Split env H is complete. Next gate is combined firmware and Phase 4.

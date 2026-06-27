@@ -27,7 +27,9 @@
 | 明天上机检查 | [09_hardware_bringup_checklist](./09_hardware_bringup_checklist.md) |
 | 架构整理 / 分层重构 | `docs/superpowers/specs/2026-06-25-layered-firmware-architecture-design.md` |
 | 更新文档 | [07_maintenance](./07_maintenance.md) |
-| **整库目录索引 / 整合 Agent** | [10_repo_map](./10_repo_map.md) |
+| 整合 Agent / 整库索引 | [10_repo_map](./10_repo_map.md) |
+| OpenClaw ↔ 实机联调 | [11_openclaw_robot_integration](./11_openclaw_robot_integration.md) |
+| **实机 emotion care Codex prompt** | [12_codex_prompt_real_emotion_care_demo](./12_codex_prompt_real_emotion_care_demo.md) |
 
 ## 文档层级（不要混用）
 

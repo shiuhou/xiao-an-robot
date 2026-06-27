@@ -60,6 +60,7 @@
 | 电机 LEDC 修复 2026-06-26 | `robot/mergetesting/src/motor_ctrl.cpp` | 通道改为 4–7，解决 freq=0 Hz |
 | 喇叭 lazy-I2S 2026-06-26 | `robot/mergetesting/src/speaker.cpp` | 消除 TG1WDT；OTA 需 `--host_ip=192.168.137.1` on Windows hotspot |
 | **仓库整理 2026-06-27** | `docs/agents/10_repo_map.md`, `.gitignore`, `docs/archive/` | 删 `.pio`/clangd cache；归档 OpenFace handoff；跟踪 `.agents/skills/`；刷新 file_inventory |
+| **OpenClaw 联调分析 2026-06-27** | `docs/agents/11_openclaw_robot_integration.md` | fusion 分支 care demo 与 mergetesting `/control` 协议一致；实机替换 mock_robot 即可 |
 
 ## 硬件阻塞（剩余）
 

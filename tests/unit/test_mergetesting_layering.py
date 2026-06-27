@@ -498,12 +498,18 @@ class MergetestingLayeringTest(unittest.TestCase):
 
     def test_motor_pwm_uses_valid_esp32s3_ledc_channels(self) -> None:
         motor_cpp = (MERGETEST_SRC / "motor_ctrl.cpp").read_text(encoding="utf-8")
+        camera_config = (MERGETEST_SRC / "camera_ov2640_config.h").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("MOTOR_CH_L_IN1 = 4", motor_cpp)
-        self.assertIn("MOTOR_CH_L_IN2 = 5", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN1 = 6", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN2 = 7", motor_cpp)
-        self.assertIn("invalid channels make ledcSetup() return 0 Hz", motor_cpp)
+        self.assertIn("MOTOR_CH_L_IN1 = 0", motor_cpp)
+        self.assertIn("MOTOR_CH_L_IN2 = 1", motor_cpp)
+        self.assertIn("MOTOR_CH_R_IN1 = 2", motor_cpp)
+        self.assertIn("MOTOR_CH_R_IN2 = 3", motor_cpp)
+        self.assertIn("Invalid channels make ledcSetup() return 0 Hz", motor_cpp)
+        self.assertIn("away from OV2640 XCLK on LEDC_CHANNEL_7", motor_cpp)
+        self.assertIn("config->ledc_channel = LEDC_CHANNEL_7", camera_config)
+        self.assertNotIn("MOTOR_CH_R_IN2 = 7", motor_cpp)
         self.assertIn("Re-init after camera", (MERGETEST_SRC / "app" / "mergetesting_app.cpp").read_text(encoding="utf-8"))
 
         pins = (MERGETEST_SRC / "hardware_pins.h").read_text(encoding="utf-8")

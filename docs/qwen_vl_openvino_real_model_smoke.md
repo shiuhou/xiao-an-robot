@@ -9,19 +9,19 @@ Step 39 proved the camera-free static image path, fake Qwen JSON output, and `im
 Default path:
 
 ```bash
-base_station/models/qwen2_5_vl_openvino
+base_station/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 External paths are also valid:
 
 ```bash
-/mnt/models/qwen2_5_vl_openvino
-~/models/qwen2_5_vl_openvino
+/mnt/models/Qwen2.5-VL-3B-OV-int4
+~/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 The directory must be an OpenVINO / Optimum Intel exported Qwen2.5-VL-3B Instruct model directory with top-level OpenVINO `.xml` and `.bin` files plus tokenizer/processor assets. It must not be the original Hugging Face PyTorch model directory.
 
-Step 40 only validates a model directory that already exists locally. It does not download or export a large model. Download/export requires separate confirmation.
+Step 40 only validates a model directory that already exists locally. Step 40.1 uses the teammate-maintained `tools/setup_models.py` + `base_station/models/models_manifest.json` path to download and sha256-check the public Qwen OpenVINO int4 model.
 
 Never commit `base_station/models/`, `runtime/`, manual images, `.safetensors`, `.bin`, `.onnx`, `.xml`, `.blob`, `.pt`, or `.pth` files.
 
@@ -68,7 +68,7 @@ PY
 If installation is explicitly approved, install only into `.venv`:
 
 ```bash
-.venv/bin/python -m pip install -r requirements/qwen_openvino.txt
+.venv/bin/python -m pip install -r base_station/requirements-vlm.txt
 ```
 
 ## Fake Output Smoke
@@ -87,7 +87,7 @@ Expected: `frame.source=image_file`, width/height, `raw_output`, and `emotion_sa
 ```bash
 .venv/bin/python tools/probe_qwen_vl_openvino.py \
   --image-path runtime/manual_samples/image.png \
-  --model-dir base_station/models/qwen2_5_vl_openvino \
+  --model-dir base_station/models/Qwen2.5-VL-3B-OV-int4 \
   --device AUTO \
   --verbose
 ```
@@ -101,7 +101,7 @@ Expected: model load completes, generation completes, raw output is JSON or fenc
   --source image_file \
   --image-path runtime/manual_samples/image.png \
   --model-backend openvino_qwen_vl \
-  --model-path base_station/models/qwen2_5_vl_openvino \
+  --model-path base_station/models/Qwen2.5-VL-3B-OV-int4 \
   --count 1 \
   --no-agent \
   --verbose
@@ -123,7 +123,7 @@ This must not connect OpenClaw, robot hardware, camera, ESP32, ASR, VAD, TTS, or
 
 - Branch: `integration/openclaw-mergetesting-fusion`
 - `runtime/manual_samples/image.png`: present.
-- `base_station/models/qwen2_5_vl_openvino`: present but empty.
+- `base_station/models/Qwen2.5-VL-3B-OV-int4`: required real model target path.
 - Dependency probe: `openvino`, `transformers`, `optimum.intel.openvino`, `qwen_vl_utils`, and `PIL` missing.
 - Class probe: `OVModelForVisualCausalLM`, `AutoProcessor`, and `process_vision_info` missing because packages are not installed.
 - Fake-output probe: runnable and should remain the fallback smoke when real dependencies/model are absent.

@@ -76,7 +76,7 @@ Symptom:
   - `base_station/models`
   - `base_station/models/sensevoice-small`
   - `base_station/models/silero-vad`
-  - `base_station/models/qwen2_5_vl_openvino`
+  - `base_station/models/Qwen2.5-VL-3B-OV-int4`
 
 Fix:
 

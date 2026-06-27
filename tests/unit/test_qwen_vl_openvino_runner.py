@@ -66,7 +66,7 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
                 runner.load()
 
     def test_model_dir_expands_user_home(self) -> None:
-        runner = QwenVLOpenVINORunner(model_dir="~/models/qwen2_5_vl_openvino")
+        runner = QwenVLOpenVINORunner(model_dir="~/models/Qwen2.5-VL-3B-OV-int4")
 
         self.assertNotIn("~", runner.model_dir)
 

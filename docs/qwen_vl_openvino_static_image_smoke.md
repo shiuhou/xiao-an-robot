@@ -62,7 +62,7 @@ After a Qwen2.5-VL-3B OpenVINO/Optimum Intel export is prepared locally:
 ```bash
 .venv/bin/python tools/probe_qwen_vl_openvino.py \
   --image-path runtime/manual_samples/image.png \
-  --model-dir base_station/models/qwen2_5_vl_openvino \
+  --model-dir base_station/models/Qwen2.5-VL-3B-OV-int4 \
   --device AUTO \
   --verbose
 ```
@@ -74,7 +74,7 @@ Runtime equivalent:
   --source image_file \
   --image-path runtime/manual_samples/image.png \
   --model-backend openvino_qwen_vl \
-  --model-path base_station/models/qwen2_5_vl_openvino \
+  --model-path base_station/models/Qwen2.5-VL-3B-OV-int4 \
   --count 1 \
   --no-agent \
   --verbose
@@ -84,7 +84,7 @@ Runtime equivalent:
 
 - Missing image path: prepare `runtime/manual_samples/image.png`; do not commit it.
 - Decode failure: confirm the file is a valid PNG/JPG/JPEG.
-- Missing model directory: copy or export the OpenVINO model into `base_station/models/qwen2_5_vl_openvino`.
+- Missing model directory: download and verify the OpenVINO model into `base_station/models/Qwen2.5-VL-3B-OV-int4` with `tools/setup_models.py --only qwen_vl`.
 - Missing dependencies: install the Qwen OpenVINO runtime dependencies in the local environment before real inference.
 - No `/dev/video*`: expected for Step 39; static image smoke does not use a camera.
 

@@ -11,7 +11,7 @@ agent/data
 base_station/models
 base_station/models/sensevoice-small
 base_station/models/silero-vad
-base_station/models/qwen2_5_vl_openvino
+base_station/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 Create these directories during DK-2500 setup when needed:
@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Force agent\data | Out-Null
 New-Item -ItemType Directory -Force base_station\models | Out-Null
 New-Item -ItemType Directory -Force base_station\models\sensevoice-small | Out-Null
 New-Item -ItemType Directory -Force base_station\models\silero-vad | Out-Null
-New-Item -ItemType Directory -Force base_station\models\qwen2_5_vl_openvino | Out-Null
+New-Item -ItemType Directory -Force base_station\models\Qwen2.5-VL-3B-OV-int4 | Out-Null
 ```
 
 Linux target equivalent:
@@ -30,7 +30,7 @@ Linux target equivalent:
 mkdir -p agent/data
 mkdir -p base_station/models/sensevoice-small
 mkdir -p base_station/models/silero-vad
-mkdir -p base_station/models/qwen2_5_vl_openvino
+mkdir -p base_station/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 ## Config Paths
@@ -49,9 +49,9 @@ Current runtime checker keys:
 
 - `base_station/models/sensevoice-small`
 - `base_station/models/silero-vad`
-- `base_station/models/qwen2_5_vl_openvino`
+- `base_station/models/Qwen2.5-VL-3B-OV-int4`
 
-These names are not fully reconciled yet. Before a DK-2500 deployment pass, align `config.example.yaml`, `tools/check_runtime_env.py`, and the actual model directories.
+Qwen VLM downloads should use `tools/setup_models.py --only qwen_vl`, which reads `base_station/models/models_manifest.json` and verifies sha256 before the model is considered usable.
 
 ## Current Runtime Status
 

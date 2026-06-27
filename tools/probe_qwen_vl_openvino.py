@@ -48,7 +48,7 @@ class CapturingRunner:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-path", required=True, help="Local PNG/JPG/JPEG image path.")
-    parser.add_argument("--model-dir", default="base_station/models/qwen2_5_vl_openvino")
+    parser.add_argument("--model-dir", default="base_station/models/Qwen2.5-VL-3B-OV-int4")
     parser.add_argument("--device", default="AUTO")
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument(

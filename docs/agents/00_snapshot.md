@@ -21,7 +21,8 @@
 | 主固件机器人本体调试 | ✅ | `robot/firmware/src/main.cpp`；不作为 DK-2500 联调默认入口 |
 | 主固件 `/video` `/audio` | ⬜ | DK-2500 联调放在 `robot/mergetesting`；robot-body 主固件不新增联调入口 |
 | **mergetesting split env 联调** | ✅ H | 2026-06-26 全部 split env 实机通过；详见 `08_priority_queue_results.json` |
-| **mergetesting 合并固件** | 🟡 P | `mergetesting_full_face240(_ota)` 软件 smoke 通过；合并全 H 待确认 |
+| **mergetesting 合并固件** | ✅ H | `mergetesting_full_face240` full env 通过 face240/speaker/camera/mic/motor H，2026-06-27 |
+| **OpenClaw Step 33 care-demo 实机 preflight** | ✅ H / demo 待跑 | `mergetesting_care_demo_face240` 通过 `/control` caring、短移、`audio.play_tts` mock、`care_01`；motor 校准为 speed=0.56 约 1s 走 10cm；Gateway `:18789` 未运行 |
 | 电机 DRV8833 | ✅ H | isolated + mergetesting；LEDC 通道 4-7 修复后方向正确 |
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
@@ -51,15 +52,18 @@
 | 联调工程 | `robot/mergetesting/` | DK-2500 联调烧这个，不跑 firmware 的集成 env |
 | WS 三通道客户端 | `mergetesting/src/ws_client.cpp` | control + video + audio；媒体通道由 feature macro 守卫 |
 | 基站收视频存盘 | `base_station/ws_server/server.py` | `runtime/latest.jpg` |
-| `send_robot_command local` | `tools/send_robot_command.py` | 测 `audio.play_local`；motion 支持 `--speed`/`--distance-cm`/`--timeout-ms` |
+| `send_robot_command local` | `tools/send_robot_command.py` | 测 `audio.play_local`；motion 支持 `--bench`、`--speed`、`--distance-cm`、`--duration-ms`、`--timeout-ms` |
 | face240 merged env | `face240_9expr_merged` in platformio.ini | 2.4 寸屏 bring-up |
 | OTA bootstrap 2026-06-25 | `docs/project_status_2026-06-25.md` | USB 首刷后可无线刷新 bootstrap；不是通用上传任意 env |
 | 分层架构 spec 2026-06-25 | `docs/superpowers/specs/2026-06-25-layered-firmware-architecture-design.md` | 保留 bring-up env，逐步抽 services/hal/transport/protocol |
 | mergetesting 分层 Phase 1 2026-06-26 | `robot/mergetesting/src/app/`, `robot/mergetesting/src/services/` | `main.cpp` thin entrypoint；non-blocking motion + command router |
-| split env 实机 H 2026-06-26 | `docs/project_status_2026-06-26.md`, `08_priority_queue_results.json` | T07–T16 全部 PASS_H；下一步 T17 合并固件 |
-| 电机 LEDC 修复 2026-06-26 | `robot/mergetesting/src/motor_ctrl.cpp` | 通道改为 4–7，解决 freq=0 Hz |
+| split env 实机 H 2026-06-26 | `docs/project_status_2026-06-26.md`, `08_priority_queue_results.json` | T07–T16 全部 PASS_H |
+| full env 实机 H 2026-06-27 | `mergetesting_full_face240`, `08_priority_queue_results.json` | T17 PASS_H；三通道 + full-speed 5s motor |
+| care-demo face240 env 2026-06-27 | `mergetesting_care_demo_face240`, `08_priority_queue_results.json` | Step 33 实机前置固件；face240/motor/speaker/control only，禁用 camera/mic |
+| 电机 LEDC 修复 2026-06-26/27 | `robot/mergetesting/src/motor_ctrl.cpp`, `platformio.ini` | split motor 保留 4–7；full 避开 camera LEDC；USB full upload 用 460800 |
 | 喇叭 lazy-I2S 2026-06-26 | `robot/mergetesting/src/speaker.cpp` | 消除 TG1WDT；OTA 需 `--host_ip=192.168.137.1` on Windows hotspot |
 | **仓库整理 2026-06-27** | `docs/agents/10_repo_map.md`, `.gitignore`, `docs/archive/` | 删 `.pio`/clangd cache；归档 OpenFace handoff；跟踪 `.agents/skills/`；刷新 file_inventory |
+| **OpenClaw 联调分析 2026-06-27** | `docs/agents/11_openclaw_robot_integration.md` | fusion 分支 care demo 与 mergetesting `/control` 协议一致；实机替换 mock_robot 即可 |
 
 ## 硬件阻塞（剩余）
 
@@ -71,9 +75,11 @@
 
 ```powershell
 cd robot\mergetesting
-pio run -e mergetesting -t upload --upload-port COMxx   # T17 合并固件（split H 完成后）
+pio run -e mergetesting_care_demo_face240 -t upload --upload-port COMxx
 python -m base_station.ws_server.server                 # 基站
-python tools\send_robot_command.py expression caring    # Phase 2 命令 smoke
+python tools\send_robot_command.py --device-id xiaoan_robot_01 expression caring
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock
+python tools\send_robot_command.py --device-id xiaoan_robot_01 tts --text "测试"
 ```
 
 Phase 4 闭环（video → OpenVINO → OpenClaw → 三命令）见 `06_integration_phases.md`。

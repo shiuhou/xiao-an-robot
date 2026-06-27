@@ -49,7 +49,7 @@ class SendRobotCommandTest(unittest.TestCase):
             "action": "move_out_of_dock",
         })
 
-    def test_motion_command_accepts_bench_safety_parameters(self) -> None:
+    def test_motion_command_accepts_low_safe_speed(self) -> None:
         payload = self.build_payload_from_argv([
             "motion",
             "move_out_of_dock",
@@ -93,6 +93,57 @@ class SendRobotCommandTest(unittest.TestCase):
             "timeout_ms": 500,
         })
 
+    def test_motion_bench_mode_is_still_clamped_to_software_limits(self) -> None:
+        payload = self.build_payload_from_argv([
+            "motion",
+            "forward",
+            "--bench",
+            "--speed",
+            "1.0",
+            "--duration-ms",
+            "5000",
+            "--timeout-ms",
+            "5000",
+        ])
+
+        self.assertEqual(payload, {
+            "command": "motion.execute",
+            "action": "move_out_of_dock",
+            "bench": True,
+            "params": {
+                "speed": 0.2,
+                "duration_ms": 500,
+            },
+            "timeout_ms": 500,
+        })
+
+    def test_motion_direction_aliases_map_to_protocol_actions(self) -> None:
+        cases = {
+            "forward": ("move_out_of_dock", {}),
+            "back": ("move_back_to_dock", {}),
+            "left": ("turn", {"angle_deg": -30.0}),
+            "right": ("turn", {"angle_deg": 30.0}),
+        }
+
+        for alias, (action, extra_params) in cases.items():
+            with self.subTest(alias=alias):
+                payload = self.build_payload_from_argv([
+                    "motion",
+                    alias,
+                    "--bench",
+                    "--speed",
+                    "0.4",
+                    "--duration-ms",
+                    "1200",
+                    "--timeout-ms",
+                    "1500",
+                ])
+
+                expected_params = {"speed": 0.2, "duration_ms": 500, **extra_params}
+                self.assertEqual(payload["action"], action)
+                self.assertEqual(payload["params"], expected_params)
+                self.assertEqual(payload["timeout_ms"], 500)
+
     def test_local_sound_positional_command_defaults_to_safe_volume(self) -> None:
         payload = self.build_payload_from_argv(["local", "care_01"])
 
@@ -119,6 +170,43 @@ class SendRobotCommandTest(unittest.TestCase):
         self.assertEqual(payload, {
             "command": "audio.play_tts",
             "text": "hello xiao an",
+        })
+
+    def test_legacy_top_level_shortcuts_build_equivalent_payloads(self) -> None:
+        expression = self.build_payload_from_argv([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8765",
+            "--expression",
+            "caring",
+        ])
+        motion = self.build_payload_from_argv([
+            "--motion",
+            "move_out_of_dock",
+            "--speed",
+            "1",
+            "--distance-cm",
+            "99",
+            "--timeout-ms",
+            "9999",
+        ])
+        tts = self.build_payload_from_argv(["--tts", "hello shortcut"])
+
+        self.assertEqual(expression["command"], "display.expression")
+        self.assertEqual(expression["expression"], "caring")
+        self.assertEqual(motion, {
+            "command": "motion.execute",
+            "action": "move_out_of_dock",
+            "params": {
+                "speed": 0.2,
+                "distance_cm": 2.0,
+            },
+            "timeout_ms": 500,
+        })
+        self.assertEqual(tts, {
+            "command": "audio.play_tts",
+            "text": "hello shortcut",
         })
 
 

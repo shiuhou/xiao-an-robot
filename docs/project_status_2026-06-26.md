@@ -285,9 +285,9 @@ pio run -e mergetesting_mic_only_ota
 pio run -e mergetesting_mic_only_ota -t upload --upload-port xiao-an-esp32.local
 python -m base_station.ws_server.server
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression idle
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.15 --distance-cm 1 --timeout-ms 250
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.2 --distance-cm 2 --timeout-ms 500
 python tools\send_robot_command.py --device-id xiaoan_robot_01 motion stop
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.15 --timeout-ms 250
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.2 --timeout-ms 500
 Get-Item runtime\latest.jpg
 Get-Content runtime\audio_stats.json
 ```
@@ -382,12 +382,12 @@ No protocol change was made. The existing message types remained `display.expres
 | Camera `/video` | Complete, H |
 | Mic `/audio` | Complete, H |
 | face240 physical path | Complete, H after syncing the updated `face240_roboeyes_test.cpp` visual design into `robot/mergetesting/src/face240_display.cpp`; user confirmed the displayed expression/layout was correct |
-| full face240 combined firmware | PASS/P smoke: `mergetesting_full_face240_ota` builds/uploads by OTA; `/video` and `/audio` stream; `/control -> display.expression` and `/control -> audio.play_local` return firmware `command.ack` |
+| full face240 combined firmware | PASS/H: `mergetesting_full_face240` full env streams `/video` and `/audio`, accepts display/speaker commands, and user-confirmed full-speed 5s motor movement |
 
 ### Unfinished Work
 
 - Split env hardware verification (T07–T16) is complete; machine-readable queue synced in `docs/agents/08_priority_queue_results.json`.
-- Full `mergetesting` / `mergetesting_full_face240` combined firmware: software-smoke verified (build + OTA + `/control` ack + `/video` + `/audio`); final H for all subsystems together still pending (full-run speaker audible confirmation and full motor re-test in combined env).
+- Full `mergetesting_full_face240` combined firmware: complete, PASS/H after full env speaker/display/video/audio smoke and user-confirmed 5s motor movement.
 - Phase 4 proactive care demo (video → OpenVINO → OpenClaw → three commands) not started.
 
 ### Late Full Face240 Smoke Update
@@ -405,29 +405,58 @@ No protocol change was made. The existing message types remained `display.expres
   - `python tools\send_robot_command.py local care_01` on full -> server logged `Command ack: type=audio.play_local status=ok`; latest human audible confirmation still pending.
   - Full `/audio` and `/video` evidence: server logged continuing `Audio meta: ... pcm_s16le` and `Video meta: ... 320x240`; `runtime/latest.jpg` and `runtime/latest_audio.pcm` updated.
 
+### 2026-06-27 Full Smoke Recheck
+
+- Initial recheck failed because the Windows hotspot interface was not active: PC had no `192.168.137.1`, `/agent` returned `No online robot connected on /control`, and no ESP TCP connection existed.
+- After the hotspot came back, `xiao-an-esp32.local` resolved to `192.168.137.14` instead of the previous `192.168.137.114`.
+- Current full firmware runtime evidence:
+  - `Get-NetTCPConnection -LocalPort 8765` showed three established ESP connections from `192.168.137.14`, matching `/control`, `/audio`, and `/video`.
+  - Server logged current `Audio meta: ... pcm_s16le` and `Video meta: ... 320x240`.
+  - `runtime/latest.jpg` and `runtime/latest_audio.pcm` updated at `2026-06-27 15:34`.
+  - `python tools\send_robot_command.py local care_01` returned agent ack ok, and server logged `Command ack: type=audio.play_local status=ok`; user did not stop the test, so this run is treated as full speaker H under the stated "I will stop you if no sound" rule.
+  - `python tools\send_robot_command.py expression happy` and `python tools\send_robot_command.py expression idle` returned agent ack ok, and server logged firmware `Command ack: type=display.expression status=ok` plus status changes to `happy` and `idle`.
+- Current full status: face240/display, speaker, camera, mic, and motor are verified in the full env after the later motor retest below.
+
+### 2026-06-27 Full Motor Retest and T17 Close
+
+- False negative found: earlier "short vibration" motion tests were caused by the manual command path being constrained to the safe Agent defaults (`speed<=0.2`, `distance_cm<=2`, `timeout_ms<=500`) and by the base station injecting `distance_cm=2` for non-bench motion. This made long-looking commands behave like short 500 ms pulses.
+- Follow-up floor calibration found that `speed=0.56` with about `1000 ms` travels roughly `10 cm` and is the reliable dock-exit setting; speeds below about `0.5` may not overcome static friction, and `0.52` is kept only as the minimum effective positive speed guard.
+- Manual hardware command mode uses `--bench` to allow explicit open-loop testing while normal Agent commands now use the calibrated 10 cm envelope. Direction aliases (`forward/back/left/right`) and `duration_ms` are supported in the command path; firmware can also run no-distance `move_out_of_dock` for `timeout_ms`.
+- Motor-only control proof:
+  - `mergetesting_motor_only` on `/control` received `python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --bench --speed 1.0 --timeout-ms 5000`.
+  - Server log: motion started at `2026-06-27 16:59:29.940` and completed at `16:59:34.941`.
+  - User confirmed full-speed physical forward movement for 5 seconds.
+- Full firmware recovery:
+  - First `COM19` full upload at default high speed dropped around 5%; retry at high speed could not reopen the device.
+  - `mergetesting_full_face240` now uses `upload_speed = 460800` for stable USB flashing on this host.
+  - After USB replug, `pio run -e mergetesting_full_face240 -t upload --upload-port COM19` succeeded.
+  - Full env reconnected with three TCP 8765 sessions from `192.168.137.25`; server logged continuing `/audio` PCM and `/video` 320x240 frames, and status showed `camera=cam_ok`.
+- Full motor H:
+  - Command: `python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --bench --speed 1.0 --timeout-ms 5000`.
+  - Server log: `Robot status ... motion=move_out_of_dock camera=cam_ok` at `17:43:43.088`, `Command ack: type=motion.execute status=ok`, `Motion completed: agent-7fa99fdd -> success` at `17:43:48.121`, then `motion=idle`.
+  - User confirmed physical movement in full `mergetesting_full_face240`.
+- T17 status: `PASS/H`. Split env T07-T16 and full env T17 are now complete; next gate is Phase 4 proactive care / OpenVINO/OpenClaw integration.
+
 ### Next Steps
 
-Split env H is complete. Next gate is combined firmware and Phase 4.
+Split env H, full `mergetesting_full_face240` H (T17), and care-demo preflight H (T18) are complete. Next gate is OpenClaw Gateway demo, then Phase 4.
 
-1. Burn and verify combined firmware (T17). Prefer `mergetesting_full_face240_ota` when the 2.4" face is connected:
+1. Run Step 33 **实机** tired demo with OpenClaw Gateway listening on `:18789`. Burn the care-demo env first:
 
 ```powershell
 cd robot\mergetesting
-pio run -e mergetesting_full_face240_ota -t upload --upload-port 192.168.137.114
+pio run -e mergetesting_care_demo_face240 -t upload --upload-port COMxx
+python -m base_station.ws_server.server
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression caring
-python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.15 --distance-cm 1 --timeout-ms 250
+python tools\send_robot_command.py --device-id xiaoan_robot_01 tts --text "测试"
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock
 ```
 
-Confirm audible speaker output and physical motion in the combined env. If the board resets, return to split envs.
+Then start OpenClaw Gateway and run the tired emotion care demo from `docs/agents/12_codex_prompt_real_emotion_care_demo.md`.
 
-2. Or burn legacy combined `mergetesting` (ST7735 display path):
+2. Phase 4: wire real or mock emotion source to proactive care commands. See `docs/agents/06_integration_phases.md`.
 
-```powershell
-pio run -e mergetesting -t upload --upload-port COM19
-```
-
-3. Phase 4: wire real or mock emotion source to proactive care commands. See `docs/agents/06_integration_phases.md`.
+If a future full build resets, return to split envs and isolate camera init, display init, then speaker/motor one at a time. Legacy combined `mergetesting` (ST7735 display path) remains available but is not the current care-demo default.
 
 ## Split Env ALL_H Confirmation — 2026-06-26
 
@@ -454,7 +483,7 @@ Split env evidence summary:
 | T15 camera | `mergetesting_cam_only_ota` | PASS_H |
 | T16 mic | `mergetesting_mic_only_ota` | PASS_H |
 
-Remaining gate: combined `mergetesting` / `mergetesting_full_face240` hardware H, then Phase 4 end-to-end demo.
+Remaining gate: Phase 4 end-to-end demo (`/video` -> emotion/OpenVINO -> OpenClaw -> robot commands).
 
 ## Repository Cleanup — 2026-06-27
 

@@ -220,6 +220,31 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("--host_ip=192.168.137.1", ota_body)
         self.assertIn("-DENABLE_ARDUINO_OTA=1", ota_body)
 
+    def test_care_demo_face240_env_excludes_media_streams(self) -> None:
+        platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("[env:mergetesting_care_demo_face240]", platformio)
+        care_body = platformio.split("[env:mergetesting_care_demo_face240]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("-DMERGETEST_ENABLE_DISPLAY=1", care_body)
+        self.assertIn("-DMERGETEST_DISPLAY_FACE240=1", care_body)
+        self.assertIn("-DMERGETEST_ENABLE_CAMERA=0", care_body)
+        self.assertIn("-DMERGETEST_ENABLE_MOTOR=1", care_body)
+        self.assertIn("-DMERGETEST_ENABLE_SPEAKER=1", care_body)
+        self.assertIn("-DMERGETEST_ENABLE_MIC=0", care_body)
+
+        self.assertIn("[env:mergetesting_care_demo_face240_ota]", platformio)
+        care_ota_body = platformio.split("[env:mergetesting_care_demo_face240_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_care_demo_face240", care_ota_body)
+        self.assertIn("upload_protocol = espota", care_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", care_ota_body)
+        self.assertIn("-DENABLE_ARDUINO_OTA=1", care_ota_body)
+
     def test_ws_optional_media_channels_follow_compile_flags(self) -> None:
         ws_cpp = (MERGETEST_SRC / "ws_client.cpp").read_text(encoding="utf-8")
         connect_all = ws_cpp.split("void WSClient::_connectAll()", 1)[1].split(
@@ -280,7 +305,10 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("_motion.loop();", app_cpp)
         self.assertNotIn("delay(", motion_cpp)
         self.assertNotIn("_motor.execute(", motion_cpp)
-        self.assertIn('completeActive("interrupted")', motion_cpp)
+        self.assertIn('return clampDuration(timeoutMs, timeoutMs);', motion_cpp)
+        self.assertIn("no distance => run for timeout_ms", motion_cpp)
+        self.assertIn("durationOverrideFromPayload", motion_cpp)
+        self.assertIn('params["duration_ms"]', motion_cpp)
         self.assertIn('payload["action_id"]', ws_cpp)
 
     def test_local_sound_reports_unsupported_sound(self) -> None:
@@ -339,10 +367,10 @@ class MergetestingLayeringTest(unittest.TestCase):
             "bool speaker_play_tts_mock", 1
         )[0]
         blocking_body = speaker_cpp.split("bool playLocalBlocking", 1)[1].split(
-            "void speakerTask", 1
+            "bool playTtsBlocking", 1
         )[0]
-        tts_body = speaker_cpp.split("bool speaker_play_tts_mock", 1)[1].split(
-            "void speaker_stop", 1
+        tts_blocking_body = speaker_cpp.split("bool playTtsBlocking", 1)[1].split(
+            "void speakerTask", 1
         )[0]
 
         self.assertIn("bool playCareChime()", speaker_cpp)
@@ -353,8 +381,8 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("ok = ensureSpeakerReady() && playAlarmBeeps();", blocking_body)
         self.assertIn("ok = ensureSpeakerReady() && playWakeChime();", blocking_body)
         self.assertIn("return false;", play_local_body)
-        self.assertGreaterEqual(tts_body.count("playTone("), 3)
-        self.assertIn("preview=%s", tts_body)
+        self.assertGreaterEqual(tts_blocking_body.count("playTone("), 3)
+        self.assertIn("preview=%s", tts_blocking_body)
 
     def test_speaker_local_playback_runs_off_control_loop(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
@@ -366,6 +394,17 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("SPEAKER_AMPLITUDE = 2400", speaker_cpp)
         self.assertIn("startPlaybackTask", speaker_cpp)
         self.assertIn("return startPlaybackTask(sound);", speaker_cpp)
+
+    def test_speaker_tts_mock_runs_off_control_loop(self) -> None:
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        tts_body = speaker_cpp.split("bool speaker_play_tts_mock", 1)[1].split(
+            "void speaker_stop", 1
+        )[0]
+
+        self.assertIn("bool playTtsBlocking", speaker_cpp)
+        self.assertIn("startTtsTask", speaker_cpp)
+        self.assertIn("return startTtsTask(textPreview);", tts_body)
+        self.assertNotIn("playTone(", tts_body)
 
     def test_speaker_i2s_writes_use_timeout_and_yield(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
@@ -498,24 +537,38 @@ class MergetestingLayeringTest(unittest.TestCase):
 
     def test_motor_pwm_uses_valid_esp32s3_ledc_channels(self) -> None:
         motor_cpp = (MERGETEST_SRC / "motor_ctrl.cpp").read_text(encoding="utf-8")
+        camera_config = (MERGETEST_SRC / "camera_ov2640_config.h").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("MOTOR_CH_L_IN1 = 4", motor_cpp)
-        self.assertIn("MOTOR_CH_L_IN2 = 5", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN1 = 6", motor_cpp)
-        self.assertIn("MOTOR_CH_R_IN2 = 7", motor_cpp)
-        self.assertIn("invalid channels make ledcSetup() return 0 Hz", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_L_IN1 0", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_L_IN2 1", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_R_IN1 2", motor_cpp)
+        self.assertIn("#define MERGETEST_MOTOR_CH_R_IN2 3", motor_cpp)
+        self.assertIn("MERGETEST_MOTOR_CH_L_IN1", motor_cpp)
+        self.assertIn("Invalid channels make ledcSetup() return 0 Hz", motor_cpp)
+        self.assertIn("away from OV2640 XCLK on LEDC_CHANNEL_7", motor_cpp)
+        self.assertIn("config->ledc_channel = LEDC_CHANNEL_7", camera_config)
+        self.assertNotIn("MOTOR_CH_R_IN2 = 7", motor_cpp)
         self.assertIn("Re-init after camera", (MERGETEST_SRC / "app" / "mergetesting_app.cpp").read_text(encoding="utf-8"))
 
         pins = (MERGETEST_SRC / "hardware_pins.h").read_text(encoding="utf-8")
         platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
             encoding="utf-8"
         )
+        motor_only_body = platformio.split("[env:mergetesting_motor_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
 
         self.assertIn("#define PIN_MOTOR_L_IN1 1", pins)
         self.assertIn("#define PIN_MOTOR_L_IN2 2", pins)
         self.assertIn("#define PIN_MOTOR_R_IN1 3", pins)
         self.assertIn("#define PIN_MOTOR_R_IN2 48", pins)
         self.assertIn("-DTFT_BL=-1", platformio)
+        self.assertIn("-DMERGETEST_MOTOR_CH_L_IN1=4", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_L_IN2=5", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_R_IN1=6", motor_only_body)
+        self.assertIn("-DMERGETEST_MOTOR_CH_R_IN2=7", motor_only_body)
 
 
 if __name__ == "__main__":

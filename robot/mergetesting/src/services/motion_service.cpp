@@ -14,8 +14,9 @@ namespace {
 constexpr uint32_t DEFAULT_TIMEOUT_MS = 5000;
 constexpr uint32_t MAX_TIMEOUT_MS = 10000;
 constexpr uint32_t MIN_MOTION_MS = 250;
-constexpr float DEFAULT_SPEED = 0.5f;
-constexpr float MIN_EFFECTIVE_SPEED = 0.1f;
+constexpr uint32_t MAX_BENCH_DURATION_MS = 10000;
+constexpr float DEFAULT_SPEED = 0.56f;
+constexpr float MIN_EFFECTIVE_SPEED = 0.52f;
 
 uint32_t clampDuration(uint32_t durationMs, uint32_t timeoutMs) {
   const uint32_t cappedTimeout = constrain(timeoutMs, MIN_MOTION_MS, MAX_TIMEOUT_MS);
@@ -46,6 +47,17 @@ float MotionService::paramFromPayload(JsonObject payload, const char* action) co
   return 0.0f;
 }
 
+uint32_t durationOverrideFromPayload(JsonObject payload, uint32_t timeoutMs) {
+  JsonObject params = payload["params"].as<JsonObject>();
+  if (params.isNull() || !(params["duration_ms"].is<uint32_t>() || params["duration_ms"].is<int>())) {
+    return 0;
+  }
+  const uint32_t requested = params["duration_ms"] | 0;
+  return clampDuration(
+      constrain(requested, MIN_MOTION_MS, MAX_BENCH_DURATION_MS),
+      timeoutMs);
+}
+
 float MotionService::speedFromPayload(JsonObject payload) const {
   JsonObject params = payload["params"].as<JsonObject>();
   float speed = DEFAULT_SPEED;
@@ -69,7 +81,8 @@ uint32_t MotionService::durationForAction(
     uint32_t timeoutMs) const {
   if (strcmp(action, MotionAction::MOVE_OUT_OF_DOCK) == 0) {
     if (param <= 0.0f) {
-      return clampDuration(MERGE_PULSE_FORWARD_MS, timeoutMs);
+      // Bench / remote drive: no distance => run for timeout_ms (not fixed 1.5s pulse).
+      return clampDuration(timeoutMs, timeoutMs);
     }
     const float cmPerSec = DRIVE_CM_PER_SEC * max(speed, MIN_EFFECTIVE_SPEED);
     const uint32_t durationMs = static_cast<uint32_t>((param / cmPerSec) * 1000.0f);
@@ -77,7 +90,7 @@ uint32_t MotionService::durationForAction(
   }
 
   if (strcmp(action, MotionAction::MOVE_BACK_TO_DOCK) == 0) {
-    return clampDuration(MERGE_PULSE_FORWARD_MS, timeoutMs);
+    return clampDuration(timeoutMs, timeoutMs);
   }
 
   if (strcmp(action, MotionAction::TURN) == 0) {
@@ -218,7 +231,10 @@ void MotionService::execute(JsonObject payload) {
   const float param = paramFromPayload(payload, action);
   const float speed = speedFromPayload(payload);
   const uint32_t timeoutMs = timeoutFromPayload(payload);
-  const uint32_t durationMs = durationForAction(action, param, speed, timeoutMs);
+  const uint32_t durationOverrideMs = durationOverrideFromPayload(payload, timeoutMs);
+  const uint32_t durationMs = durationOverrideMs > 0
+      ? durationOverrideMs
+      : durationForAction(action, param, speed, timeoutMs);
   const int duty = speedToDuty(speed);
 
   _active = true;

@@ -69,15 +69,15 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to <= 0.2 for local software safety.",
                 },
                 "distance_cm": {
                     "type": "number",
-                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                    "description": "Optional travel distance, clamped to <= 2 cm for local software safety.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for local software safety.",
                 },
             },
         },
@@ -100,11 +100,11 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to <= 0.2 for local software safety.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for local software safety.",
                 },
             },
         },
@@ -139,15 +139,15 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
                 },
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to <= 0.2 for local software safety.",
                 },
                 "distance_cm": {
                     "type": "number",
-                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                    "description": "Optional travel distance, clamped to <= 2 cm for local software safety.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 500 ms for local software safety.",
                 },
             },
         },

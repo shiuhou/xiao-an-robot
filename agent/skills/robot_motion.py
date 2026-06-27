@@ -25,6 +25,13 @@ def _clamp_number(value, default: float, minimum: float, maximum: float) -> floa
     return max(minimum, min(number, maximum))
 
 
+def _clamp_motion_speed(value, default: float, minimum: float, maximum: float) -> float:
+    speed = _clamp_number(value, default, 0.0, maximum)
+    if speed <= 0.0:
+        return 0.0
+    return max(minimum, speed)
+
+
 def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
     try:
         number = int(value)
@@ -41,7 +48,7 @@ def safe_motion_params(
     include_distance: bool = False,
 ) -> tuple[dict, int]:
     params = {
-        "speed": _clamp_number(speed, DEFAULT_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
+        "speed": _clamp_motion_speed(speed, DEFAULT_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
     }
     if include_distance:
         params["distance_cm"] = _clamp_number(

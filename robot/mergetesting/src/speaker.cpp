@@ -22,6 +22,7 @@ bool gReady = false;
 volatile bool gPlaying = false;
 TaskHandle_t gTaskHandle = nullptr;
 char gTaskSound[32] = {};
+char gTaskText[96] = {};
 
 bool installSpeakerI2S() {
   const i2s_config_t config = {
@@ -168,12 +169,37 @@ bool playLocalBlocking(const char* sound) {
   return ok;
 }
 
+bool playTtsBlocking(const char* textPreview) {
+  if (!ensureSpeakerReady()) {
+    return false;
+  }
+  const size_t len = textPreview ? strlen(textPreview) : 0;
+  const uint32_t ms = static_cast<uint32_t>(min<size_t>(3000, 600 + len * 80));
+  LOGI("Speaker", "tts mock %u ms preview=%s", ms, textPreview ? textPreview : "");
+  const bool ok = playTone(520, ms / 3, 2800) &&
+                  playTone(620, ms / 3, 2800) &&
+                  playTone(720, ms / 3, 2800);
+  releaseSpeakerI2S();
+  return ok;
+}
+
 void speakerTask(void*) {
   char sound[sizeof(gTaskSound)] = {};
   strncpy(sound, gTaskSound, sizeof(sound) - 1);
   vTaskDelay(pdMS_TO_TICKS(100));
   const bool ok = playLocalBlocking(sound);
   LOGI("Speaker", "play_local done %s ok=%s", sound, ok ? "true" : "false");
+  gPlaying = false;
+  gTaskHandle = nullptr;
+  vTaskDelete(nullptr);
+}
+
+void speakerTtsTask(void*) {
+  char text[sizeof(gTaskText)] = {};
+  strncpy(text, gTaskText, sizeof(text) - 1);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  const bool ok = playTtsBlocking(text);
+  LOGI("Speaker", "tts mock done ok=%s", ok ? "true" : "false");
   gPlaying = false;
   gTaskHandle = nullptr;
   vTaskDelete(nullptr);
@@ -199,6 +225,31 @@ bool startPlaybackTask(const char* sound) {
     gPlaying = false;
     gTaskHandle = nullptr;
     LOGE("Speaker", "play_local task create failed");
+    return false;
+  }
+  return true;
+}
+
+bool startTtsTask(const char* textPreview) {
+  if (gPlaying) {
+    LOGW("Speaker", "tts mock busy");
+    return false;
+  }
+
+  strncpy(gTaskText, textPreview ? textPreview : "", sizeof(gTaskText) - 1);
+  gTaskText[sizeof(gTaskText) - 1] = '\0';
+  gPlaying = true;
+  const BaseType_t created = xTaskCreate(
+      speakerTtsTask,
+      "speaker_tts",
+      4096,
+      nullptr,
+      1,
+      &gTaskHandle);
+  if (created != pdPASS) {
+    gPlaying = false;
+    gTaskHandle = nullptr;
+    LOGE("Speaker", "tts mock task create failed");
     return false;
   }
   return true;
@@ -234,17 +285,7 @@ bool speaker_play_local(const char* sound) {
 }
 
 bool speaker_play_tts_mock(const char* textPreview) {
-  if (!ensureSpeakerReady()) {
-    return false;
-  }
-  const size_t len = textPreview ? strlen(textPreview) : 0;
-  const uint32_t ms = static_cast<uint32_t>(min<size_t>(3000, 600 + len * 80));
-  LOGI("Speaker", "tts mock %u ms preview=%s", ms, textPreview ? textPreview : "");
-  const bool ok = playTone(520, ms / 3, 2800) &&
-                  playTone(620, ms / 3, 2800) &&
-                  playTone(720, ms / 3, 2800);
-  releaseSpeakerI2S();
-  return ok;
+  return startTtsTask(textPreview);
 }
 
 void speaker_stop() {

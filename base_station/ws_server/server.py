@@ -45,10 +45,13 @@ sessions: Dict[str, dict] = {}
 video_frame_source = None
 audio_runtime_dir = Path("runtime")
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
-MAX_SAFE_SPEED = 0.56
+MAX_SAFE_SPEED = 0.2
 MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_DURATION_MS = 2000
-MAX_SAFE_TIMEOUT_MS = 2200
+MAX_SAFE_DURATION_MS = 500
+MAX_SAFE_TIMEOUT_MS = 500
+DEFAULT_SAFE_SPEED = 0.2
+DEFAULT_SAFE_DISTANCE_CM = 2.0
+DEFAULT_SAFE_TIMEOUT_MS = 500
 
 
 def _initial_audio_stats() -> dict:
@@ -106,6 +109,13 @@ def _clamp_number(value, default: float, minimum: float, maximum: float) -> floa
     return max(minimum, min(number, maximum))
 
 
+def _clamp_motion_speed(value, default: float, minimum: float, maximum: float) -> float:
+    speed = _clamp_number(value, default, 0.0, maximum)
+    if speed <= 0.0:
+        return 0.0
+    return max(minimum, speed)
+
+
 def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
     try:
         number = int(value)
@@ -119,32 +129,62 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
     if not isinstance(raw_params, dict):
         raw_params = {}
 
+    max_speed = MAX_SAFE_SPEED
+    min_speed = 0.0
+    max_timeout = MAX_SAFE_TIMEOUT_MS
+    max_distance = MAX_SAFE_DISTANCE_CM
+    max_duration = MAX_SAFE_DURATION_MS
+    default_timeout = DEFAULT_SAFE_TIMEOUT_MS
+
     timeout_ms = _clamp_int(
         payload.get("timeout_ms"),
-        MAX_SAFE_TIMEOUT_MS,
+        default_timeout,
         1,
-        MAX_SAFE_TIMEOUT_MS,
+        max_timeout,
     )
 
     if action == MotionAction.MOVE_OUT_OF_DOCK:
-        params = {
-            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
-        }
-        if raw_params.get("duration_ms") is not None:
-            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), MAX_SAFE_DURATION_MS, 1, MAX_SAFE_DURATION_MS)
+        params: dict = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
         else:
+            params["speed"] = DEFAULT_SAFE_SPEED
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        distance_value = raw_params.get("distance_cm", raw_params.get("distance"))
+        if distance_value is not None:
             params["distance_cm"] = _clamp_number(
-                raw_params.get("distance_cm"),
-                MAX_SAFE_DISTANCE_CM,
+                distance_value,
+                max_distance,
                 0.0,
-                MAX_SAFE_DISTANCE_CM,
+                max_distance,
             )
+        elif raw_params.get("duration_ms") is None:
+            params["distance_cm"] = DEFAULT_SAFE_DISTANCE_CM
         return params, timeout_ms
 
     if action == MotionAction.MOVE_BACK_TO_DOCK:
-        return {
-            "speed": _clamp_number(raw_params.get("speed"), MAX_SAFE_SPEED, 0.0, MAX_SAFE_SPEED),
-        }, timeout_ms
+        params = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
+        else:
+            params["speed"] = DEFAULT_SAFE_SPEED
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        return params, timeout_ms
+
+    if action == MotionAction.TURN:
+        params = {}
+        if raw_params.get("speed") is not None:
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
+        else:
+            params["speed"] = DEFAULT_SAFE_SPEED
+        angle_value = raw_params.get("angle_deg", raw_params.get("angle"))
+        if angle_value is not None:
+            params["angle_deg"] = _clamp_number(angle_value, 0.0, -360.0, 360.0)
+        if raw_params.get("duration_ms") is not None:
+            params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
+        return params, timeout_ms
 
     return raw_params, int(payload.get("timeout_ms", 5000) or 5000)
 

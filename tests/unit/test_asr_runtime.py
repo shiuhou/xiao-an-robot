@@ -2,9 +2,36 @@
 
 from __future__ import annotations
 
+import math
+import struct
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+import wave
 
-from base_station.monitor.asr_runtime import build_asr_event, build_output, resolve_transcript, run_once
+from base_station.monitor.asr_runtime import (
+    build_asr_event,
+    build_audio_file_event,
+    build_output,
+    resolve_transcript,
+    run_once,
+)
+
+
+def write_wav(path: Path, *, sample_rate: int = 16000, seconds: float = 1.0, sine: bool = True) -> None:
+    frame_count = int(sample_rate * seconds)
+    frames = bytearray()
+    for index in range(frame_count):
+        value = 0
+        if sine:
+            value = int(12000 * math.sin(2 * math.pi * 440 * index / sample_rate))
+        frames.extend(struct.pack("<h", value))
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(bytes(frames))
 
 
 class FakeBrain:
@@ -67,6 +94,20 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["type"], "asr.transcript")
         self.assertEqual(event["payload"]["text"], "我有点累")
 
+    async def test_build_asr_event_can_include_audio_vad_asr_metadata(self) -> None:
+        event = build_asr_event(
+            "我有点累",
+            source="audio_file",
+            vad={"speech_detected": True},
+            asr={"backend": "fake"},
+            audio={"sample_rate": 16000},
+        )
+
+        self.assertEqual(event["payload"]["source"], "audio_file")
+        self.assertEqual(event["payload"]["vad"]["speech_detected"], True)
+        self.assertEqual(event["payload"]["asr"]["backend"], "fake")
+        self.assertEqual(event["payload"]["audio"]["sample_rate"], 16000)
+
     async def test_build_output_preserves_openclaw_followup_fields(self) -> None:
         event = build_asr_event("我有点累")
         result = {
@@ -101,6 +142,89 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(output["handled"])
         self.assertEqual(output["reason"], "asr_emotion_triggered")
         self.assertEqual(brain.events[0]["type"], "asr.transcript")
+
+    async def test_audio_file_fake_vad_and_fake_asr_builds_transcript_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            write_wav(audio_path)
+
+            event, prepared = build_audio_file_event(
+                audio_path=str(audio_path),
+                vad_backend="fake",
+                vad_pattern="speech",
+                asr_backend="fake",
+                fake_transcript="我有点累",
+            )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event["type"], "asr.transcript")
+        self.assertEqual(event["payload"]["text"], "我有点累")
+        self.assertEqual(event["payload"]["source"], "audio_file")
+        self.assertEqual(event["payload"]["vad"]["speech_detected"], True)
+        self.assertEqual(event["payload"]["asr"]["backend"], "fake")
+        self.assertEqual(event["payload"]["audio"]["sample_rate"], 16000)
+        self.assertEqual(event["payload"]["audio"]["channels"], 1)
+        self.assertEqual(prepared["audio"]["duration_ms"], 1000)
+
+    async def test_audio_file_fake_vad_silence_skips_asr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "silence.wav"
+            write_wav(audio_path, sine=False)
+
+            event, output = build_audio_file_event(
+                audio_path=str(audio_path),
+                vad_backend="fake",
+                vad_pattern="silence",
+                asr_backend="fake",
+                fake_transcript="这句话不应该出现",
+            )
+
+        self.assertIsNone(event)
+        self.assertEqual(output["event_type"], "asr.no_speech")
+        self.assertEqual(output["reason"], "vad_no_speech")
+        self.assertFalse(output["vad"]["speech_detected"])
+        self.assertNotIn("asr", output)
+
+    async def test_audio_file_missing_raises_clear_error(self) -> None:
+        with self.assertRaisesRegex(FileNotFoundError, "Audio file does not exist"):
+            build_audio_file_event(audio_path="runtime/manual_samples/missing.wav")
+
+    async def test_run_once_audio_file_no_agent_does_not_create_brain(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            write_wav(audio_path)
+            with patch("base_station.monitor.asr_runtime.XiaoAnBrain") as brain_class:
+                output = await run_once(
+                    source="audio_file",
+                    audio_path=str(audio_path),
+                    vad_backend="fake",
+                    vad_pattern="speech",
+                    asr_backend="fake",
+                    fake_transcript="我有点累",
+                    no_agent=True,
+                )
+
+        brain_class.assert_not_called()
+        self.assertEqual(output["event_type"], "asr.transcript")
+        self.assertEqual(output["event"]["payload"]["text"], "我有点累")
+        self.assertEqual(output["reason"], "no_agent")
+
+    async def test_run_once_audio_file_silence_returns_no_speech(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "silence.wav"
+            write_wav(audio_path, sine=False)
+            output = await run_once(
+                source="audio_file",
+                audio_path=str(audio_path),
+                vad_backend="fake",
+                vad_pattern="silence",
+                asr_backend="fake",
+                fake_transcript="这句话不应该出现",
+                no_agent=True,
+            )
+
+        self.assertEqual(output["event_type"], "asr.no_speech")
+        self.assertFalse(output["vad"]["speech_detected"])
 
     async def test_run_once_openclaw_pattern_exposes_openclaw_route(self) -> None:
         brain = FakeBrain(

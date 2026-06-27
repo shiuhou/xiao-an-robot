@@ -13,7 +13,7 @@ Windows local development currently uses deterministic fake sources:
 
 - `fake_camera` for camera frames.
 - `fake_qwen_vl` for Qwen VL emotion output.
-- `base_station.monitor.asr_runtime` for text-only ASR transcript simulation.
+- `base_station.monitor.asr_runtime` for text/pattern and audio-file fake VAD/ASR transcript simulation.
 - `mock_robot` and the WebSocket `/agent` route for local command forwarding.
 
 DK-2500 deployment will replace those pieces with real sources:
@@ -80,7 +80,10 @@ ASR transcript simulation:
 ```powershell
 python -m base_station.monitor.asr_runtime --pattern tired --verbose
 python -m base_station.monitor.asr_runtime --text "我有点累" --verbose
+python -m base_station.monitor.asr_runtime --source audio_file --audio-path runtime/manual_samples/audio_tired.wav --vad-backend fake --vad-pattern speech --asr-backend fake --fake-transcript "我有点累" --no-agent --verbose
 ```
+
+Step 42 verifies the `audio_file -> VAD -> ASR -> asr.transcript` software chain with fake/energy backends. Real microphone, SenseVoice, and Silero model inference are separate setup steps.
 
 Emotion runtime with fake camera:
 

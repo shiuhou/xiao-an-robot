@@ -6,7 +6,9 @@ import unittest
 
 from base_station.perception.asr import (
     ASRTranscriptSource,
+    FakeASRBackend,
     FakeASRTranscriptSource,
+    SenseVoiceASRBackend,
     SenseVoiceSmallASRTranscriptSource,
     StreamingASR,
 )
@@ -59,6 +61,30 @@ class ASRTranscriptSourceTest(unittest.TestCase):
         source = StreamingASR(model_dir="models/sensevoice")
 
         source.reset()
+
+    def test_fake_asr_backend_uses_explicit_transcript(self) -> None:
+        result = FakeASRBackend(transcript="我有点累").transcribe({"duration_ms": 1234})
+
+        self.assertEqual(result["text"], "我有点累")
+        self.assertEqual(result["backend"], "fake")
+        self.assertEqual(result["duration_ms"], 1234)
+
+    def test_fake_asr_backend_uses_pattern(self) -> None:
+        result = FakeASRBackend(pattern="greeting").transcribe({"duration_ms": 1000})
+
+        self.assertEqual(result["text"], "你好小安")
+
+    def test_sensevoice_backend_without_model_path_raises_clear_error(self) -> None:
+        backend = SenseVoiceASRBackend()
+
+        with self.assertRaisesRegex(RuntimeError, "requires a local --asr-model-path"):
+            backend.transcribe({})
+
+    def test_sensevoice_backend_missing_model_raises_clear_error(self) -> None:
+        backend = SenseVoiceASRBackend(model_dir="models/missing-sensevoice")
+
+        with self.assertRaisesRegex(FileNotFoundError, "SenseVoice ASR model directory does not exist"):
+            backend.transcribe({})
 
 
 if __name__ == "__main__":

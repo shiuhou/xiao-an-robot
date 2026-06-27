@@ -5,7 +5,10 @@ from __future__ import annotations
 import unittest
 
 from base_station.perception.vad import (
+    EnergyVADBackend,
+    FakeVADBackend,
     FakeVoiceActivityDetector,
+    SileroVADBackend,
     SileroVoiceActivityDetector,
     VoiceActivityDetector,
     VoiceActivitySource,
@@ -54,6 +57,42 @@ class VoiceActivityDetectorTest(unittest.TestCase):
         self.assertEqual(detector.threshold, 0.6)
         with self.assertRaises(NotImplementedError):
             detector.is_speech(b"frame")
+
+    def test_fake_vad_backend_speech_contract(self) -> None:
+        result = FakeVADBackend(pattern="speech").analyze({"duration_ms": 1234})
+
+        self.assertTrue(result["speech_detected"])
+        self.assertEqual(result["reason"], "fake_speech")
+        self.assertEqual(result["end_ms"], 1234)
+
+    def test_fake_vad_backend_silence_contract(self) -> None:
+        result = FakeVADBackend(pattern="silence").analyze({"duration_ms": 1234})
+
+        self.assertFalse(result["speech_detected"])
+        self.assertEqual(result["reason"], "fake_silence")
+
+    def test_energy_vad_detects_silence(self) -> None:
+        result = EnergyVADBackend().analyze({
+            "pcm_bytes": b"\x00\x00" * 160,
+            "sample_width": 2,
+            "channels": 1,
+            "duration_ms": 10,
+        })
+
+        self.assertFalse(result["speech_detected"])
+        self.assertEqual(result["reason"], "energy_threshold")
+
+    def test_silero_backend_missing_model_raises_clear_error(self) -> None:
+        backend = SileroVADBackend(model_path="models/missing-silero.onnx")
+
+        with self.assertRaisesRegex(FileNotFoundError, "Silero VAD model file does not exist"):
+            backend.analyze({})
+
+    def test_silero_backend_without_model_path_raises_clear_error(self) -> None:
+        backend = SileroVADBackend()
+
+        with self.assertRaisesRegex(RuntimeError, "requires a local --vad-model-path"):
+            backend.analyze({})
 
 
 if __name__ == "__main__":

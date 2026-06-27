@@ -6,6 +6,19 @@ interfaces and fake sources for local tests; it does not load real models.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+
+PATTERN_TRANSCRIPTS = {
+    "tired": "我有点累",
+    "negative": "我今天好烦",
+    "normal": "帮我查一下天气",
+    "openclaw": "帮我查一下天气",
+    "greeting": "你好小安",
+    "summary": "生成今天总结",
+    "work": "我刚刚在写项目代码",
+}
+
 
 class ASRTranscriptSource:
     """Base interface for ASR transcript sources."""
@@ -27,6 +40,50 @@ class FakeASRTranscriptSource(ASRTranscriptSource):
         transcript = self.transcripts[self._index]
         self._index += 1
         return transcript
+
+
+class FakeASRBackend:
+    """Mock ASR backend for file-first software tests."""
+
+    def __init__(self, transcript: str | None = None, pattern: str | None = None):
+        self.transcript = transcript
+        self.pattern = pattern or "normal"
+
+    def transcribe(self, audio_clip: dict) -> dict:
+        text = self.transcript
+        if text is None:
+            try:
+                text = PATTERN_TRANSCRIPTS[self.pattern]
+            except KeyError as exc:
+                supported = ", ".join(sorted(PATTERN_TRANSCRIPTS))
+                raise ValueError(f"Unsupported ASR pattern: {self.pattern}. Supported patterns: {supported}.") from exc
+        return {
+            "text": text,
+            "language": "zh",
+            "confidence": 0.9 if text else 0.0,
+            "backend": "fake",
+            "duration_ms": int(audio_clip.get("duration_ms") or 0),
+        }
+
+
+class SenseVoiceASRBackend:
+    """SenseVoice ASR shell; never downloads models automatically."""
+
+    def __init__(self, model_dir: str | None = None, device: str = "cpu"):
+        self.model_dir = model_dir
+        self.device = device
+
+    def transcribe(self, audio_clip: dict) -> dict:
+        if not self.model_dir:
+            raise RuntimeError("SenseVoice ASR requires a local --asr-model-path; automatic download is disabled.")
+        path = Path(self.model_dir).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(f"SenseVoice ASR model directory does not exist: {self.model_dir}")
+        try:
+            __import__("funasr")
+        except ImportError as exc:
+            raise ImportError("SenseVoice ASR requires funasr installed in the project .venv.") from exc
+        raise RuntimeError("SenseVoice ASR backend shell is present, but real inference is not wired in Step 42.")
 
 
 class SenseVoiceSmallASRTranscriptSource(ASRTranscriptSource):

@@ -53,14 +53,29 @@ Current runtime checker keys:
 
 Qwen VLM downloads should use `tools/setup_models.py --only qwen_vl`, which reads `base_station/models/models_manifest.json` and verifies sha256 before the model is considered usable.
 
+SenseVoiceSmall ASR uses the Step 43.1 audio model preparation flow:
+
+```bash
+.venv/bin/python tools/setup_audio_models.py --only sensevoice_small
+.venv/bin/python tools/setup_audio_models.py --only sensevoice_small --check
+```
+
+This downloads the public Hugging Face model `FunAudioLLM/SenseVoiceSmall` to:
+
+```text
+base_station/models/sensevoice-small
+```
+
+Silero VAD model format is still pending a later decision. Step 43.1 uses energy VAD with real SenseVoice ASR.
+
 ## Current Runtime Status
 
 | Model Path | Current Role | Status |
 | --- | --- | --- |
 | OpenVINO face emotion model | CV emotion backend | Interface and tests exist; real postprocessing still staged. |
 | Head pose model | Future posture/fatigue feature | Placeholder path only. |
-| SenseVoice / sherpa-onnx ASR | Speech transcript source | Step 42 fake/audio-file ASR software chain exists; real SenseVoice model wiring pending. |
-| Silero VAD | Voice activity detection | Step 42 fake/energy VAD software chain exists; real Silero model wiring pending. |
+| SenseVoiceSmall ASR | Speech transcript source | Step 43.1 uses `tools/setup_audio_models.py` to prepare `FunAudioLLM/SenseVoiceSmall`, then runs real audio-file ASR smoke. |
+| Silero VAD | Voice activity detection | Step 42 fake/energy VAD software chain exists; real Silero model format remains pending. |
 | Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Real static-image OpenVINO Qwen inference has been verified on DK-2500; VLM gate / OpenClaw proactive care is verified in Step 41. |
 
 ## Git Rules

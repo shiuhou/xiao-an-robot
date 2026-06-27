@@ -52,6 +52,8 @@ class BaseStationEmotionRuntime:
     async def run(self) -> list[dict]:
         results = []
         async for sample in self.source.samples():
+            if self.verbose:
+                self._print_frame_trace(sample)
             if self.no_agent:
                 result = self.event_loop.build_event(sample)
                 print("[emotion.sample]", json.dumps(result, ensure_ascii=False))
@@ -64,6 +66,25 @@ class BaseStationEmotionRuntime:
                     "result": result,
                 }, ensure_ascii=False, indent=2))
         return results
+
+    @staticmethod
+    def _print_frame_trace(sample: dict) -> None:
+        frame_source = sample.get("frame_source")
+        frame_id = sample.get("frame_id")
+        if not frame_source or frame_id is None:
+            return
+        details = [
+            "[emotion.frame]",
+            f"source={frame_source}",
+            f"frame_id={frame_id}",
+        ]
+        if sample.get("timestamp_ms") is not None:
+            details.append(f"timestamp_ms={sample.get('timestamp_ms')}")
+        if sample.get("width") is not None:
+            details.append(f"width={sample.get('width')}")
+        if sample.get("height") is not None:
+            details.append(f"height={sample.get('height')}")
+        print(" ".join(details))
 
 
 class LimitedEmotionSource:

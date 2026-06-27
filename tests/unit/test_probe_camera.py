@@ -54,6 +54,7 @@ class ProbeCameraTest(unittest.TestCase):
     def make_args(self, count: int = 3, interval: float = 0.0) -> argparse.Namespace:
         return argparse.Namespace(
             camera_index=0,
+            scan_indices=None,
             camera_width=320,
             camera_height=240,
             count=count,
@@ -92,13 +93,23 @@ class ProbeCameraTest(unittest.TestCase):
         self.assertIn("opencv-python", stderr.getvalue())
 
     def test_main_returns_nonzero_for_runtime_error(self) -> None:
-        FakeOpenCVCameraFrameSource.raise_on_enter = RuntimeError("Unable to open camera index 0")
+        FakeOpenCVCameraFrameSource.raise_on_enter = RuntimeError("unable to open camera index 0")
         with patch("tools.probe_camera.OpenCVCameraFrameSource", FakeOpenCVCameraFrameSource):
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as stderr:
                 exit_code = probe_camera.main(["--count", "1", "--interval", "0"])
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("Unable to open camera index 0", stderr.getvalue())
+        self.assertIn("unable to open camera index 0", stderr.getvalue())
+
+    def test_scan_indices_reports_available_camera(self) -> None:
+        args = self.make_args()
+        args.scan_indices = "0,1"
+        with patch("tools.probe_camera.OpenCVCameraFrameSource", FakeOpenCVCameraFrameSource):
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                result = probe_camera.scan_camera_indices(args)
+
+        self.assertEqual(result["count"], 2)
+        self.assertEqual([item["camera_index"] for item in result["available"]], [0, 1])
 
 
 if __name__ == "__main__":

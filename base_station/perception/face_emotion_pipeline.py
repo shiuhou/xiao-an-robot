@@ -26,6 +26,8 @@ class FaceEmotionPipeline:
             "frame_source": frame.get("source"),
             "frame_id": frame.get("frame_id"),
             "timestamp_ms": frame.get("timestamp_ms"),
+            "width": frame.get("width"),
+            "height": frame.get("height"),
         })
         return sample
 

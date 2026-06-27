@@ -109,6 +109,7 @@ class ApiRuntime:
             "last_tool": None,
             "last_device_id": None,
             "last_forwarded_type": None,
+            "latest_command_ack": None,
             "last_error": None,
         }
 
@@ -537,6 +538,7 @@ class ApiRuntime:
             "last_tool": tool,
             "last_device_id": None,
             "last_forwarded_type": None,
+            "latest_command_ack": None,
             "last_error": None,
         }
 
@@ -545,6 +547,7 @@ class ApiRuntime:
             for payload in self._iter_robot_ack_payloads(result):
                 detail["last_device_id"] = payload.get("device_id")
                 detail["last_forwarded_type"] = payload.get("forwarded_type")
+                detail["latest_command_ack"] = dict(payload)
             self.robot_connection_status = "online_via_command_ack"
             self.robot_connection_detail = detail
             return

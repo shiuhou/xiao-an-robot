@@ -30,6 +30,8 @@ OPTIONAL_PAYLOAD_FIELDS = (
     "frame_source",
     "frame_id",
     "timestamp_ms",
+    "width",
+    "height",
     # session/context
     "session_id",
     "project_id",

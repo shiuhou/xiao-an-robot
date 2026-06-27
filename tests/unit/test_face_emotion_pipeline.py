@@ -86,6 +86,8 @@ class FaceEmotionPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sample["frame_id"], 7)
         self.assertEqual(sample["timestamp_ms"], 999)
         self.assertEqual(sample["frame_source"], "fake_camera")
+        self.assertEqual(sample["width"], 640)
+        self.assertEqual(sample["height"], 480)
 
     async def test_pipeline_uses_injected_model_prediction_and_keeps_source(self) -> None:
         model = CustomModel()

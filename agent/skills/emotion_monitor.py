@@ -86,6 +86,7 @@ class EmotionMonitorSkill:
             "raw_fatigue_score": payload.get("fatigue_score"),
             "timestamp_ms": payload.get("timestamp_ms") or payload.get("timestamp"),
             "frame_source": payload.get("frame_source"),
+            "frame_id": payload.get("frame_id"),
             "polarity": payload.get("polarity"),
             "valence": payload.get("valence"),
             "fatigue_level": str(payload.get("fatigue_level") or "").lower() or None,
@@ -113,6 +114,7 @@ class EmotionMonitorSkill:
             "timestamp_ms": timestamp,
             "source": parsed.get("raw_source") or parsed["source"],
             "frame_source": parsed.get("frame_source"),
+            "frame_id": parsed.get("frame_id"),
             "message": message,
         }
 

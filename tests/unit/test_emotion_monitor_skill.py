@@ -206,6 +206,7 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
             "confidence": 0.9,
             "fatigue_score": 0.86,
             "timestamp_ms": 123456,
+            "frame_id": 7,
         })
 
         self.assertTrue(result["handled"])
@@ -220,6 +221,7 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["timestamp_ms"], 123456)
         self.assertEqual(payload["source"], "fake_qwen_vl")
         self.assertEqual(payload["frame_source"], "fake_camera")
+        self.assertEqual(payload["frame_id"], 7)
 
     async def test_payload_wrapped_sad_trigger_is_parsed(self) -> None:
         gateway = FakeGateway()

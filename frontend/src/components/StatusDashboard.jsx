@@ -192,6 +192,14 @@ export default function StatusDashboard() {
             <dd>{formatValue(robotConnectionDetail.last_forwarded_type)}</dd>
           </div>
           <div>
+            <dt>Latest Command Ack</dt>
+            <dd>
+              {robotConnectionDetail.latest_command_ack
+                ? JSON.stringify(robotConnectionDetail.latest_command_ack)
+                : "Not available"}
+            </dd>
+          </div>
+          <div>
             <dt>Last Robot Error</dt>
             <dd>{formatValue(robotConnectionDetail.last_error)}</dd>
           </div>

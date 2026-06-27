@@ -82,6 +82,10 @@ class ApiServerHealthIntegrationTest(unittest.TestCase):
             status["data"]["robot_connection_detail"]["last_tool"],
             None,
         )
+        self.assertEqual(
+            status["data"]["robot_connection_detail"]["latest_command_ack"],
+            None,
+        )
         self.assertIn(
             "long_term_memory",
             status["data"]["openclaw_owned_features"],

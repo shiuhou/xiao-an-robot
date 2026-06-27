@@ -110,7 +110,7 @@ class OpenCVCameraFrameSourceTest(unittest.TestCase):
         FakeCapture.opened = False
         with patch.dict(sys.modules, {"cv2": fake_cv2}):
             source = OpenCVCameraFrameSource(camera_index=2)
-            with self.assertRaisesRegex(RuntimeError, "Unable to open camera index 2"):
+            with self.assertRaisesRegex(RuntimeError, "unable to open camera index 2"):
                 source.open()
 
         self.assertTrue(FakeCapture.instances[0].released)

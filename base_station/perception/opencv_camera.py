@@ -44,7 +44,7 @@ class OpenCVCameraFrameSource(FrameSource):
 
         if not capture.isOpened():
             capture.release()
-            raise RuntimeError(f"Unable to open camera index {self.camera_index}.")
+            raise RuntimeError(f"unable to open camera index {self.camera_index}.")
 
         self._capture = capture
 

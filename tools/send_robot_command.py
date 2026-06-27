@@ -14,9 +14,10 @@ from typing import Any
 
 
 DEFAULT_AGENT_URL = "ws://127.0.0.1:8765/agent"
-MAX_SAFE_SPEED = 0.2
-MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_TIMEOUT_MS = 500
+MIN_SAFE_SPEED = 0.52
+MAX_SAFE_SPEED = 0.56
+MAX_SAFE_DISTANCE_CM = 10.0
+MAX_SAFE_TIMEOUT_MS = 1200
 BENCH_MAX_SPEED = 1.0
 BENCH_MAX_TIMEOUT_MS = 10000
 BENCH_MAX_DISTANCE_CM = 100.0
@@ -49,6 +50,13 @@ def _clamp_number(value: Any, default: float, minimum: float, maximum: float) ->
     except (TypeError, ValueError):
         number = default
     return max(minimum, min(number, maximum))
+
+
+def _clamp_motion_speed(value: Any, default: float, minimum: float, maximum: float) -> float:
+    speed = _clamp_number(value, default, 0.0, maximum)
+    if speed <= 0.0:
+        return 0.0
+    return max(minimum, speed)
 
 
 def _clamp_int(value: Any, default: int, minimum: int, maximum: int) -> int:
@@ -86,6 +94,7 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
     elif args.command_name == "motion":
         bench = bool(getattr(args, "bench", False))
         max_speed = BENCH_MAX_SPEED if bench else MAX_SAFE_SPEED
+        min_speed = 0.0 if bench else MIN_SAFE_SPEED
         max_timeout = BENCH_MAX_TIMEOUT_MS if bench else MAX_SAFE_TIMEOUT_MS
         max_distance = BENCH_MAX_DISTANCE_CM if bench else MAX_SAFE_DISTANCE_CM
         max_duration = BENCH_MAX_DURATION_MS if bench else MAX_SAFE_TIMEOUT_MS
@@ -104,7 +113,7 @@ def build_agent_command(args: argparse.Namespace) -> dict[str, Any]:
         angle_deg = _arg_value(args, "angle_deg")
         timeout_ms = _arg_value(args, "timeout_ms")
         if speed is not None:
-            params["speed"] = _clamp_number(speed, max_speed, 0.0, max_speed)
+            params["speed"] = _clamp_motion_speed(speed, max_speed, min_speed, max_speed)
         if distance_cm is not None:
             params["distance_cm"] = _clamp_number(
                 distance_cm,

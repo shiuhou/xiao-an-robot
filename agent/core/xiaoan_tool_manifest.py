@@ -69,15 +69,15 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
                 },
                 "distance_cm": {
                     "type": "number",
-                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                    "description": "Optional travel distance, clamped to <= 10 cm for dock exit.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 1200 ms for the 10 cm calibration.",
                 },
             },
         },
@@ -100,11 +100,11 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 1200 ms for the 10 cm calibration.",
                 },
             },
         },
@@ -139,15 +139,15 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
                 },
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to <= 0.2 for hardware safety.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
                 },
                 "distance_cm": {
                     "type": "number",
-                    "description": "Optional travel distance, clamped to <= 2 cm for hardware safety.",
+                    "description": "Optional travel distance, clamped to <= 10 cm for dock exit.",
                 },
                 "timeout_ms": {
                     "type": "integer",
-                    "description": "Optional motion timeout, clamped to <= 500 ms for hardware safety.",
+                    "description": "Optional motion timeout, clamped to <= 1200 ms for the 10 cm calibration.",
                 },
             },
         },

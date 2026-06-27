@@ -49,7 +49,7 @@ class SendRobotCommandTest(unittest.TestCase):
             "action": "move_out_of_dock",
         })
 
-    def test_motion_command_accepts_bench_safety_parameters(self) -> None:
+    def test_motion_command_raises_low_non_bench_speed_to_effective_minimum(self) -> None:
         payload = self.build_payload_from_argv([
             "motion",
             "move_out_of_dock",
@@ -65,7 +65,7 @@ class SendRobotCommandTest(unittest.TestCase):
             "command": "motion.execute",
             "action": "move_out_of_dock",
             "params": {
-                "speed": 0.15,
+                "speed": 0.52,
                 "distance_cm": 1.0,
             },
             "timeout_ms": 250,
@@ -87,10 +87,10 @@ class SendRobotCommandTest(unittest.TestCase):
             "command": "motion.execute",
             "action": "move_out_of_dock",
             "params": {
-                "speed": 0.2,
-                "distance_cm": 2.0,
+                "speed": 0.56,
+                "distance_cm": 10.0,
             },
-            "timeout_ms": 500,
+            "timeout_ms": 1200,
         })
 
     def test_motion_bench_mode_allows_longer_full_speed_without_distance(self) -> None:

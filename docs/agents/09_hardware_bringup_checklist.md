@@ -94,9 +94,9 @@ Command checks from repo root:
 ```powershell
 .venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 expression idle
 .venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 expression caring
-.venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.15 --distance-cm 1 --timeout-ms 250
+.venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.56 --distance-cm 10 --timeout-ms 1200
 .venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 motion stop
-.venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.15 --timeout-ms 250
+.venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.56 --timeout-ms 1200
 .venv\Scripts\python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 ```
 
@@ -106,9 +106,9 @@ Linux shell equivalent:
 .venv/bin/python -m base_station.ws_server.server
 .venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 expression idle
 .venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 expression caring
-.venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.15 --distance-cm 1 --timeout-ms 250
+.venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_out_of_dock --speed 0.56 --distance-cm 10 --timeout-ms 1200
 .venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 motion stop
-.venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.15 --timeout-ms 250
+.venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 motion move_back_to_dock --speed 0.56 --timeout-ms 1200
 .venv/bin/python tools/send_robot_command.py --device-id xiaoan_robot_01 local care_01
 ```
 

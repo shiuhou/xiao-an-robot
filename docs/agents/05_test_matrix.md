@@ -67,8 +67,10 @@ pio run -e mergetesting
 | `mergetesting_speaker_only` | P: 2026-06-26 | H: lazy I2S fix, `audio.play_local`/mock TTS audible, 2026-06-26 |
 | `mergetesting_speaker_only_ota` | P: 2026-06-26 | H: Windows hotspot `--host_ip=192.168.137.1`, 2026-06-26 |
 | `mergetesting_face240_only_ota` | P: 2026-06-26 | H: espota upload + expression path, 2026-06-26 |
-| `mergetesting_full_face240` | P: 2026-06-26 combined face240 + all subs | 🟡: software smoke only; full H pending |
-| `mergetesting_full_face240_ota` | P: 2026-06-26 | 🟡: OTA smoke + `/video`/`/audio`/command ack; audible/motor in combined env pending |
+| `mergetesting_care_demo_face240` | P: 2026-06-27 Step 33 care demo | H: face240+motor+speaker+/control preflight, no cam/mic, 2026-06-27 |
+| `mergetesting_care_demo_face240_ota` | P: 2026-06-27 | P: build/upload path verified; current T18 H used USB |
+| `mergetesting_full_face240` | P: 2026-06-26 combined face240 + all subs | H: USB upload at 460800 + `/control` full-speed 5s motor + `/video` + `/audio`, 2026-06-27 |
+| `mergetesting_full_face240_ota` | P: 2026-06-26 | H/P: OTA smoke passed earlier; current full H used USB after OTA/COM instability |
 | `mergetesting` | P: 2026-06-26 combined baseline | —: burn after split env H (split envs now all H) |
 
 ## 固件工具脚本

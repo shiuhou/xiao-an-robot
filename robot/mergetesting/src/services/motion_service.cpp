@@ -15,8 +15,8 @@ constexpr uint32_t DEFAULT_TIMEOUT_MS = 5000;
 constexpr uint32_t MAX_TIMEOUT_MS = 10000;
 constexpr uint32_t MIN_MOTION_MS = 250;
 constexpr uint32_t MAX_BENCH_DURATION_MS = 10000;
-constexpr float DEFAULT_SPEED = 0.5f;
-constexpr float MIN_EFFECTIVE_SPEED = 0.1f;
+constexpr float DEFAULT_SPEED = 0.56f;
+constexpr float MIN_EFFECTIVE_SPEED = 0.52f;
 
 uint32_t clampDuration(uint32_t durationMs, uint32_t timeoutMs) {
   const uint32_t cappedTimeout = constrain(timeoutMs, MIN_MOTION_MS, MAX_TIMEOUT_MS);

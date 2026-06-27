@@ -43,7 +43,7 @@ emotion_runtime (fake_camera, tired)
 ```text
 （OpenClaw + emotion_runtime 同上）
   → RobotGateway → /agent → /control
-  → 真实 ESP32 mergetesting（mergetesting_display_only 或 full_face240）
+  → 真实 ESP32 mergetesting（**mergetesting_care_demo_face240** 推荐；或 full_face240）
   → 屏幕 caring 表情 + 电机短距前移 + 喇叭 mock TTS 音
 ```
 
@@ -57,9 +57,9 @@ emotion_runtime (fake_camera, tired)
 # T1 基站
 python -m base_station.ws_server.server
 
-# T2 实机：烧 mergetesting_display_only（或 face240 / full 合并 env）
+# T2 实机：烧 mergetesting_care_demo_face240（Step 33 专用，关 cam/mic）
 cd robot\mergetesting
-pio run -e mergetesting_display_only -t upload
+pio run -e mergetesting_care_demo_face240 -t upload
 # 确认 serial：WiFi OK、/control connected、device.hello
 
 # T3 tired 干预（PowerShell 环境变量写法）
@@ -76,7 +76,7 @@ python -m base_station.monitor.emotion_runtime `
 ## 实机预期行为（care_for_user 三连）
 
 1. **表情**：2.4" 或 128×160 屏切到 **caring**（env 需开 display/face240）
-2. **电机**：**move_out_of_dock** 短脉冲（fusion 分支 clamp：speed≤0.2，distance≤2cm，timeout≤500ms）
+2. **电机**：**move_out_of_dock** 约 10cm 短移（2026-06-27 实测校准：speed=0.56，timeout≈1000-1200ms；0.56 才能可靠走出 base）
 3. **发声**：**audio.play_tts** → 固件 `speaker_play_tts_mock(text_preview)`，不是 care_01 文件
 
 若 OpenClaw 回复文本较长，TTS mock 会随 `text_preview` 播放；与 `local care_01` 音色可能不同。
@@ -104,8 +104,8 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ## 下一步联合门控
 
-- [ ] merge fusion 分支到 mergetestint_robot
+- [x] merge fusion 分支到 mergetestint_robot
 - [ ] Step 33 mock 在你机器上 PASS
-- [ ] Step 33 **实机** tired demo（display + motor + TTS mock）
+- [ ] Step 33 **实机** tired demo（display + motor + TTS mock；T18 preflight H，Gateway `:18789` 待跑）
 - [ ] Step 38 真实摄像头 + 实机（见 fusion `docs/real_camera_emotion_smoke.md`）
-- [ ] `mergetesting_full_face240` 合并 env 实机 H（T17）
+- [x] `mergetesting_full_face240` 合并 env 实机 H（T17，2026-06-27）

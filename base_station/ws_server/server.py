@@ -45,9 +45,13 @@ sessions: Dict[str, dict] = {}
 video_frame_source = None
 audio_runtime_dir = Path("runtime")
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
-MAX_SAFE_SPEED = 0.2
-MAX_SAFE_DISTANCE_CM = 2.0
-MAX_SAFE_TIMEOUT_MS = 500
+MIN_SAFE_SPEED = 0.52
+MAX_SAFE_SPEED = 0.56
+DEFAULT_SAFE_SPEED = 0.56
+MAX_SAFE_DISTANCE_CM = 10.0
+DEFAULT_SAFE_DISTANCE_CM = 10.0
+MAX_SAFE_TIMEOUT_MS = 1200
+DEFAULT_SAFE_TIMEOUT_MS = 1200
 BENCH_MAX_SPEED = 1.0
 BENCH_MAX_TIMEOUT_MS = 10000
 BENCH_MAX_DISTANCE_CM = 100.0
@@ -109,6 +113,13 @@ def _clamp_number(value, default: float, minimum: float, maximum: float) -> floa
     return max(minimum, min(number, maximum))
 
 
+def _clamp_motion_speed(value, default: float, minimum: float, maximum: float) -> float:
+    speed = _clamp_number(value, default, 0.0, maximum)
+    if speed <= 0.0:
+        return 0.0
+    return max(minimum, speed)
+
+
 def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
     try:
         number = int(value)
@@ -124,10 +135,11 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
 
     bench = bool(payload.get("bench"))
     max_speed = BENCH_MAX_SPEED if bench else MAX_SAFE_SPEED
+    min_speed = 0.0 if bench else MIN_SAFE_SPEED
     max_timeout = BENCH_MAX_TIMEOUT_MS if bench else MAX_SAFE_TIMEOUT_MS
     max_distance = BENCH_MAX_DISTANCE_CM if bench else MAX_SAFE_DISTANCE_CM
     max_duration = BENCH_MAX_DURATION_MS if bench else MAX_SAFE_TIMEOUT_MS
-    default_timeout = max_timeout if bench else MAX_SAFE_TIMEOUT_MS
+    default_timeout = max_timeout if bench else DEFAULT_SAFE_TIMEOUT_MS
 
     timeout_ms = _clamp_int(
         payload.get("timeout_ms"),
@@ -139,9 +151,9 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
     if action == MotionAction.MOVE_OUT_OF_DOCK:
         params: dict = {}
         if raw_params.get("speed") is not None:
-            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
         elif not bench:
-            params["speed"] = MAX_SAFE_SPEED
+            params["speed"] = DEFAULT_SAFE_SPEED
         if raw_params.get("duration_ms") is not None:
             params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
         distance_value = raw_params.get("distance_cm", raw_params.get("distance"))
@@ -153,15 +165,15 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
                 max_distance,
             )
         elif not bench:
-            params["distance_cm"] = MAX_SAFE_DISTANCE_CM
+            params["distance_cm"] = DEFAULT_SAFE_DISTANCE_CM
         return params, timeout_ms
 
     if action == MotionAction.MOVE_BACK_TO_DOCK:
         params = {}
         if raw_params.get("speed") is not None:
-            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
         elif not bench:
-            params["speed"] = MAX_SAFE_SPEED
+            params["speed"] = DEFAULT_SAFE_SPEED
         if raw_params.get("duration_ms") is not None:
             params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
         return params, timeout_ms
@@ -169,9 +181,9 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
     if action == MotionAction.TURN:
         params = {}
         if raw_params.get("speed") is not None:
-            params["speed"] = _clamp_number(raw_params.get("speed"), max_speed, 0.0, max_speed)
+            params["speed"] = _clamp_motion_speed(raw_params.get("speed"), DEFAULT_SAFE_SPEED, min_speed, max_speed)
         elif not bench:
-            params["speed"] = MAX_SAFE_SPEED
+            params["speed"] = DEFAULT_SAFE_SPEED
         angle_value = raw_params.get("angle_deg", raw_params.get("angle"))
         if angle_value is not None:
             params["angle_deg"] = _clamp_number(angle_value, 0.0, -360.0, 360.0)

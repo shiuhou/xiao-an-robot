@@ -30,8 +30,8 @@
 ## Phase A — 软件 preflight（必须先跑并报告 exit code）
 1. git status（报告 dirty 文件，勿 revert 他人改动）
 2. python -m unittest discover -s tests -p "test_*.py"
-3. cd robot/mergetesting && pio run -e mergetesting_display_only
-   （若做 face240 实机，额外 pio run -e mergetesting_face240_only）
+3. cd robot/mergetesting && pio run -e mergetesting_care_demo_face240
+   （Step 33 实机 demo 专用 env；已 H 见 08_priority_queue T18）
 
 ## Phase B — 实机 split-env 快速复验（按 09_hardware_bringup_checklist）
 在 config.local.h 已配置 WiFi/基站 IP 前提下，逐项确认或列出用户需手测项：
@@ -39,7 +39,7 @@
 | 项 | 命令/动作 | 预期 |
 |----|-----------|------|
 | 基站 | python -m base_station.ws_server.server | :8765 监听 |
-| 烧录 | pio run -e mergetesting_display_only -t upload | 串口 WiFi OK |
+| 烧录 | pio run -e mergetesting_care_demo_face240 -t upload | 串口 WiFi OK；无 cam/mic |
 | control | 串口见 device.hello + heartbeat | WS 连上 |
 | 表情 | python tools/send_robot_command.py expression caring | command.ack display.expression ok；屏 caring |
 | 电机 | python tools/send_robot_command.py motion move_out_of_dock | motion.completed + ack；短距前移 |
@@ -61,7 +61,7 @@ Terminal 3:
 
 ## 实机预期（care 触发时）
 1. 屏幕：caring 表情
-2. 电机：move_out_of_dock 短脉冲（fusion 安全 clamp ≤2cm / 500ms）
+2. 电机：move_out_of_dock 约 10cm 短移（2026-06-27 实测校准：speed=0.56, timeout≈1000-1200ms；0.56 才能可靠走出 base）
 3. 喇叭：audio.play_tts mock tone（OpenClaw 回复文本），不是 care_01
 4. 第 2/3 帧 tired：cooldown skipped
 5. DB 有 emotion.intervention + robot.care_action

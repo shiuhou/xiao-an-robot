@@ -15,6 +15,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import time
 from typing import Any
 
 from base_station.monitor.emotion_context_builder import EmotionContextBuilder
@@ -170,6 +171,18 @@ _VLM_EMOTION_TAG_ALIASES = {
     "happy": "happy",
     "calm": "neutral",
     "neutral": "neutral",
+    "unknown": "unknown",
+}
+
+_NEGATIVE_EMOTIONS = {"tired", "sad", "anxious", "stressed"}
+_EMOTION_SEVERITY = {
+    "neutral": 0,
+    "happy": 0,
+    "unknown": 0,
+    "tired": 1,
+    "sad": 2,
+    "anxious": 3,
+    "stressed": 4,
 }
 
 
@@ -185,7 +198,37 @@ def _normalize_vlm_emotion_tag(value: Any, polarity: Any = None) -> str:
         return mapped
     if _is_negative_polarity(polarity):
         return "stressed"
-    return "neutral"
+    return "unknown"
+
+
+def _clamp_float_01(value: Any, default: float = 0.0) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(0.0, min(1.0, number))
+
+
+def _numeric_or_default(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _fatigue_for_threshold(value: Any) -> float:
+    number = _numeric_or_default(value, 0.0)
+    if number > 1.0:
+        return max(0.0, min(1.0, number / 100.0))
+    return max(0.0, min(1.0, number))
+
+
+def _short_error(exc: BaseException | str, max_length: int = 220) -> str:
+    message = str(exc)
+    message = " ".join(message.split())
+    if len(message) > max_length:
+        return message[: max_length - 3] + "..."
+    return message
 
 
 def _as_evidence_list(value: Any) -> list:
@@ -213,15 +256,98 @@ def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> di
         or raw.get("visual_reason")
         or ""
     )
+    emotion_tag = _normalize_vlm_emotion_tag(expression_label, raw.get("polarity"))
     return {
         "executed": bool(executed),
         "status": str(status),
         "expression_label": expression_label,
-        "confidence": raw.get("confidence"),
+        "emotion_tag": emotion_tag,
+        "confidence": _clamp_float_01(raw.get("confidence")),
+        "fatigue_score": _clamp_float_01(raw.get("fatigue_score")),
+        "visual_reason": raw.get("visual_reason") or "",
+        "vlm_observation": raw.get("vlm_observation") or "",
         "evidence": _as_evidence_list(raw.get("evidence")),
         "face_observation": face_observation,
         "message": raw.get("message") or "",
+        **({"error": _short_error(raw.get("error") or "")} if raw.get("error") else {}),
     }
+
+
+def _more_severe_negative(left: str, right: str) -> str:
+    if _EMOTION_SEVERITY.get(right, 0) > _EMOTION_SEVERITY.get(left, 0):
+        return right
+    return left
+
+
+def fuse_cv_vlm_sample(cv_sample: dict, vlm_result: dict) -> dict:
+    """Conservatively merge CV and VLM into the sample used for care decisions."""
+
+    final_sample = cv_sample.copy()
+    cv_tag = _normalize_vlm_emotion_tag(cv_sample.get("emotion_tag") or cv_sample.get("emotion"))
+    vlm_tag = _normalize_vlm_emotion_tag(vlm_result.get("emotion_tag"))
+    cv_confidence = _clamp_float_01(cv_sample.get("confidence"))
+    vlm_confidence = _clamp_float_01(vlm_result.get("confidence"))
+    cv_fatigue_raw = _numeric_or_default(cv_sample.get("fatigue_score"), 0.0)
+    vlm_fatigue = _clamp_float_01(vlm_result.get("fatigue_score"))
+    cv_fatigue_for_threshold = _fatigue_for_threshold(cv_sample.get("fatigue_score"))
+
+    fusion = {
+        "strategy": "conservative_v1",
+        "decision": "cv_primary_vlm_aux",
+        "reason": "CV remains primary; VLM is retained as auxiliary evidence.",
+        "cv_emotion_tag": cv_tag,
+        "cv_confidence": cv_confidence,
+        "cv_fatigue_score": cv_sample.get("fatigue_score"),
+        "vlm_emotion_tag": vlm_tag,
+        "vlm_confidence": vlm_confidence,
+        "vlm_fatigue_score": vlm_fatigue,
+    }
+
+    if not vlm_result.get("executed") or str(vlm_result.get("status", "ok")) == "error":
+        error = _short_error(vlm_result.get("error") or "VLM execution failed.")
+        fusion["decision"] = "cv_only_vlm_error"
+        fusion["reason"] = error
+        final_sample["cv_sample"] = cv_sample.copy()
+        final_sample["vlm"] = vlm_result.copy()
+        final_sample["fusion"] = fusion
+        return final_sample
+
+    cv_negative = cv_tag in _NEGATIVE_EMOTIONS
+    vlm_negative = vlm_tag in _NEGATIVE_EMOTIONS
+    if cv_negative and vlm_negative and vlm_confidence >= 0.65:
+        final_sample["emotion_tag"] = _more_severe_negative(cv_tag, vlm_tag)
+        final_sample["fatigue_score"] = max(cv_fatigue_raw, vlm_fatigue)
+        final_sample["confidence"] = max(cv_confidence, vlm_confidence)
+        fusion["decision"] = "cv_vlm_agree_negative"
+        fusion["reason"] = "CV and VLM both indicate a negative or tired state with sufficient VLM confidence."
+    elif (
+        not cv_negative
+        and vlm_negative
+        and vlm_confidence >= 0.75
+        and vlm_fatigue >= 0.70
+    ):
+        final_sample["emotion_tag"] = vlm_tag
+        final_sample["fatigue_score"] = vlm_fatigue
+        final_sample["confidence"] = vlm_confidence
+        fusion["decision"] = "vlm_promoted_negative"
+        fusion["reason"] = "High-confidence VLM negative evidence promoted a neutral CV sample."
+    elif (
+        cv_negative
+        and vlm_tag == "neutral"
+        and vlm_confidence >= 0.85
+        and cv_confidence < 0.65
+        and cv_fatigue_for_threshold < 0.75
+    ):
+        final_sample["emotion_tag"] = "neutral"
+        final_sample["fatigue_score"] = min(cv_fatigue_raw, 0.4)
+        final_sample["confidence"] = vlm_confidence
+        fusion["decision"] = "vlm_suppressed_low_conf_cv"
+        fusion["reason"] = "High-confidence neutral VLM result reduced a low-confidence CV negative sample."
+
+    final_sample["cv_sample"] = cv_sample.copy()
+    final_sample["vlm"] = vlm_result.copy()
+    final_sample["fusion"] = fusion
+    return final_sample
 
 
 class VLMGatedCameraEmotionSource:
@@ -236,6 +362,8 @@ class VLMGatedCameraEmotionSource:
         vlm_model: Any,
         memory: Any | None = None,
         force_vlm: bool = False,
+        verbose: bool = False,
+        backend_name: str | None = None,
     ):
         self.frame_source = frame_source
         self.cv_pipeline = cv_pipeline
@@ -244,6 +372,8 @@ class VLMGatedCameraEmotionSource:
         self.vlm_model = vlm_model
         self.memory = memory
         self.force_vlm = force_vlm
+        self.verbose = verbose
+        self.backend_name = backend_name or type(vlm_model).__name__
 
     async def samples(self):
         async for frame in self.frame_source.frames():
@@ -262,21 +392,54 @@ class VLMGatedCameraEmotionSource:
                 asr_text=None,
                 history_summary=self._history_summary(),
             )
-            prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+            vlm_frame = _frame_with_synthetic_payload_when_missing(frame)
+            frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
+            if self.verbose:
+                print(f"[vlm.start] frame_id={frame_id} backend={self.backend_name}")
+            started = time.perf_counter()
+            try:
+                prediction = await asyncio.to_thread(self.vlm_model.predict, vlm_frame, context)
+                vlm_result = normalize_vlm_result(
+                    prediction,
+                    executed=True,
+                    status=(
+                        str(prediction.get("status", "ok"))
+                        if isinstance(prediction, dict)
+                        else "ok"
+                    ),
+                )
+                if self.verbose:
+                    seconds = time.perf_counter() - started
+                    print(
+                        "[vlm.done] "
+                        f"frame_id={frame_id} "
+                        f"status={vlm_result.get('status')} "
+                        f"emotion_tag={vlm_result.get('emotion_tag')} "
+                        f"confidence={vlm_result.get('confidence')} "
+                        f"fatigue_score={vlm_result.get('fatigue_score')} "
+                        f"seconds={seconds:.3f}"
+                    )
+            except Exception as exc:
+                error = _short_error(exc)
+                vlm_result = normalize_vlm_result(
+                    {"error": error},
+                    executed=False,
+                    status="error",
+                )
+                if self.verbose:
+                    print(f"[vlm.error] frame_id={frame_id} error={error}")
 
-            final_sample = cv_sample.copy()
+            final_sample = fuse_cv_vlm_sample(cv_sample, vlm_result)
             final_sample["vlm_triggered"] = True
             final_sample["vlm_trigger_reason"] = reason
-            final_sample["cv_sample"] = cv_sample.copy()
-            final_sample["vlm"] = normalize_vlm_result(
-                prediction,
-                executed=True,
-                status=(
-                    str(prediction.get("status", "ok"))
-                    if isinstance(prediction, dict)
-                    else "ok"
-                ),
-            )
+            if self.verbose:
+                print(
+                    "[fusion] "
+                    f"frame_id={frame_id} "
+                    f"decision={final_sample['fusion'].get('decision')} "
+                    f"top_emotion={final_sample.get('emotion_tag')} "
+                    f"top_fatigue={final_sample.get('fatigue_score')}"
+                )
 
             yield final_sample
 
@@ -285,6 +448,28 @@ class VLMGatedCameraEmotionSource:
         if callable(get_recent_summary):
             return get_recent_summary()
         return None
+
+
+def _frame_with_synthetic_payload_when_missing(frame: dict) -> dict:
+    """Give image-based VLMs a deterministic placeholder for payload-free sources."""
+
+    if not isinstance(frame, dict) or frame.get("payload") is not None:
+        return frame
+    try:
+        from PIL import Image, ImageDraw  # type: ignore[import-not-found]
+    except Exception:
+        return frame
+
+    width = int(frame.get("width") or 640)
+    height = int(frame.get("height") or 480)
+    image = Image.new("RGB", (width, height), color=(42, 45, 48))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((width * 0.35, height * 0.20, width * 0.65, height * 0.82), fill=(72, 76, 80))
+    draw.ellipse((width * 0.42, height * 0.12, width * 0.58, height * 0.30), fill=(118, 110, 102))
+    draw.line((width * 0.42, height * 0.40, width * 0.58, height * 0.40), fill=(170, 160, 150), width=3)
+    copy = frame.copy()
+    copy["payload"] = image
+    return copy
 
 
 @contextmanager
@@ -457,6 +642,7 @@ def create_emotion_source(
     history_memory: Any | None = None,
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
+    verbose: bool = False,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -493,6 +679,8 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                verbose=verbose,
+                backend_name=vlm_backend,
             )
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
@@ -527,6 +715,8 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                verbose=verbose,
+                backend_name=vlm_backend,
             )
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
@@ -559,6 +749,8 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                verbose=verbose,
+                backend_name=vlm_backend,
             )
         else:
             camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
@@ -625,6 +817,7 @@ def create_runtime(
         history_memory=history_memory,
         openface_repo=openface_repo,
         openface_models_dir=openface_models_dir,
+        verbose=verbose,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(

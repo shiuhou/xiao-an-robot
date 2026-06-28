@@ -743,13 +743,7 @@ def build_final_sample(
     gate_result: dict[str, Any],
     vlm_result: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Mirror VLMGatedCameraEmotionSource.samples() final_sample semantics.
-
-    Top-level emotion_tag/confidence/fatigue_score/source always come from the
-    CV/OpenFace sample. The VLM result, when present, is only ever attached as
-    a nested ``vlm`` field (see base_station.monitor.emotion_runtime) and never
-    overwrites the CV-derived top-level fields.
-    """
+    """Mirror VLMGatedCameraEmotionSource.samples() final_sample semantics."""
     reason = str(gate_result.get("reason", "normal"))
     final_sample = dict(cv_sample)
     triggered = bool(gate_result.get("should_trigger", False)) and vlm_result is not None
@@ -758,14 +752,16 @@ def build_final_sample(
     if not triggered:
         return final_sample
 
-    from base_station.monitor.emotion_runtime import normalize_vlm_result
+    from base_station.monitor.emotion_runtime import fuse_cv_vlm_sample, normalize_vlm_result
 
-    final_sample["cv_sample"] = dict(cv_sample)
-    final_sample["vlm"] = normalize_vlm_result(
+    normalized_vlm = normalize_vlm_result(
         vlm_result,
         executed=True,
         status=str(vlm_result.get("status", "ok")) if isinstance(vlm_result, dict) else "ok",
     )
+    final_sample = fuse_cv_vlm_sample(cv_sample, normalized_vlm)
+    final_sample["vlm_triggered"] = True
+    final_sample["vlm_trigger_reason"] = reason
 
     return final_sample
 

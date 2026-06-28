@@ -77,6 +77,14 @@ class OpenVINOQwenVLEmotionModelTest(unittest.TestCase):
 
         self.assertEqual(sample["emotion_tag"], "sad")
 
+    def test_text_around_json_is_parsed(self) -> None:
+        response = "Here is the result:\n" + qwen_json(emotion_tag="anxious") + "\nThanks."
+        model = OpenVINOQwenVLEmotionModel(FakeRunner(response))
+
+        sample = model.predict(make_frame())
+
+        self.assertEqual(sample["emotion_tag"], "anxious")
+
     def test_frame_metadata_is_preserved(self) -> None:
         model = OpenVINOQwenVLEmotionModel(FakeRunner(qwen_json()))
 
@@ -111,6 +119,30 @@ class OpenVINOQwenVLEmotionModelTest(unittest.TestCase):
 
         self.assertEqual(sample["confidence"], 1.0)
         self.assertEqual(sample["fatigue_score"], 0.0)
+
+    def test_string_confidence_is_coerced_and_invalid_fatigue_defaults(self) -> None:
+        model = OpenVINOQwenVLEmotionModel(
+            FakeRunner(qwen_json(confidence="0.9", fatigue_score="high"))
+        )
+
+        sample = model.predict(make_frame())
+
+        self.assertEqual(sample["confidence"], 0.9)
+        self.assertEqual(sample["fatigue_score"], 0.0)
+
+    def test_sleepy_emotion_tag_is_normalized_to_tired(self) -> None:
+        model = OpenVINOQwenVLEmotionModel(FakeRunner(qwen_json(emotion_tag="sleepy")))
+
+        sample = model.predict(make_frame())
+
+        self.assertEqual(sample["emotion_tag"], "tired")
+
+    def test_frustrated_emotion_tag_is_normalized_to_stressed(self) -> None:
+        model = OpenVINOQwenVLEmotionModel(FakeRunner(qwen_json(emotion_tag="frustrated")))
+
+        sample = model.predict(make_frame())
+
+        self.assertEqual(sample["emotion_tag"], "stressed")
 
     def test_unknown_emotion_tag_is_normalized_to_unknown(self) -> None:
         model = OpenVINOQwenVLEmotionModel(FakeRunner(qwen_json(emotion_tag="excited")))

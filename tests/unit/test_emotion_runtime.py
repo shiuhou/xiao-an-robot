@@ -14,6 +14,7 @@ from base_station.monitor.emotion_runtime import (
     create_emotion_source,
     create_face_emotion_model,
     create_vlm_emotion_model,
+    fuse_cv_vlm_sample,
     parse_args,
 )
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
@@ -443,9 +444,80 @@ class _FixedContextBuilder:
 class _FixedVlm:
     def __init__(self, prediction):
         self._prediction = prediction
+        self.last_frame = None
 
     def predict(self, frame, context=None):
+        self.last_frame = frame
         return dict(self._prediction)
+
+
+class _FailingVlm:
+    def predict(self, frame, context=None):
+        raise RuntimeError("generation failed with a long stack that should not escape")
+
+
+class FusionPolicyTest(unittest.TestCase):
+    def test_cv_tired_and_vlm_tired_agree_negative(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "tired", "confidence": 0.7, "fatigue_score": 0.8},
+            {"executed": True, "status": "ok", "emotion_tag": "tired", "confidence": 0.9, "fatigue_score": 0.85},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "cv_vlm_agree_negative")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["confidence"], 0.9)
+        self.assertEqual(sample["fatigue_score"], 0.85)
+
+    def test_neutral_cv_high_confidence_vlm_tired_is_promoted(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "neutral", "confidence": 0.6, "fatigue_score": 0.2},
+            {"executed": True, "status": "ok", "emotion_tag": "tired", "confidence": 0.8, "fatigue_score": 0.75},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "vlm_promoted_negative")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["confidence"], 0.8)
+        self.assertEqual(sample["fatigue_score"], 0.75)
+
+    def test_low_confidence_cv_tired_high_confidence_vlm_neutral_is_suppressed(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "tired", "confidence": 0.5, "fatigue_score": 0.6},
+            {"executed": True, "status": "ok", "emotion_tag": "neutral", "confidence": 0.9, "fatigue_score": 0.1},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "vlm_suppressed_low_conf_cv")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["confidence"], 0.9)
+        self.assertEqual(sample["fatigue_score"], 0.4)
+
+    def test_high_confidence_cv_tired_is_not_suppressed_by_neutral_vlm(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "tired", "confidence": 0.8, "fatigue_score": 0.8},
+            {"executed": True, "status": "ok", "emotion_tag": "neutral", "confidence": 0.95, "fatigue_score": 0.1},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["fatigue_score"], 0.8)
+
+    def test_vlm_error_keeps_cv_only(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "tired", "confidence": 0.7, "fatigue_score": 0.8},
+            {"executed": False, "status": "error", "error": "JSON parse failed"},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "cv_only_vlm_error")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["vlm"]["error"], "JSON parse failed")
+
+    def test_auxiliary_vlm_keeps_cv_primary(self):
+        sample = fuse_cv_vlm_sample(
+            {"source": "cv", "emotion_tag": "neutral", "confidence": 0.7, "fatigue_score": 0.2},
+            {"executed": True, "status": "ok", "emotion_tag": "happy", "confidence": 0.8, "fatigue_score": 0.0},
+        )
+
+        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
+        self.assertEqual(sample["emotion_tag"], "neutral")
 
 
 class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
@@ -483,21 +555,24 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         }
         sample = await self._run_one(cv_sample, prediction)
 
-        # Runtime delivery keeps CV's top-level decision fields and nests VLM.
-        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["emotion_tag"], "tired")
         self.assertTrue(sample["vlm_triggered"])
         self.assertEqual(sample["vlm_trigger_reason"], "test")
         self.assertEqual(sample["vlm"], {
             "executed": True,
             "status": "ok",
             "expression_label": "tired",
+            "emotion_tag": "tired",
             "confidence": 0.9,
+            "fatigue_score": 0.8,
+            "visual_reason": "eyes heavy",
+            "vlm_observation": "needs rest",
             "evidence": [],
             "face_observation": "needs rest",
             "message": "",
         })
-        # CV fatigue fields are not overwritten by the VLM result.
-        self.assertEqual(sample["fatigue_score"], 42.0)
+        self.assertEqual(sample["fusion"]["decision"], "vlm_promoted_negative")
+        self.assertEqual(sample["fatigue_score"], 0.8)
         self.assertEqual(sample["polarity"], "positive")
         self.assertEqual(sample["fatigue_level"], "medium")
         self.assertEqual(sample["observation_quality"], 0.99)
@@ -514,11 +589,30 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "executed": True,
             "status": "ok",
             "expression_label": "neutral",
-            "confidence": None,
+            "emotion_tag": "neutral",
+            "confidence": 0.0,
+            "fatigue_score": 0.0,
+            "visual_reason": "",
+            "vlm_observation": "",
             "evidence": [],
             "face_observation": "",
             "message": "",
         })
+
+    async def test_payload_free_frame_gets_synthetic_payload_for_vlm(self):
+        vlm = _FixedVlm({"expression_label": "neutral"})
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"source": "fake_camera", "width": 64, "height": 48, "payload": None}),
+            cv_pipeline=_FixedCvPipeline({"source": "fake_face", "emotion_tag": "tired", "fatigue_score": 0.85}),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=vlm,
+        )
+
+        sample = [item async for item in source.samples()][0]
+
+        self.assertEqual(sample["source"], "fake_face")
+        self.assertIsNotNone(vlm.last_frame["payload"])
 
     async def test_triggered_negative_vlm_is_nested_and_does_not_override_cv(self):
         sample = await self._run_one(
@@ -535,6 +629,7 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("polarity", sample)
         self.assertEqual(sample["vlm"]["expression_label"], "irritable")
         self.assertTrue(sample["vlm"]["executed"])
+        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
 
     async def test_triggered_positive_vlm_is_nested_and_does_not_override_cv(self):
         sample = await self._run_one(
@@ -551,6 +646,7 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("polarity", sample)
         self.assertEqual(sample["vlm"]["expression_label"], "neutral")
         self.assertTrue(sample["vlm"]["executed"])
+        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
 
     async def test_triggered_unknown_vlm_tag_is_nested_and_does_not_override_cv(self):
         sample = await self._run_one(
@@ -567,6 +663,30 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("polarity", sample)
         self.assertEqual(sample["vlm"]["expression_label"], "overwhelmed")
         self.assertTrue(sample["vlm"]["executed"])
+        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
+
+    async def test_vlm_exception_yields_cv_sample_with_error_fallback(self):
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"source": "fake_camera", "width": 64, "height": 48, "payload": None}),
+            cv_pipeline=_FixedCvPipeline({
+                "source": "fake_face",
+                "emotion_tag": "tired",
+                "confidence": 0.8,
+                "fatigue_score": 0.85,
+            }),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FailingVlm(),
+        )
+
+        sample = [item async for item in source.samples()][0]
+
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertTrue(sample["vlm_triggered"])
+        self.assertFalse(sample["vlm"]["executed"])
+        self.assertEqual(sample["vlm"]["status"], "error")
+        self.assertIn("generation failed", sample["vlm"]["error"])
+        self.assertEqual(sample["fusion"]["decision"], "cv_only_vlm_error")
 
 
 if __name__ == "__main__":

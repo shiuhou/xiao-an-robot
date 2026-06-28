@@ -50,6 +50,8 @@ class ProbeQwenVLOpenVINOTest(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["fake_output"], "tired")
         self.assertIn("raw_output", payload)
+        self.assertIn("timing", payload)
+        self.assertIn("total_seconds", payload["timing"])
         self.assertEqual(payload["emotion_sample"]["emotion_tag"], "tired")
         self.assertEqual(payload["emotion_sample"]["frame_source"], "image_file")
 

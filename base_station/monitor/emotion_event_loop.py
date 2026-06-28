@@ -44,6 +44,8 @@ OPTIONAL_PAYLOAD_FIELDS = (
     "cv_sample",
     # normalized VLM result (present on VLM-triggered frames)
     "vlm",
+    # CV/VLM fusion decision metadata
+    "fusion",
 )
 
 

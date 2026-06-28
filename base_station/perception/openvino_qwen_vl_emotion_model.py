@@ -11,6 +11,25 @@ from base_station.perception.qwen_vl_openvino_runner import build_emotion_analys
 
 
 ALLOWED_EMOTIONS = {"neutral", "tired", "sad", "anxious", "stressed", "happy", "unknown"}
+EMOTION_ALIASES = {
+    "neutral": "neutral",
+    "calm": "neutral",
+    "tired": "tired",
+    "sleepy": "tired",
+    "fatigue": "tired",
+    "fatigued": "tired",
+    "sad": "sad",
+    "down": "sad",
+    "downcast": "sad",
+    "anxious": "anxious",
+    "nervous": "anxious",
+    "stressed": "stressed",
+    "frustrated": "stressed",
+    "angry": "stressed",
+    "irritable": "stressed",
+    "happy": "happy",
+    "unknown": "unknown",
+}
 
 
 class OpenVINOQwenVLEmotionModel:
@@ -27,9 +46,7 @@ class OpenVINOQwenVLEmotionModel:
         raw_output = self.runner.generate(image, prompt, context=context)
         prediction = self._parse_json_output(raw_output)
 
-        emotion_tag = str(prediction.get("emotion_tag", "unknown") or "unknown")
-        if emotion_tag not in ALLOWED_EMOTIONS:
-            emotion_tag = "unknown"
+        emotion_tag = self._normalize_emotion_tag(prediction.get("emotion_tag"))
 
         return {
             "emotion_tag": emotion_tag,
@@ -48,9 +65,11 @@ class OpenVINOQwenVLEmotionModel:
     @staticmethod
     def _parse_json_output(raw_output: str) -> dict:
         text = str(raw_output).strip()
-        fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.IGNORECASE | re.DOTALL)
+        fenced = re.search(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.IGNORECASE | re.DOTALL)
         if fenced:
             text = fenced.group(1).strip()
+        elif "{" in text:
+            text = OpenVINOQwenVLEmotionModel._extract_first_json_object(text)
 
         try:
             parsed = json.loads(text)
@@ -60,6 +79,43 @@ class OpenVINOQwenVLEmotionModel:
         if not isinstance(parsed, dict):
             raise ValueError("Qwen VL JSON output must be an object.")
         return parsed
+
+    @staticmethod
+    def _extract_first_json_object(text: str) -> str:
+        start = text.find("{")
+        if start < 0:
+            raise ValueError("Failed to parse Qwen VL JSON output: no JSON object found")
+
+        in_string = False
+        escaped = False
+        depth = 0
+        for index in range(start, len(text)):
+            char = text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+                continue
+            if char == "{":
+                depth += 1
+                continue
+            if char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:index + 1]
+
+        raise ValueError("Failed to parse Qwen VL JSON output: unterminated JSON object")
+
+    @staticmethod
+    def _normalize_emotion_tag(value: Any) -> str:
+        tag = str(value or "unknown").strip().lower()
+        return EMOTION_ALIASES.get(tag, "unknown")
 
     @staticmethod
     def _clamp_float(value: Any) -> float:

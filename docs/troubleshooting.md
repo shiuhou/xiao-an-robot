@@ -76,13 +76,39 @@ Symptom:
   - `base_station/models`
   - `base_station/models/sensevoice-small`
   - `base_station/models/silero-vad`
-  - `base_station/models/qwen2_5_vl_openvino`
+  - `base_station/models/Qwen2.5-VL-3B-OV-int4`
 
 Fix:
 
 - Create deployment directories during setup.
 - Do not commit `.db`, `.sqlite`, model files, or local private paths.
 - Use [model_download.md](model_download.md) for the current expected placement.
+
+## ASR Audio File Smoke Fails
+
+Symptom:
+
+- `base_station.monitor.asr_runtime --source audio_file` exits before producing `asr.transcript`.
+
+Checks:
+
+- Confirm `--audio-path` points to an existing local WAV file.
+- Confirm the file is PCM WAV; the Step 42 loader does not handle compressed formats.
+- Use `--vad-backend fake --vad-pattern speech` to verify the ASR route without real VAD.
+- Use `--vad-pattern silence` to verify the expected `asr.no_speech` path.
+- Do not commit `runtime/manual_samples` audio files.
+
+## SenseVoice Or Silero Backend Fails
+
+Symptom:
+
+- `sensevoice` or `silero` reports a missing model path, missing dependency, or shell-not-wired message.
+
+Current status:
+
+- Step 42 provides software contracts and fake/file-first smoke.
+- Real SenseVoice and Silero model setup is a separate confirmed step.
+- The runtime never downloads ASR/VAD models automatically.
 
 ## PlatformIO Env Fails After Dependency Changes
 

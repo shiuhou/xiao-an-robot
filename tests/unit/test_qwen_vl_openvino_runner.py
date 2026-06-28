@@ -47,6 +47,8 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
 
     def test_load_missing_dependencies_raises_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "openvino_model.xml").write_text("<xml />", encoding="utf-8")
+            Path(temp_dir, "openvino_model.bin").write_bytes(b"bin")
             runner = QwenVLOpenVINORunner(model_dir=temp_dir)
 
             with patch(
@@ -55,6 +57,18 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(ImportError, "missing package"):
                     runner.load()
+
+    def test_load_empty_model_dir_raises_format_error_before_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runner = QwenVLOpenVINORunner(model_dir=temp_dir)
+
+            with self.assertRaisesRegex(RuntimeError, "format mismatch"):
+                runner.load()
+
+    def test_model_dir_expands_user_home(self) -> None:
+        runner = QwenVLOpenVINORunner(model_dir="~/models/Qwen2.5-VL-3B-OV-int4")
+
+        self.assertNotIn("~", runner.model_dir)
 
     def test_generate_valid_prompt_reports_missing_model_dir_not_not_implemented(self) -> None:
         runner = QwenVLOpenVINORunner(model_dir="models/qwen")
@@ -80,11 +94,16 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
         prompt = build_emotion_analysis_prompt()
 
         self.assertIn("Return JSON only", prompt)
+        self.assertIn("Output JSON only", prompt)
+        self.assertIn("Do not include markdown fences", prompt)
+        self.assertIn("Do not include explanation outside JSON", prompt)
+        self.assertIn("required keys", prompt)
         self.assertIn("emotion_tag", prompt)
         self.assertIn("confidence", prompt)
         self.assertIn("fatigue_score", prompt)
         self.assertIn("visual_reason", prompt)
         self.assertIn("vlm_observation", prompt)
+        self.assertIn("confidence below 0.5", prompt)
 
     def test_prompt_contains_allowed_emotion_tags(self) -> None:
         prompt = build_emotion_analysis_prompt()

@@ -1,0 +1,9 @@
+funasr
+torch
+torchaudio
+soundfile
+numpy
+huggingface_hub
+addict
+matplotlib
+silero-vad

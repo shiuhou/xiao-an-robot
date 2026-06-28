@@ -11,7 +11,7 @@ agent/data
 base_station/models
 base_station/models/sensevoice-small
 base_station/models/silero-vad
-base_station/models/qwen2_5_vl_openvino
+base_station/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 Create these directories during DK-2500 setup when needed:
@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Force agent\data | Out-Null
 New-Item -ItemType Directory -Force base_station\models | Out-Null
 New-Item -ItemType Directory -Force base_station\models\sensevoice-small | Out-Null
 New-Item -ItemType Directory -Force base_station\models\silero-vad | Out-Null
-New-Item -ItemType Directory -Force base_station\models\qwen2_5_vl_openvino | Out-Null
+New-Item -ItemType Directory -Force base_station\models\Qwen2.5-VL-3B-OV-int4 | Out-Null
 ```
 
 Linux target equivalent:
@@ -30,7 +30,7 @@ Linux target equivalent:
 mkdir -p agent/data
 mkdir -p base_station/models/sensevoice-small
 mkdir -p base_station/models/silero-vad
-mkdir -p base_station/models/qwen2_5_vl_openvino
+mkdir -p base_station/models/Qwen2.5-VL-3B-OV-int4
 ```
 
 ## Config Paths
@@ -49,9 +49,27 @@ Current runtime checker keys:
 
 - `base_station/models/sensevoice-small`
 - `base_station/models/silero-vad`
-- `base_station/models/qwen2_5_vl_openvino`
+- `base_station/models/Qwen2.5-VL-3B-OV-int4`
 
-These names are not fully reconciled yet. Before a DK-2500 deployment pass, align `config.example.yaml`, `tools/check_runtime_env.py`, and the actual model directories.
+Qwen VLM downloads should use `tools/setup_models.py --only qwen_vl`, which reads `base_station/models/models_manifest.json` and verifies sha256 before the model is considered usable.
+
+SenseVoiceSmall ASR uses the Step 43.1 audio model preparation flow:
+
+```bash
+.venv/bin/python tools/setup_audio_models.py --only sensevoice_small
+.venv/bin/python tools/setup_audio_models.py --only sensevoice_small --check
+```
+
+This downloads the public Hugging Face model `FunAudioLLM/SenseVoiceSmall` to:
+
+```text
+base_station/models/sensevoice-small
+```
+
+Silero VAD Step 43.2 uses the `silero-vad` pip package and the package model
+loaded by `load_silero_vad`. It does not require a separate local Silero model
+file for the audio-file smoke. See
+`docs/silero_vad_audio_file_smoke.md`.
 
 ## Current Runtime Status
 
@@ -59,9 +77,9 @@ These names are not fully reconciled yet. Before a DK-2500 deployment pass, alig
 | --- | --- | --- |
 | OpenVINO face emotion model | CV emotion backend | Interface and tests exist; real postprocessing still staged. |
 | Head pose model | Future posture/fatigue feature | Placeholder path only. |
-| SenseVoice / sherpa-onnx ASR | Speech transcript source | Interface exists; real model wiring pending. |
-| Silero VAD | Voice activity detection | Interface exists; real model wiring pending. |
-| Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Wrapper path exists; generation route still staged. |
+| SenseVoiceSmall ASR | Speech transcript source | Step 43.1 uses `tools/setup_audio_models.py` to prepare `FunAudioLLM/SenseVoiceSmall`, then runs real audio-file ASR smoke. |
+| Silero VAD | Voice activity detection | Step 43.2 uses the `silero-vad` pip package for real local WAV VAD; no separate Silero model file is required for this route. |
+| Qwen2.5-VL OpenVINO | Heavier VLM emotion/fatigue check | Real static-image OpenVINO Qwen inference has been verified on DK-2500; VLM gate / OpenClaw proactive care is verified in Step 41. |
 
 ## Git Rules
 

@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import time
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -26,6 +27,7 @@ class FakeOutputRunner:
             raise ValueError(f"Unsupported --fake-output pattern: {pattern}")
         self.pattern = pattern
         self.raw_output = json.dumps(PATTERN_PREDICTIONS[pattern], ensure_ascii=False)
+        self.last_timings = {}
 
     def generate(self, image, prompt: str, context: dict | None = None) -> str:
         return self.raw_output
@@ -35,16 +37,18 @@ class CapturingRunner:
     def __init__(self, runner):
         self.runner = runner
         self.raw_output = None
+        self.last_timings = {}
 
     def generate(self, image, prompt: str, context: dict | None = None) -> str:
         self.raw_output = self.runner.generate(image, prompt, context=context)
+        self.last_timings = getattr(self.runner, "last_timings", {})
         return self.raw_output
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image-path", required=True, help="Local PNG/JPG/JPEG image path.")
-    parser.add_argument("--model-dir", default="base_station/models/qwen2_5_vl_openvino")
+    parser.add_argument("--model-dir", default="base_station/models/Qwen2.5-VL-3B-OV-int4")
     parser.add_argument("--device", default="AUTO")
     parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument(
@@ -59,7 +63,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def run(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    started = time.perf_counter()
     frame = StaticImageFrameSource(args.image_path, count=1, interval_seconds=0).read_frame()
+    frame_loaded = time.perf_counter()
     prompt = build_emotion_analysis_prompt()
 
     if args.fake_output:
@@ -75,7 +81,9 @@ def run(argv: list[str] | None = None) -> int:
 
     model = OpenVINOQwenVLEmotionModel(runner=runner)
     sample = model.predict(frame)
+    finished = time.perf_counter()
     raw_output = getattr(runner, "raw_output", None)
+    runner_timings = getattr(runner, "last_timings", {})
 
     output = {
         "image_path": str(args.image_path),
@@ -89,6 +97,12 @@ def run(argv: list[str] | None = None) -> int:
             "timestamp_ms": frame["timestamp_ms"],
             "width": frame["width"],
             "height": frame["height"],
+        },
+        "timing": {
+            "image_load_seconds": frame_loaded - started,
+            "model_load_seconds": runner_timings.get("load_seconds"),
+            "generate_seconds": runner_timings.get("generate_seconds"),
+            "total_seconds": finished - started,
         },
         "raw_output": raw_output,
         "emotion_sample": sample,

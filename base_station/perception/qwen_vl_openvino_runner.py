@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 import json
 from pathlib import Path
+import time
 from typing import Any
 
 
@@ -26,9 +27,10 @@ class QwenVLOpenVINORunner:
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be greater than 0.")
 
-        self.model_dir = model_dir
+        self.model_dir = Path(model_dir).expanduser().as_posix()
         self.device = device
         self.max_new_tokens = max_new_tokens
+        self.last_timings: dict[str, float] = {}
         self._model: Any | None = None
         self._processor: Any | None = None
         self._vision_processor: Any | None = None
@@ -40,6 +42,7 @@ class QwenVLOpenVINORunner:
         if self._loaded:
             return
 
+        started = time.perf_counter()
         self._validate_model_dir()
         deps = self._import_dependencies()
 
@@ -63,12 +66,15 @@ class QwenVLOpenVINORunner:
         self._model = model
         self._vision_processor = deps["process_vision_info"]
         self._loaded = True
+        self.last_timings["load_seconds"] = time.perf_counter() - started
 
     def generate(self, image, prompt: str, context: dict | None = None) -> str:
         if not prompt or not prompt.strip():
             raise ValueError("prompt must not be empty.")
 
+        started = time.perf_counter()
         self.load()
+        after_load = time.perf_counter()
         if self._model is None or self._processor is None or self._vision_processor is None:
             raise RuntimeError("Qwen2.5-VL OpenVINO runner failed to initialize.")
 
@@ -112,6 +118,9 @@ class QwenVLOpenVINORunner:
 
         if not decoded:
             raise RuntimeError("Qwen2.5-VL OpenVINO generation returned no text.")
+        finished = time.perf_counter()
+        self.last_timings["generate_seconds"] = finished - after_load
+        self.last_timings["total_seconds"] = finished - started
         return str(decoded[0]).strip()
 
     @staticmethod
@@ -147,6 +156,13 @@ class QwenVLOpenVINORunner:
             )
         if not path.is_dir():
             raise RuntimeError(f"Qwen2.5-VL OpenVINO model path is not a directory: {self.model_dir}")
+        if not any(path.glob("*.xml")) or not any(path.glob("*.bin")):
+            raise RuntimeError(
+                "Qwen2.5-VL OpenVINO model directory format mismatch: "
+                f"{self.model_dir} does not contain top-level OpenVINO .xml and .bin files. "
+                "Use an OpenVINO/Optimum Intel exported Qwen2.5-VL-3B Instruct directory, "
+                "not the original Hugging Face PyTorch model directory."
+            )
 
     @staticmethod
     def _import_dependencies() -> dict[str, Any]:
@@ -199,12 +215,16 @@ class QwenVLOpenVINORunner:
 def build_emotion_analysis_prompt(context: dict | None = None) -> str:
     lines = [
         "Analyze the user's visible emotional state from the image.",
-        "Return JSON only, with these fields:",
+        "Output JSON only.",
+        "Return JSON only.",
+        "Do not include markdown fences.",
+        "Do not include explanation outside JSON.",
+        "Return one JSON object with these required keys:",
         json.dumps({field: "<value>" for field in OUTPUT_FIELDS}, ensure_ascii=False),
-        "emotion_tag must be one of: " + ", ".join(EMOTION_TAGS) + ".",
+        "emotion_tag must be exactly one of: " + ", ".join(EMOTION_TAGS) + ".",
         "confidence and fatigue_score must be numbers from 0.0 to 1.0.",
-        "visual_reason should explain visible evidence briefly.",
-        "vlm_observation should summarize the user's apparent state briefly.",
+        "visual_reason and vlm_observation must be brief.",
+        "If the image is unclear or the user's state cannot be judged, use unknown or neutral with confidence below 0.5.",
     ]
 
     if context:

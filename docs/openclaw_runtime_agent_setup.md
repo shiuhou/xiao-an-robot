@@ -166,4 +166,3 @@ Run the full test suite without writing bytecode:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -q
 ```
-

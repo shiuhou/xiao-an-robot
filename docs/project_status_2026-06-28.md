@@ -39,6 +39,18 @@ Firmware and channel baseline from 2026-06-27 remains active:
 - Practical floor motion setting: `speed=0.56` for dock-exit demo motion.
 - Minimum effective positive speed: `0.52`.
 
+## Protocol/Status Documentation Alignment
+
+`docs/protocol.md` was updated on 2026-06-28 before main-branch merge preparation. It now reflects the live `/control`, `/audio`, and `/video` implementation state instead of the older draft status. The protocol document now points to the 2026-06-26/27/28 status records, the mergetesting registry, and the priority queue results as evidence for the current H/P state.
+
+Current protocol truth:
+
+- `/control` is the live robot command path.
+- `/video` is the live robot camera path and updates `runtime/latest.jpg`.
+- `/audio` is the live robot microphone PCM path to the base-station/OpenClaw side.
+- `mergetesting_full_face240` is the current full firmware baseline for face240 + motor + speaker + `/video` + `/audio`.
+- Real spoken TTS remains separate future work; the reliable audible cue is still `audio.play_local care_01`.
+
 ## What This Unblocks
 
 The next meaningful milestone is no longer isolated channel testing. The next milestone is an end-to-end closed-loop behavior:

@@ -6,16 +6,15 @@ set -e
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [ ! -d "agent/venv" ]; then
-  echo "[info] agent/venv does not exist."
-  echo "       Create one with: python3 -m venv agent/venv"
-  echo "       Then install deps: source agent/venv/bin/activate && pip install -r agent/requirements.txt"
-  python3 -m venv agent/venv
-  echo "[done] Created agent/venv"
+VENV_DIR="$ROOT_DIR/.venv"
+
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+  echo "[error] .venv not found. Run first: bash scripts/setup_intel_board.sh"
+  exit 1
 fi
 
 # shellcheck disable=SC1091
-source agent/venv/bin/activate
+source "$VENV_DIR/bin/activate"
 
 if [ ! -f "agent/data/xiao_an.db" ]; then
   echo "[error] agent/data/xiao_an.db does not exist."

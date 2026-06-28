@@ -1,0 +1,21 @@
+# VLM (Qwen2.5-VL OpenVINO) backend dependencies — pinned snapshot.
+#
+# These versions are the ones verified working for loading + inference of the
+# self-exported Qwen2.5-VL-3B-OV-int4 package (Gate 4, 2026-06-17). They are
+# pinned deliberately: newer transformers (5.x) breaks the processor load with a
+# `fix_mistral_regex` argument conflict, so the versions MUST match the ones the
+# model was exported with (transformers 4.57.6 / optimum 2.1.0, per the model's
+# openvino_config.json).
+#
+# Install on top of base_station/requirements.txt:
+#     pip install -r base_station/requirements.txt -r base_station/requirements-vlm.txt
+
+transformers==4.57.6        # MUST match export; 5.x crashes on fix_mistral_regex
+optimum==2.2.0
+optimum-intel==2.0.0        # export recorded optimum 2.1.0; 2.0.0/2.2.0 load & infer fine
+qwen-vl-utils==0.0.14
+accelerate==1.14.0
+nncf==3.2.0
+huggingface_hub==0.36.2     # also used by tools/setup_models.py
+openvino==2026.2.1
+Pillow                      # vlm_face_analyzer image handling

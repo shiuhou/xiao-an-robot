@@ -13,16 +13,19 @@ class VLMTriggerGate:
 
     def __init__(
         self,
-        fatigue_threshold: float = 0.8,
+        fatigue_threshold: float = 67.0,
         negative_confidence_threshold: float = 0.75,
-        window_size: int = 5,
-        negative_count_threshold: int = 2,
+        window_size: int = 10,
+        negative_count_threshold: int = 4,
+        negative_conf_sum_threshold: float = 2.0,
     ):
         self.fatigue_threshold = fatigue_threshold
         self.negative_confidence_threshold = negative_confidence_threshold
         self.window_size = window_size
         self.negative_count_threshold = negative_count_threshold
+        self.negative_conf_sum_threshold = negative_conf_sum_threshold
         self._recent_negative_flags = deque(maxlen=max(1, window_size))
+        self._recent_negative_confidences = deque(maxlen=max(1, window_size))
 
     def evaluate(self, sample: dict, force_vlm: bool = False) -> dict:
         emotion_tag = str(sample.get("emotion_tag", sample.get("emotion", "neutral")) or "neutral")
@@ -31,6 +34,7 @@ class VLMTriggerGate:
         is_negative = emotion_tag in NEGATIVE_EMOTIONS
         is_confident_negative = is_negative and confidence >= self.negative_confidence_threshold
         self._recent_negative_flags.append(is_negative)
+        self._recent_negative_confidences.append(confidence if is_negative else 0.0)
 
         if force_vlm:
             return {"should_trigger": True, "reason": "force"}
@@ -41,7 +45,12 @@ class VLMTriggerGate:
         if is_confident_negative:
             return {"should_trigger": True, "reason": "negative_emotion"}
 
-        if sum(self._recent_negative_flags) >= self.negative_count_threshold:
+        negative_count = sum(self._recent_negative_flags)
+        negative_conf_sum = sum(self._recent_negative_confidences)
+        if (
+            negative_count >= self.negative_count_threshold
+            and negative_conf_sum >= self.negative_conf_sum_threshold
+        ):
             return {"should_trigger": True, "reason": "negative_emotion_window"}
 
         return {"should_trigger": False, "reason": "normal"}

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
+    VLMGatedCameraEmotionSource,
     create_emotion_source,
     create_face_emotion_model,
     create_vlm_emotion_model,
@@ -106,14 +107,10 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         event_loop = FakeEventLoop()
         runtime = BaseStationEmotionRuntime(source=source, event_loop=event_loop, verbose=False)
 
-        await runtime.run()
+        results = await runtime.run()
 
-        sample = event_loop.samples[0]
-        self.assertEqual(sample["source"], "fake_face")
-        self.assertEqual(sample["emotion_tag"], "neutral")
-        self.assertEqual(sample["vlm_triggered"], False)
-        self.assertEqual(sample["vlm_trigger_reason"], "normal")
-
+        self.assertEqual(results, [])
+        self.assertEqual(event_loop.samples, [])
     async def test_vlm_gate_tired_triggers_qwen_vl(self) -> None:
         source = create_emotion_source(
             source="fake_camera",
@@ -130,14 +127,17 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         await runtime.run()
 
         sample = event_loop.samples[0]
-        self.assertEqual(sample["source"], "fake_qwen_vl")
+        self.assertEqual(sample["source"], "fake_face")
         self.assertEqual(sample["emotion_tag"], "tired")
         self.assertEqual(sample["vlm_triggered"], True)
-        self.assertEqual(sample["vlm_trigger_reason"], "high_fatigue")
-        self.assertIn("visual_reason", sample)
-        self.assertIn("vlm_observation", sample)
+        self.assertEqual(sample["vlm_trigger_reason"], "negative_emotion")
+        self.assertEqual(sample["vlm"]["executed"], True)
+        self.assertEqual(sample["vlm"]["status"], "ok")
+        self.assertEqual(sample["vlm"]["expression_label"], "tired")
+        self.assertEqual(sample["vlm"]["confidence"], 0.9)
+        self.assertEqual(sample["vlm"]["evidence"], [])
+        self.assertEqual(sample["vlm"]["face_observation"], "The user may need a short rest.")
         self.assertEqual(sample["cv_sample"]["source"], "fake_face")
-
     async def test_force_vlm_triggers_qwen_vl_for_neutral_sample(self) -> None:
         source = create_emotion_source(
             source="fake_camera",
@@ -154,11 +154,13 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         await runtime.run()
 
         sample = event_loop.samples[0]
-        self.assertEqual(sample["source"], "fake_qwen_vl")
+        self.assertEqual(sample["source"], "fake_face")
         self.assertEqual(sample["emotion_tag"], "neutral")
         self.assertEqual(sample["vlm_triggered"], True)
         self.assertEqual(sample["vlm_trigger_reason"], "force")
-
+        self.assertEqual(sample["vlm"]["executed"], True)
+        self.assertEqual(sample["vlm"]["status"], "ok")
+        self.assertEqual(sample["vlm"]["expression_label"], "neutral")
     async def test_openvino_qwen_vl_vlm_backend_requires_vlm_model_path(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
@@ -338,6 +340,112 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported model backend"):
             create_face_emotion_model(model_backend="unknown", pattern="neutral")
 
+
+class _OneFrameSource:
+    def __init__(self, frame):
+        self._frame = frame
+
+    async def frames(self):
+        yield self._frame
+
+
+class _FixedCvPipeline:
+    def __init__(self, cv_sample):
+        self._cv = cv_sample
+
+    def process_frame(self, frame):
+        return dict(self._cv)
+
+
+class _AlwaysTriggerGate:
+    def evaluate(self, cv_sample, force_vlm=False):
+        return {"should_trigger": True, "reason": "test"}
+
+
+class _FixedContextBuilder:
+    def build(self, **kwargs):
+        return {}
+
+
+class _FixedVlm:
+    def __init__(self, prediction):
+        self._prediction = prediction
+
+    def predict(self, frame, context=None):
+        return dict(self._prediction)
+
+
+class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
+    async def _run_one(self, cv_sample, prediction):
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"payload": None}),
+            cv_pipeline=_FixedCvPipeline(cv_sample),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FixedVlm(prediction),
+        )
+        return [sample async for sample in source.samples()][0]
+
+    async def test_triggered_frame_normalizes_scale_and_derives_polarity(self):
+        cv_sample = {
+            "source": "openface",
+            "emotion_tag": "neutral",
+            "confidence": 0.5,
+            "fatigue_score": 42.0,
+            "polarity": "positive",
+            "fatigue_level": "medium",
+            "valence": "neutral",
+            "observation_quality": 0.99,
+            "presence_state": "present",
+            "evidence_codes": ["PERCLOS_HIGH"],
+            "au_json": {"AU01": 0.1},
+        }
+        prediction = {
+            "source": "openvino_qwen_vl",
+            "emotion_tag": "tired",
+            "confidence": 0.9,
+            "fatigue_score": 0.8,
+            "visual_reason": "eyes heavy",
+            "vlm_observation": "needs rest",
+        }
+        sample = await self._run_one(cv_sample, prediction)
+
+        # Runtime delivery keeps CV's top-level decision fields and nests VLM.
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertTrue(sample["vlm_triggered"])
+        self.assertEqual(sample["vlm_trigger_reason"], "test")
+        self.assertEqual(sample["vlm"], {
+            "executed": True,
+            "status": "ok",
+            "expression_label": "tired",
+            "confidence": 0.9,
+            "evidence": [],
+            "face_observation": "needs rest",
+            "message": "",
+        })
+        # CV fatigue fields are not overwritten by the VLM result.
+        self.assertEqual(sample["fatigue_score"], 42.0)
+        self.assertEqual(sample["polarity"], "positive")
+        self.assertEqual(sample["fatigue_level"], "medium")
+        self.assertEqual(sample["observation_quality"], 0.99)
+        self.assertEqual(sample["presence_state"], "present")
+        self.assertEqual(sample["evidence_codes"], ["PERCLOS_HIGH"])
+        self.assertEqual(sample["au_json"], {"AU01": 0.1})
+        self.assertEqual(sample["cv_sample"]["fatigue_score"], 42.0)
+    async def test_triggered_missing_vlm_fields_get_safe_defaults(self):
+        sample = await self._run_one(
+            {"source": "openface", "emotion_tag": "neutral", "fatigue_score": 10.0},
+            {"expression_label": "neutral"},
+        )
+        self.assertEqual(sample["vlm"], {
+            "executed": True,
+            "status": "ok",
+            "expression_label": "neutral",
+            "confidence": None,
+            "evidence": [],
+            "face_observation": "",
+            "message": "",
+        })
 
 if __name__ == "__main__":
     unittest.main()

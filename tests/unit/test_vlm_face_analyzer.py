@@ -38,9 +38,35 @@ class VLMFaceAnalyzerParseTest(unittest.TestCase):
         self.assertEqual(result["confidence"], 0.0)
         self.assertEqual(result["message"], "")
 
-    def test_prompt_allows_empty_positive_message_and_requires_negative_care(self) -> None:
-        self.assertIn("正面或无需干预，必须为空字符串", vfa.PROMPT)
-        self.assertIn("如果 polarity 是负面，生成一句自然简短的中文关怀话", vfa.PROMPT)
+    def test_prompt_uses_human_friendly_visible_evidence_message(self) -> None:
+        self.assertIn("我注意到", vfa.PROMPT)
+        self.assertIn("可见面部/姿态线索", vfa.PROMPT)
+        self.assertIn("不要做医学诊断", vfa.PROMPT)
+
+    def test_load_prompt_falls_back_when_file_missing(self) -> None:
+        self.assertEqual(vfa._load_prompt(vfa._DEFAULT_PROMPT_FILE.with_name("missing-prompt.txt")), vfa._FALLBACK_PROMPT)
+
+    def test_context_prompt_includes_safe_context_without_au_json(self) -> None:
+        prompt = vfa._context_prompt({
+            "cv": {
+                "emotion_tag": "tired",
+                "confidence": 0.8,
+                "au_json": {"AU45": 0.9},
+            },
+            "asr": {"text": ""},
+            "history": {"count": 2, "top_emotion": "tired"},
+        })
+
+        self.assertIn("Auxiliary context", prompt)
+        self.assertIn('"emotion_tag": "tired"', prompt)
+        self.assertIn('"top_emotion": "tired"', prompt)
+        self.assertNotIn("au_json", prompt)
+
+    def test_context_prompt_truncates_long_context(self) -> None:
+        prompt = vfa._context_prompt({"cv": {"emotion_tag": "tired", "notes": "x" * 4000}})
+
+        self.assertIn("...<truncated>", prompt)
+        self.assertLessEqual(len(prompt), vfa.MAX_CONTEXT_PROMPT_CHARS + 220)
 
     def test_missing_model_dir_raises_before_heavy_imports(self) -> None:
         with patch.dict(

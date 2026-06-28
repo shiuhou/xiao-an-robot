@@ -85,6 +85,37 @@ class EmotionEventLoopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["vlm_observation"], {"eyes": "tired"})
         self.assertEqual(payload["cv_sample"], {"face_detected": True})
 
+    async def test_build_event_preserves_nested_vlm_contract(self) -> None:
+        loop = EmotionEventLoop(brain=FakeBrain())
+
+        event = loop.build_event({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.5,
+            "fatigue_score": 20.0,
+            "vlm_triggered": True,
+            "vlm_trigger_reason": "force",
+            "cv_sample": {"source": "openface_fatigue_metrics", "frame_id": 1},
+            "vlm": {
+                "executed": True,
+                "status": "ok",
+                "expression_label": "tired",
+                "emotion_score": 0.6,
+                "confidence": 0.9,
+                "evidence": ["眼皮偏沉"],
+                "face_observation": "",
+                "message": "我注意到你的眼皮有些沉，要不要先休息一下？",
+                "valid_observation": True,
+            },
+        })
+
+        payload = event["payload"]
+        self.assertEqual(payload["vlm"]["expression_label"], "tired")
+        self.assertEqual(payload["vlm"]["emotion_score"], 0.6)
+        self.assertEqual(payload["vlm"]["evidence"], ["眼皮偏沉"])
+        self.assertEqual(payload["vlm"]["valid_observation"], True)
+        self.assertEqual(payload["cv_sample"]["frame_id"], 1)
+
     async def test_build_event_preserves_false_vlm_triggered(self) -> None:
         loop = EmotionEventLoop(brain=FakeBrain())
 

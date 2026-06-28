@@ -164,14 +164,19 @@ def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> di
         or raw.get("visual_reason")
         or ""
     )
+    evidence = raw.get("visible_evidence")
+    if evidence is None:
+        evidence = raw.get("evidence")
     return {
         "executed": bool(executed),
         "status": str(status),
         "expression_label": expression_label,
+        "emotion_score": raw.get("emotion_score"),
         "confidence": raw.get("confidence"),
-        "evidence": _as_evidence_list(raw.get("evidence")),
+        "evidence": _as_evidence_list(evidence),
         "face_observation": face_observation,
         "message": raw.get("message") or "",
+        "valid_observation": raw.get("valid_observation"),
     }
 
 
@@ -213,7 +218,15 @@ class VLMGatedCameraEmotionSource:
                 asr_text=None,
                 history_summary=self._history_summary(),
             )
-            prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+            try:
+                prediction = await asyncio.to_thread(self.vlm_model.predict, frame, context)
+                vlm_status = str(prediction.get("status", "ok")) if isinstance(prediction, dict) else "ok"
+            except Exception as exc:
+                prediction = {
+                    "message": f"VLM failed: {exc}",
+                    "valid_observation": None,
+                }
+                vlm_status = "model_error"
             final_sample = cv_sample.copy()
             final_sample["vlm_triggered"] = True
             final_sample["vlm_trigger_reason"] = reason
@@ -221,7 +234,7 @@ class VLMGatedCameraEmotionSource:
             final_sample["vlm"] = normalize_vlm_result(
                 prediction,
                 executed=True,
-                status=str(prediction.get("status", "ok")) if isinstance(prediction, dict) else "ok",
+                status=vlm_status,
             )
 
             yield final_sample

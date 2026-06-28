@@ -14,6 +14,7 @@ from base_station.monitor.emotion_runtime import (
     create_vlm_emotion_model,
     parse_args,
 )
+from base_station.monitor.emotion_event_loop import EmotionEventLoop
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
 
@@ -30,6 +31,15 @@ class FakeEventLoop:
             "reason": "care" if should_handle else "normal",
             "message": sample["emotion_tag"],
         }
+
+
+class FakeBrain:
+    def __init__(self) -> None:
+        self.events = []
+
+    async def handle_event(self, event: dict) -> dict:
+        self.events.append(event)
+        return {"handled": True, "event": event}
 
 
 class FakeOpenCVCameraFrameSource:
@@ -375,6 +385,52 @@ class _FixedVlm:
         return dict(self._prediction)
 
 
+class _FailingVlm:
+    def predict(self, frame, context=None):
+        raise RuntimeError("vlm unavailable")
+
+
+class _SpyCvPipeline:
+    def __init__(self):
+        self.frames = []
+
+    def process_frame(self, frame):
+        self.frames.append(frame)
+        return {
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "tired",
+            "confidence": 0.8,
+            "fatigue_score": 80.0,
+            "frame_id": frame["frame_id"],
+            "timestamp_ms": frame["timestamp_ms"],
+        }
+
+
+class _SpyContextBuilder:
+    def __init__(self):
+        self.calls = []
+
+    def build(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"cv": kwargs["cv_sample"]}
+
+
+class _SpyVlm:
+    def __init__(self):
+        self.calls = []
+
+    def predict(self, frame, context=None):
+        self.calls.append({"frame": frame, "context": context})
+        return {
+            "emotion": "tired",
+            "emotion_score": 0.7,
+            "confidence": 0.9,
+            "visible_evidence": ["眼皮偏沉"],
+            "valid_observation": True,
+            "message": "我注意到你的眼皮有些沉，要不要先休息一下？",
+        }
+
+
 class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
     async def _run_one(self, cv_sample, prediction):
         source = VLMGatedCameraEmotionSource(
@@ -422,6 +478,8 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "evidence": [],
             "face_observation": "needs rest",
             "message": "",
+            "emotion_score": None,
+            "valid_observation": None,
         })
         # CV fatigue fields are not overwritten by the VLM result.
         self.assertEqual(sample["fatigue_score"], 42.0)
@@ -445,7 +503,84 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "evidence": [],
             "face_observation": "",
             "message": "",
+            "emotion_score": None,
+            "valid_observation": None,
         })
+
+    async def test_triggered_vlm_extended_contract_reaches_downstream_sample(self):
+        sample = await self._run_one(
+            {"source": "openface", "emotion_tag": "neutral", "fatigue_score": 10.0},
+            {
+                "emotion": "tired",
+                "emotion_score": 0.6,
+                "confidence": 0.9,
+                "visible_evidence": ["眼皮偏沉", "头部低垂"],
+                "valid_observation": True,
+                "message": "我注意到你的眼皮有些沉，要不要先休息一下？",
+            },
+        )
+
+        self.assertEqual(sample["vlm"]["expression_label"], "tired")
+        self.assertEqual(sample["vlm"]["emotion_score"], 0.6)
+        self.assertEqual(sample["vlm"]["evidence"], ["眼皮偏沉", "头部低垂"])
+        self.assertEqual(sample["vlm"]["valid_observation"], True)
+        self.assertEqual(sample["vlm"]["message"], "我注意到你的眼皮有些沉，要不要先休息一下？")
+
+    async def test_vlm_failure_yields_model_error_without_breaking_cv_delivery(self):
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"payload": None, "frame_id": 1}),
+            cv_pipeline=_FixedCvPipeline({
+                "source": "openface",
+                "emotion_tag": "neutral",
+                "fatigue_score": 10.0,
+            }),
+            gate=_AlwaysTriggerGate(),
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FailingVlm(),
+        )
+
+        sample = [item async for item in source.samples()][0]
+
+        self.assertEqual(sample["source"], "openface")
+        self.assertTrue(sample["vlm_triggered"])
+        self.assertEqual(sample["vlm"]["executed"], True)
+        self.assertEqual(sample["vlm"]["status"], "model_error")
+        self.assertIn("vlm unavailable", sample["vlm"]["message"])
+
+    async def test_visual_frame_reaches_cv_vlm_and_downstream_event(self):
+        frame = {
+            "source": "opencv_camera",
+            "frame_id": 7,
+            "timestamp_ms": 12345,
+            "payload": object(),
+        }
+        cv_pipeline = _SpyCvPipeline()
+        context_builder = _SpyContextBuilder()
+        vlm = _SpyVlm()
+        visual_source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource(frame),
+            cv_pipeline=cv_pipeline,
+            gate=_AlwaysTriggerGate(),
+            context_builder=context_builder,
+            vlm_model=vlm,
+        )
+        brain = FakeBrain()
+        event_loop = EmotionEventLoop(brain=brain)
+
+        await event_loop.run_stream(visual_source.samples())
+
+        self.assertIs(cv_pipeline.frames[0], frame)
+        self.assertEqual(context_builder.calls[0]["cv_sample"]["frame_id"], 7)
+        self.assertIs(vlm.calls[0]["frame"], frame)
+        self.assertEqual(vlm.calls[0]["context"]["cv"]["fatigue_score"], 80.0)
+        event = brain.events[0]
+        self.assertEqual(event["type"], "emotion.sample")
+        payload = event["payload"]
+        self.assertEqual(payload["frame_id"], 7)
+        self.assertTrue(payload["vlm_triggered"])
+        self.assertEqual(payload["vlm"]["expression_label"], "tired")
+        self.assertEqual(payload["vlm"]["evidence"], ["眼皮偏沉"])
+        self.assertEqual(payload["cv_sample"]["source"], "openface_fatigue_metrics")
 
 if __name__ == "__main__":
     unittest.main()

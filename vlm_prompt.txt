@@ -6,6 +6,8 @@
 - emotion_score：情绪明显程度，0 到 1 的小数
 - fatigue_score：疲劳程度，0 到 1 的小数
 - confidence：你对本次判断的把握，0 到 1 的小数
+- visible_evidence：数组，列出 1 到 3 个画面中确实可见的线索，例如 "眼皮偏沉"、"嘴巴张开"、"头部低垂"；看不清时返回 []
+- valid_observation：布尔值；如果画面中人脸/姿态线索足够判断则为 true，如果无脸、严重模糊、遮挡严重、只截到局部则为 false
 - message：message：生成一句自然简短的中文话，结构必须是“我注意到 + 可见面部/姿态线索 + 温和建议”。必须描述至少一个可见线索，不允许只输出情绪结论。不要说“你看起来很疲惫”这种泛泛判断。
 
 message 规则：
@@ -19,6 +21,6 @@ message 规则：
 - message 必须是一句话，长度控制在 35 个中文字符以内。
 
 返回格式必须是合法 JSON：
-{"polarity":"","emotion":"","emotion_score":0.0,"fatigue_score":0.0,"confidence":0.0,"message":""}
+{"polarity":"","emotion":"","emotion_score":0.0,"fatigue_score":0.0,"confidence":0.0,"visible_evidence":[],"valid_observation":true,"message":""}
 
 只返回 JSON。

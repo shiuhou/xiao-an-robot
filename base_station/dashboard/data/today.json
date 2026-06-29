@@ -1,0 +1,44 @@
+{
+  "schedules": [
+    {
+      "time": "08:30",
+      "title": "晨間問候與狀態播報",
+      "type": "schedule",
+      "status": "done"
+    },
+    {
+      "time": "10:00",
+      "title": "DK-2500 展示流程檢查",
+      "type": "schedule",
+      "status": "done"
+    },
+    {
+      "time": "16:00",
+      "title": "評委演示彩排",
+      "type": "schedule",
+      "status": "pending"
+    }
+  ],
+  "todos": [
+    {
+      "time": "14:00",
+      "title": "確認 Robot 與 Base Station 連線",
+      "type": "todo",
+      "status": "pending"
+    }
+  ],
+  "alarms": [
+    {
+      "time": "12:30",
+      "title": "午餐提醒",
+      "type": "alarm",
+      "enabled": true
+    },
+    {
+      "time": "14:30",
+      "title": "喝水提醒",
+      "type": "alarm",
+      "enabled": true
+    }
+  ]
+}

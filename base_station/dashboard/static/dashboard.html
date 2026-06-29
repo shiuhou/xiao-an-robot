@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Xiao-An Dock Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+  </head>
+  <body>
+    <main class="dashboard-shell">
+      <section class="main-area" aria-label="Dock overview">
+        <section class="hero-band">
+          <div>
+            <div class="clock" id="clock">--:--</div>
+            <div class="date-line" id="dateLine">---- -- --</div>
+          </div>
+          <div class="mode-pill" id="systemMode">待命</div>
+        </section>
+
+        <section class="today-band">
+          <div class="band-header">
+            <h2>今日安排</h2>
+            <span id="todayCount">0</span>
+          </div>
+          <div class="today-list" id="todayList"></div>
+        </section>
+
+        <section class="focus-band">
+          <div class="focus-copy">
+            <div class="section-kicker">今日狀態</div>
+            <h1>小安 Dock</h1>
+            <p id="focusText">Base Station 已啟動，等待 Robot / Agent 鏈路事件。</p>
+          </div>
+          <div class="signal-grid" aria-label="Runtime signals">
+            <div>
+              <span>影像</span>
+              <strong id="imageSignal">Unknown</strong>
+            </div>
+            <div>
+              <span>音訊</span>
+              <strong id="audioSignal">Unknown</strong>
+            </div>
+            <div>
+              <span>模式</span>
+              <strong id="modeSignal">Idle</strong>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <aside class="side-area" aria-label="System and pipeline status">
+        <section class="side-panel health-panel">
+          <div class="side-title">系統健康狀態</div>
+          <div class="health-grid" id="healthGrid"></div>
+        </section>
+
+        <section class="side-panel pipeline-panel">
+          <div class="side-title">鏈路狀態</div>
+          <div class="pipeline-flow" id="pipelineFlow"></div>
+        </section>
+
+        <section class="side-panel trigger-panel">
+          <div class="side-title">最近觸發</div>
+          <div class="trigger-list" id="triggerList"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/static/dashboard.js"></script>
+  </body>
+</html>

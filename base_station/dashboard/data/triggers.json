@@ -1,0 +1,36 @@
+{
+  "pipeline": {
+    "current_state": "executing",
+    "current_trigger": "alarm:喝水提醒",
+    "robot": "ready",
+    "base_station": "running",
+    "agent": "running",
+    "action": "executing"
+  },
+  "triggers": [
+    {
+      "time": "14:30",
+      "source": "alarm",
+      "title": "喝水提醒",
+      "chain": "Alarm -> Base -> Agent -> Robot Voice",
+      "status": "executing",
+      "detail": "Robot 正在播放喝水提醒"
+    },
+    {
+      "time": "12:30",
+      "source": "alarm",
+      "title": "午餐提醒",
+      "chain": "Alarm -> Agent -> Robot Display",
+      "status": "completed",
+      "detail": "已切換表情並播報午餐提醒"
+    },
+    {
+      "time": "10:00",
+      "source": "schedule",
+      "title": "展示流程檢查",
+      "chain": "Schedule -> Agent -> Robot Checklist",
+      "status": "acked",
+      "detail": "Robot 已確認展示前檢查"
+    }
+  ]
+}

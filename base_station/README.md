@@ -12,6 +12,7 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 | `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. `openface_ov_runtime/` is bundled vendored runtime; do not move it during ordinary cleanup. |
 | `monitor/` | Emotion runtime, event loop, context builder, SQLite local event store. |
 | `api/` | Local debug API for frontend/runtime inspection; not the main product API. |
+| `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. |
 | `models/` | Local model placement area; large models should not be committed. |
 | `config.example.yaml` | Safe template for runtime config. |
 
@@ -22,6 +23,14 @@ Run from the repository root:
 ```powershell
 python -m base_station.ws_server.server
 ```
+
+Run the local Dock dashboard:
+
+```powershell
+python -m base_station.dashboard.dashboard_server
+```
+
+Open `http://127.0.0.1:8088/dashboard`.
 
 Expected robot behavior:
 
@@ -45,6 +54,10 @@ Expected robot behavior:
 
 `api/` is for debugging and integration visibility. Do not treat it as the primary product interface.
 
+`dashboard/` is a kiosk display surface. It reads mock data from
+`base_station/dashboard/data/` until a real trigger event store exists, and it
+keeps the right-side panel capped for a 1024x600 screen.
+
 ## Local Files
 
 Do not commit:
@@ -62,6 +75,7 @@ Use `config.example.yaml` as the shareable template.
 ## Related Docs
 
 - [../docs/current_status.md](../docs/current_status.md)
+- [../docs/base_station_dashboard.md](../docs/base_station_dashboard.md)
 - [../docs/agents/04_base_station_agent_registry.md](../docs/agents/04_base_station_agent_registry.md)
 - [../docs/setup/dk2500_deployment.md](../docs/setup/dk2500_deployment.md)
 - [../docs/runbooks/main_demo_care_loop.md](../docs/runbooks/main_demo_care_loop.md)

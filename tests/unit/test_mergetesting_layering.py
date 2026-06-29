@@ -164,7 +164,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         )[0]
         self.assertIn("extends = env:mergetesting_speaker_altpins_only", altpins_phrase_body)
         self.assertIn("-DMERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE=1", altpins_phrase_body)
-        self.assertIn("-DEMBEDDED_TTS_GAIN=12", altpins_phrase_body)
+        self.assertIn("-DEMBEDDED_TTS_GAIN=16", altpins_phrase_body)
         self.assertIn("[env:mergetesting_speaker_altpins_phrase_only_ota]", platformio)
         altpins_phrase_ota_body = platformio.split("[env:mergetesting_speaker_altpins_phrase_only_ota]", 1)[1].split(
             "[env:", 1
@@ -467,6 +467,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         )[0]
         self.assertIn("extends = env:mergetesting_speaker_only", speaker_body)
         self.assertIn("-DMERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE=1", speaker_body)
+        self.assertIn("-DEMBEDDED_TTS_GAIN=16", speaker_body)
         self.assertIn("[env:mergetesting_speaker_phrase_only_ota]", platformio)
         self.assertIn('#include "embedded_tts_phrase.h"', speaker_cpp)
         self.assertIn("EmbeddedTtsPhrase::PCM", speaker_cpp)

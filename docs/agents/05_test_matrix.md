@@ -67,11 +67,11 @@ pio run -e mergetesting
 | `mergetesting_motor_only` | P: 2026-06-26 | H: LEDC fix, motion ack/completed + physical direction, 2026-06-26 |
 | `mergetesting_speaker_only` | P: 2026-06-29 build/tests pass | H/P: COM19 upload restored safe firmware; serial `sound wakeup_chime` logged `play_local done ... ok=true`, user confirmed sound |
 | `mergetesting_speaker_only_ota` | P: 2026-06-29 build ok | H/P: OTA upload works via hotspot host `192.168.137.1`; latest observed robot IP `192.168.137.200`; safe firmware restored after phrase diagnostic |
-| `mergetesting_speaker_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: embedded full sentence `I can speak now.` reached PCM write then WDT; leading-silence trim prepared, audible retest deferred until user confirms |
+| `mergetesting_speaker_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: default GPIO35/36/37 embedded PCM first write caused WDT; do not use this pin map on the current Octal PSRAM module |
 | `mergetesting_speaker_altpins_only` | P: 2026-06-29 build ok diagnostic env | H/P: COM19 upload ok; temporary MAX98357A BCLK/LRC/DIN=39/40/41; serial `sound wakeup_chime` completed without WDT |
 | `mergetesting_speaker_altpins_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: OTA upload to `192.168.137.200` ok; external 5V/no-USB WebSocket `audio.play_local wakeup_chime` heard by user; safe firmware restored |
-| `mergetesting_speaker_altpins_phrase_only` | P: 2026-06-29 build ok diagnostic env | H/P: COM19 upload ok; corrected-wiring serial `tts serial` completed embedded sentence PCM and released I2S without WDT; audible confirmation pending |
-| `mergetesting_speaker_altpins_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: OTA upload to `192.168.137.200` ok; WebSocket `audio.play_tts` forwarded; audible sentence confirmation pending |
+| `mergetesting_speaker_altpins_phrase_only` | P: 2026-06-29 build ok diagnostic env; repo gain now 16 | H/P: COM19 upload ok; corrected-wiring serial `tts serial` completed embedded sentence PCM and released I2S without WDT |
+| `mergetesting_speaker_altpins_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env; repo gain now 16 | H/P: OTA upload to `192.168.137.200` ok; WebSocket `audio.play_tts` at gain 12 was audible as `I can speak now.` and emitted `audio.playback_done status=ok bytes_written=97520 duration_ms=1557`; gain 16 not audibly retested yet |
 | `mergetesting_speaker_drain_only_ota` | P: 2026-06-28 build ok diagnostic env | H/P: accepts TTS PCM without I2S playback and avoids reset; isolates remaining fault to PCM-to-I2S playback |
 | `mergetesting_face240_only_ota` | P: 2026-06-26 | H: espota upload + expression path, 2026-06-26 |
 | `mergetesting_care_demo_face240` | P: 2026-06-27 Step 33 care demo | H: face240+motor+speaker+/control preflight, no cam/mic, 2026-06-27 |

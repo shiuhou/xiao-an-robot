@@ -1,21 +1,21 @@
 # WebSocket protocol v0.1
 
 > **Status**: current DK2500/OpenClaw integration protocol for the Xiao-An robot.
-> `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28 hardware or hardware/software verification records.
-> **Last verified**: 2026-06-28.
-> **Evidence**: `docs/status/2026-06-26.md`, `docs/status/2026-06-27.md`, `docs/status/2026-06-28.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
+> `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28/29 hardware or hardware/software verification records.
+> **Last verified**: 2026-06-29.
+> **Evidence**: `docs/status/2026-06-26.md`, `docs/status/2026-06-27.md`, `docs/status/2026-06-28.md`, `docs/status/2026-06-29.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
 
-## Current Implementation Status (2026-06-28)
+## Current Implementation Status (2026-06-29)
 
 | Channel / area | Current status | Evidence and notes |
 | --- | --- | --- |
-| `/control` | PASS_H | Robot command path is live through base-station/OpenClaw. Supports `device.hello`, heartbeat/status, `display.expression`, `motion.execute`, `audio.play_local`, `audio.play_tts` mock, `command.ack`, `motion.completed`, and `error.report`. |
+| `/control` | PASS_H | Robot command path is live through base-station/OpenClaw. Supports `device.hello`, heartbeat/status, `display.expression`, `motion.execute`, `audio.play_local`, `audio.play_tts`, `command.ack`, `audio.playback_done`, `motion.completed`, and `error.report`. |
 | `/video` | PASS_H/P | OV2640 robot camera frames reach base station as JPEG over `/video`; server updates `runtime/latest.jpg`; OpenClaw can inspect the latest image and return feedback. |
 | `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. This is channel verification, not a claim of finished ASR quality. |
 | `mergetesting_full_face240` | PASS_H | Full face240 firmware has passed local hardware smoke for `/control`, motor, face display, speaker, `/video`, and `/audio`. |
 | OpenClaw handoff | PASS_H_OPENCLAW_BASE_IO | Base/OpenClaw has used live `/control`, `/video`, and `/audio`; next gate is a reproducible smoke script and consistent OpenClaw-side `motion.completed` observation. |
 
-Known caveat: real spoken TTS is not complete. The reliable audible cue remains `audio.play_local care_01`; `audio.play_tts` is still a mock tone unless a real TTS path is explicitly wired.
+Known caveat: spoken TTS is currently verified only in the speaker-only embedded-phrase diagnostic env on GPIO39/40/41. The combined product pin map still needs a permanent non-PSRAM, non-mic speaker assignment.
 
 ---
 
@@ -339,6 +339,30 @@ Known caveat: real spoken TTS is not complete. The reliable audible cue remains 
 
 `text_preview` 仅用于日志和调试，机器人不需要显示。
 
+#### `audio.play_tts` completion report
+
+For async TTS playback, the robot first returns `command.ack` with
+`command_type="audio.play_tts"` and `status="accepted"`. Completion is reported
+as a separate robot-to-base control message:
+
+```json
+{
+  "type": "audio.playback_done",
+  "ts": 1714190471600,
+  "seq": 5,
+  "payload": {
+    "device_id": "xiaoan_robot_01",
+    "command_type": "audio.play_tts",
+    "status": "ok",
+    "bytes_written": 97520,
+    "duration_ms": 1557
+  }
+}
+```
+
+Observed 2026-06-29 hardware evidence on `mergetesting_speaker_altpins_phrase_only_ota`:
+`command.ack status=accepted`, then `audio.playback_done status=ok bytes_written=97520 duration_ms=1557`.
+
 ### 4.5 `audio.play_local` —— 播放本地预存音效
 
 ```json
@@ -508,7 +532,7 @@ Known caveat: real spoken TTS is not complete. The reliable audible cue remains 
 - [x] 实现指数退避重连
 - [x] 实现心跳定时器
 - [x] 实现 `protocol.h`，定义主要 type 常量
-- [x] 实现 `device.hello` / `device.heartbeat` / `device.status` / `motion.completed` / `error.report`
+- [x] 实现 `device.hello` / `device.heartbeat` / `device.status` / `motion.completed` / `audio.playback_done` / `error.report`
 - [x] 实现 `display.expression` 与 `motion.execute` 的最小分发
 - [x] 实现马达控制的 isolated bring-up env
 - [x] 实现相机、TFT、INMP441、MAX98357A 的 isolated bring-up env

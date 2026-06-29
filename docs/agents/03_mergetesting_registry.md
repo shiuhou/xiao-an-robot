@@ -21,11 +21,11 @@
 | `mergetesting_motor_only_ota` | 关 | 关 | 关 | motor OTA | ✅ P |
 | `mergetesting_speaker_only` | 关 | 关 | 关 | speaker 隔离；COM19 安全本地音效已确认，spoken PCM TTS 仍为诊断路径 | ✅ 2026-06-29 |
 | `mergetesting_speaker_only_ota` | 关 | 关 | 关 | speaker OTA；host `192.168.137.1`，最新 robot IP `192.168.137.200` | ✅ 2026-06-29 |
-| `mergetesting_speaker_phrase_only_ota` | 关 | 关 | 关 | 内置句子 PCM 诊断；COM19 证实 first PCM write 后 WDT；已准备 leading-silence trim，等待发声复测 | ⚠️ 2026-06-29 |
+| `mergetesting_speaker_phrase_only_ota` | 关 | 关 | 关 | 内置句子 PCM 诊断；默认 GPIO35/36/37 first PCM write 后 WDT；当前 Octal PSRAM 板不要用这组 speaker pin | ⚠️ 2026-06-29 |
 | `mergetesting_speaker_altpins_only` | 关 | 关 | 关 | speaker-only A/B 诊断；MAX98357A 临时 BCLK/LRC/DIN=GPIO39/40/41；串口本地音效无 WDT | ✅ H/P 2026-06-29 |
 | `mergetesting_speaker_altpins_only_ota` | 关 | 关 | 关 | GPIO39/40/41 speaker-only OTA target；外部 5V/no-USB 下 WebSocket 本地音效用户确认有声；已用于恢复安全固件 | ✅ H/P 2026-06-29 |
-| `mergetesting_speaker_altpins_phrase_only` | 关 | 关 | 关 | altpins + 内置句子 PCM；正确接线后 `tts serial` 完成 PCM 写入并释放 I2S，无 WDT；等待用户听感确认 | ✅ H/P 2026-06-29 |
-| `mergetesting_speaker_altpins_phrase_only_ota` | 关 | 关 | 关 | GPIO39/40/41 altpins + 内置句子 PCM OTA target；外部 5V/no-USB 下 OTA 与 `audio.play_tts` 转发通过，听感待确认 | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_altpins_phrase_only` | 关 | 关 | 关 | altpins + 内置句子 PCM；正确接线后 `tts serial` 完成 PCM 写入并释放 I2S，无 WDT；repo gain 已调到 16，待可发声时复测 | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_altpins_phrase_only_ota` | 关 | 关 | 关 | GPIO39/40/41 altpins + 内置句子 PCM OTA target；外部 5V/no-USB 下 `audio.play_tts` 已听到 `I can speak now.`，`audio.playback_done` 正常；repo gain 已调到 16 但未上板复测 | ✅ H/P 2026-06-29 |
 | `mergetesting_speaker_drain_only_ota` | 关 | 关 | 关 | speaker PCM drain-only 诊断，跳过 I2S 播放 | ✅ P/H 2026-06-28 |
 | `mergetesting_full_face240` | ST7789 | 开 | 开 | face240 + 全子系统合并 | ✅ H 2026-06-27 |
 | `mergetesting_full_face240_ota` | ST7789 | 开 | 开 | 上述合并 OTA | ✅ P/H smoke；当前 full H 用 USB |

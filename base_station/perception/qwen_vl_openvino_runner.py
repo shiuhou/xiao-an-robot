@@ -27,7 +27,7 @@ class QwenVLOpenVINORunner:
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be greater than 0.")
 
-        self.model_dir = str(Path(model_dir).expanduser())
+        self.model_dir = Path(model_dir).expanduser().as_posix()
         self.device = device
         self.max_new_tokens = max_new_tokens
         self.last_timings: dict[str, float] = {}

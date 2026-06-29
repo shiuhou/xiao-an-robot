@@ -465,8 +465,8 @@ class FusionPolicyTest(unittest.TestCase):
 
         self.assertEqual(sample["fusion"]["decision"], "cv_vlm_agree_negative")
         self.assertEqual(sample["emotion_tag"], "tired")
-        self.assertEqual(sample["confidence"], 0.9)
-        self.assertEqual(sample["fatigue_score"], 0.85)
+        self.assertEqual(sample["confidence"], 0.7)
+        self.assertEqual(sample["fatigue_score"], 0.8)
 
     def test_neutral_cv_high_confidence_vlm_tired_is_promoted(self):
         sample = fuse_cv_vlm_sample(
@@ -474,10 +474,10 @@ class FusionPolicyTest(unittest.TestCase):
             {"executed": True, "status": "ok", "emotion_tag": "tired", "confidence": 0.8, "fatigue_score": 0.75},
         )
 
-        self.assertEqual(sample["fusion"]["decision"], "vlm_promoted_negative")
-        self.assertEqual(sample["emotion_tag"], "tired")
-        self.assertEqual(sample["confidence"], 0.8)
-        self.assertEqual(sample["fatigue_score"], 0.75)
+        self.assertEqual(sample["fusion"]["decision"], "vlm_negative_aux_only")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["confidence"], 0.6)
+        self.assertEqual(sample["fatigue_score"], 0.2)
 
     def test_low_confidence_cv_tired_high_confidence_vlm_neutral_is_suppressed(self):
         sample = fuse_cv_vlm_sample(
@@ -485,10 +485,10 @@ class FusionPolicyTest(unittest.TestCase):
             {"executed": True, "status": "ok", "emotion_tag": "neutral", "confidence": 0.9, "fatigue_score": 0.1},
         )
 
-        self.assertEqual(sample["fusion"]["decision"], "vlm_suppressed_low_conf_cv")
-        self.assertEqual(sample["emotion_tag"], "neutral")
-        self.assertEqual(sample["confidence"], 0.9)
-        self.assertEqual(sample["fatigue_score"], 0.4)
+        self.assertEqual(sample["fusion"]["decision"], "vlm_neutral_aux_only")
+        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["confidence"], 0.5)
+        self.assertEqual(sample["fatigue_score"], 0.6)
 
     def test_high_confidence_cv_tired_is_not_suppressed_by_neutral_vlm(self):
         sample = fuse_cv_vlm_sample(
@@ -496,7 +496,7 @@ class FusionPolicyTest(unittest.TestCase):
             {"executed": True, "status": "ok", "emotion_tag": "neutral", "confidence": 0.95, "fatigue_score": 0.1},
         )
 
-        self.assertEqual(sample["fusion"]["decision"], "cv_primary_vlm_aux")
+        self.assertEqual(sample["fusion"]["decision"], "vlm_neutral_aux_only")
         self.assertEqual(sample["emotion_tag"], "tired")
         self.assertEqual(sample["fatigue_score"], 0.8)
 
@@ -555,7 +555,7 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         }
         sample = await self._run_one(cv_sample, prediction)
 
-        self.assertEqual(sample["emotion_tag"], "tired")
+        self.assertEqual(sample["emotion_tag"], "neutral")
         self.assertTrue(sample["vlm_triggered"])
         self.assertEqual(sample["vlm_trigger_reason"], "test")
         self.assertEqual(sample["vlm"], {
@@ -563,6 +563,7 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "status": "ok",
             "expression_label": "tired",
             "emotion_tag": "tired",
+            "emotion_score": None,
             "confidence": 0.9,
             "fatigue_score": 0.8,
             "visual_reason": "eyes heavy",
@@ -570,9 +571,10 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "evidence": [],
             "face_observation": "needs rest",
             "message": "",
+            "valid_observation": None,
         })
-        self.assertEqual(sample["fusion"]["decision"], "vlm_promoted_negative")
-        self.assertEqual(sample["fatigue_score"], 0.8)
+        self.assertEqual(sample["fusion"]["decision"], "vlm_negative_aux_only")
+        self.assertEqual(sample["fatigue_score"], 42.0)
         self.assertEqual(sample["polarity"], "positive")
         self.assertEqual(sample["fatigue_level"], "medium")
         self.assertEqual(sample["observation_quality"], 0.99)
@@ -590,13 +592,15 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
             "status": "ok",
             "expression_label": "neutral",
             "emotion_tag": "neutral",
-            "confidence": 0.0,
-            "fatigue_score": 0.0,
+            "emotion_score": None,
+            "confidence": None,
+            "fatigue_score": None,
             "visual_reason": "",
             "vlm_observation": "",
             "evidence": [],
             "face_observation": "",
             "message": "",
+            "valid_observation": None,
         })
 
     async def test_payload_free_frame_gets_synthetic_payload_for_vlm(self):

@@ -1,8 +1,21 @@
-# WebSocket 通信协议 v0.1
+# WebSocket protocol v0.1
 
-> **状态**：草案，当前 `/control` 最小闭环已部分实现，`/audio` 与 `/video` 仍处于 staged integration
-> **维护者**：张子尧（统筹）
-> **最后更新**：2026-06-22
+> **Status**: current DK2500/OpenClaw integration protocol for the Xiao-An robot.
+> `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28 hardware or hardware/software verification records.
+> **Last verified**: 2026-06-28.
+> **Evidence**: `docs/project_status_2026-06-26.md`, `docs/project_status_2026-06-27.md`, `docs/project_status_2026-06-28.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
+
+## Current Implementation Status (2026-06-28)
+
+| Channel / area | Current status | Evidence and notes |
+| --- | --- | --- |
+| `/control` | PASS_H | Robot command path is live through base-station/OpenClaw. Supports `device.hello`, heartbeat/status, `display.expression`, `motion.execute`, `audio.play_local`, `audio.play_tts` mock, `command.ack`, `motion.completed`, and `error.report`. |
+| `/video` | PASS_H/P | OV2640 robot camera frames reach base station as JPEG over `/video`; server updates `runtime/latest.jpg`; OpenClaw can inspect the latest image and return feedback. |
+| `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. This is channel verification, not a claim of finished ASR quality. |
+| `mergetesting_full_face240` | PASS_H | Full face240 firmware has passed local hardware smoke for `/control`, motor, face display, speaker, `/video`, and `/audio`. |
+| OpenClaw handoff | PASS_H_OPENCLAW_BASE_IO | Base/OpenClaw has used live `/control`, `/video`, and `/audio`; next gate is a reproducible smoke script and consistent OpenClaw-side `motion.completed` observation. |
+
+Known caveat: real spoken TTS is not complete. The reliable audible cue remains `audio.play_local care_01`; `audio.play_tts` is still a mock tone unless a real TTS path is explicitly wired.
 
 ---
 
@@ -501,8 +514,8 @@
 - [x] 实现相机、TFT、INMP441、MAX98357A 的 isolated bring-up env
 - [ ] 将 9 种表情资源整合进主 firmware loop
 - [ ] 实现 4 种本地音效烧录与播放
-- [ ] 将音频 PCM 采集接入主 `/audio` 推流
-- [ ] 将视频 JPEG 抓帧接入主 `/video` 推流
+- [x] `/audio` PCM push path is integrated in `robot/mergetesting` and verified with INMP441/runtime PCM artifacts (2026-06-26/28).
+- [x] `/video` JPEG push path is integrated in `robot/mergetesting` and verified with OV2640 `runtime/latest.jpg` plus OpenClaw image feedback (2026-06-26/28).
 
 ### 基站端（郑斯悦 + 张子尧）
 

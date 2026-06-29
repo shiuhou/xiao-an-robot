@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-27T22:30:00+08:00",
+  "generated_at": "2026-06-28T00:30:00+08:00",
   "policy": {
     "one_task_per_cycle": true,
     "select_highest_priority_ready": true,
@@ -8,9 +8,9 @@
   "split_env_status": "ALL_H",
   "split_env_completed_at": "2026-06-26",
   "current_task": {
-    "task_id": "T18",
-    "status": "PASS_H_LOCAL__DK2500_HANDOFF_DEBUG",
-    "reason": "local full-face240 final demo passed with condition-based motion waits; DK2500/OpenClaw can send commands but still needs motion.completed chain verification"
+    "task_id": "T19",
+    "status": "PASS_H_OPENCLAW_BASE_IO",
+    "reason": "base-station/OpenClaw can use /control, /video, and /audio with the robot; OpenClaw can inspect runtime/latest.jpg and provide image-content feedback"
   },
   "results": {
     "T00": {
@@ -126,11 +126,18 @@
       "attempt": 3,
       "command": "pio run -e mergetesting_full_face240 -t upload --upload-port COM19; local runner sent move_out_of_dock speed=0.56 duration_ms=2000 and waited for matching motion.completed; then turn left speed=0.56 duration_ms=500; display.expression happy; audio.play_local care_01",
       "summary": "Local final demo passed on 2026-06-27 with mergetesting_full_face240: /control,/video,/audio connected; latest.jpg and latest_audio.pcm updated; forward and left turn were sequenced by matching action_id/motion.completed, not fixed sleeps; user confirmed physical forward movement, left turn, expression change, and audible care_01. Motor calibration: speed below about 0.5 is unreliable; speed=0.56 duration_ms=2000 is the demo forward setting; speed=0.8 also moved after battery/power recovery. audio.play_tts remains mock tone, not spoken TTS; reliable audible cue is audio.play_local care_01. After config.local.h was updated for DK2500 IP, mergetesting_full_face240 was USB-flashed again on COM19. DK2500/OpenClaw handoff reached display.expression happy and motion=turn, but DK2500 did not observe motion.completed for manual-turn-left-2318 before reconnects; next split is direct tools/send_robot_command.py on DK2500 vs ESP32 serial completed vs OpenClaw waiting layer."
+    },
+    "T19": {
+      "status": "PASS_H_OPENCLAW_BASE_IO",
+      "attempt": 1,
+      "command": "base-station/OpenClaw live run using robot /control, /video, and /audio; OpenClaw inspected runtime/latest.jpg and returned image-content feedback",
+      "summary": "On 2026-06-28 the base/OpenClaw side was reported working over all three live robot channels: /control can command the robot, /video updates runtime/latest.jpg from the robot camera, /audio reaches the base/OpenClaw side, and OpenClaw can inspect latest.jpg and provide feedback about the image content. Next gate is a reproducible DK2500 smoke script plus consistent motion.completed action_id verification before chaining autonomous movement."
     }
   },
   "next_order": [
-    "DK2500 direct /agent smoke: expression, motion left, motion forward, care_01 with matching motion.completed",
-    "OpenClaw Gateway waits/forwards motion.completed after DK2500 direct smoke passes",
-    "T19 sync OpenVINO real-frame path when runtime models are staged"
+    "Write/run DK2500 OpenClaw smoke script that verifies /control,/video,/audio, latest.jpg feedback, and one safe action",
+    "Verify OpenClaw receives matching motion.completed for each motion action_id before chaining movement",
+    "Implement or clearly defer real spoken TTS; keep audio.play_local care_01 as reliable demo sound",
+    "Build first autonomous care loop: camera/audio observation -> OpenClaw decision -> expression/motion/audio action"
   ]
 }

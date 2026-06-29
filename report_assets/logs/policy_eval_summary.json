@@ -1,0 +1,84 @@
+{
+  "note": "Policy-level scenario validation using label-derived surrogate samples; not model prediction accuracy.",
+  "sample_count": 44,
+  "strategies": {
+    "single_threshold": {
+      "evaluated_count": 44,
+      "skipped_missing_file_count": 0,
+      "false_high_level_trigger_count": 0,
+      "missed_high_level_trigger_count": 0,
+      "expected_care_success_count": 14,
+      "expected_care_total": 14,
+      "normal_false_trigger_count": 0,
+      "invalid_false_trigger_count": 0,
+      "optional_trigger_count": 0,
+      "suppressed_by_cooldown_count": 0,
+      "suppressed_by_quality_count": 0,
+      "high_level_trigger_count": 14,
+      "action_level_0_count": 30,
+      "action_level_1_count": 0,
+      "action_level_3_count": 14,
+      "vlm_override_count": 0
+    },
+    "threshold_plus_cooldown": {
+      "evaluated_count": 44,
+      "skipped_missing_file_count": 0,
+      "false_high_level_trigger_count": 0,
+      "missed_high_level_trigger_count": 12,
+      "expected_care_success_count": 2,
+      "expected_care_total": 14,
+      "normal_false_trigger_count": 0,
+      "invalid_false_trigger_count": 0,
+      "optional_trigger_count": 0,
+      "suppressed_by_cooldown_count": 12,
+      "suppressed_by_quality_count": 0,
+      "high_level_trigger_count": 2,
+      "action_level_0_count": 42,
+      "action_level_1_count": 0,
+      "action_level_3_count": 2,
+      "vlm_override_count": 0
+    },
+    "quality_gate_plus_cooldown": {
+      "evaluated_count": 44,
+      "skipped_missing_file_count": 0,
+      "false_high_level_trigger_count": 0,
+      "missed_high_level_trigger_count": 12,
+      "expected_care_success_count": 2,
+      "expected_care_total": 14,
+      "normal_false_trigger_count": 0,
+      "invalid_false_trigger_count": 0,
+      "optional_trigger_count": 4,
+      "suppressed_by_cooldown_count": 12,
+      "suppressed_by_quality_count": 15,
+      "high_level_trigger_count": 2,
+      "action_level_0_count": 38,
+      "action_level_1_count": 4,
+      "action_level_3_count": 2,
+      "vlm_override_count": 0
+    }
+  },
+  "dataset_root": "C:\\Users\\Lenovo\\Desktop\\datasets\\xiaoan_care_v1",
+  "stress": {
+    "single_threshold": {
+      "stress_sample_count": 15,
+      "high_level_trigger_count": 15,
+      "suppressed_by_quality_count": 0,
+      "suppressed_by_cooldown_count": 0,
+      "invalid_false_trigger_count": 15
+    },
+    "threshold_plus_cooldown": {
+      "stress_sample_count": 15,
+      "high_level_trigger_count": 2,
+      "suppressed_by_quality_count": 0,
+      "suppressed_by_cooldown_count": 13,
+      "invalid_false_trigger_count": 2
+    },
+    "quality_gate_plus_cooldown": {
+      "stress_sample_count": 15,
+      "high_level_trigger_count": 0,
+      "suppressed_by_quality_count": 15,
+      "suppressed_by_cooldown_count": 0,
+      "invalid_false_trigger_count": 0
+    }
+  }
+}

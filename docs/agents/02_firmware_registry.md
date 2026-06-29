@@ -72,13 +72,14 @@
 | `tft_espi_probe.cpp` | `tftprobe_hybrid_rawinit` | ✅ | ST7789 hybrid 探测 |
 | `voice_recognition_test.cpp` | `voice_recognition_test` | ✅ | INMP441 I2S RMS |
 | `speaker_amp_test.cpp` | `speaker_amp_test` | ✅ | MAX98357A 音调 |
-| `integrated_main.cpp` | `esp32-s3-integrated_legacy` | 🧪 | 历史 firmware-side DK-2500 snapshot；新烧录走 `robot/mergetesting` |
+| `archive/integrated_main.cpp` | `esp32-s3-integrated_legacy` | 🧪 | 位于 `src/archive/`；历史 firmware-side DK-2500 snapshot；新烧录走 `robot/mergetesting` |
 
 ### 已归档 / 实验目录（不参与主 env 编译）
 
 | 路径 | 说明 |
 |------|------|
 | `archive/face240_espi_test.cpp` | TFT_eSPI 实验（2026-06-23 归档） |
+| `src/archive/integrated_main.cpp` | 历史 firmware-side DK-2500 integration snapshot；仅 legacy env 编译 |
 | `experiments/face240_raw_design_test.cpp` | dirty-rect 实验；`test_face240_raw_dirty_rect.py` |
 | ~~`monthly_salary_meow_frames.h`~~ | 已删除（2026-06-23） |
 | ~~`robot_face_9expressions_no_shell.cpp`~~ | 已删除，由 merged 版取代 |

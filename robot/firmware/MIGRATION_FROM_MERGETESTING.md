@@ -18,7 +18,7 @@ When `robot/mergetesting` needs a capability:
 
 ## Historical Snapshot
 
-`robot/firmware/src/integrated_main.cpp` and env `esp32-s3-integrated_legacy` are kept only as a historical snapshot from the earlier consolidation attempt. They are not the recommended path for new burns.
+`robot/firmware/src/archive/integrated_main.cpp` and env `esp32-s3-integrated_legacy` are kept only as a historical snapshot from the earlier consolidation attempt. They are not the recommended path for new burns.
 
 ## Correct Commands
 

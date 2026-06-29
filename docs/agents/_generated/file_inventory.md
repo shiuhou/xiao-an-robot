@@ -5,67 +5,29 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
-b6e0d77 Merge OpenClaw fusion work into 20260628 branch
-4ecb004 Close T17 full env H and calibrate care-demo motion envelope.
-dd98dd3 Fix mergetesting bench motion so timeout and speed reach the robot.
-dbd073a Merge OpenClaw fusion and add real-hardware emotion care handoff docs.
-a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
+1906401 Tune embedded TTS phrase gain
+a400f71 Add TTS audio streaming diagnostics path
+9ba74e8 Organize repo documentation entrypoints
+2c8755c Merge vision chain into 20260628 merged branch
+dca39ae Fix emotion runtime fatigue scale and VLM contract
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-.gitignore                                         |  13 +
- README.md                                          | 508 ++++-----------------
- base_station/ws_server/protocol.py                 |  22 +-
- base_station/ws_server/server.py                   |  93 +++-
- docs/agents/00_snapshot.md                         |  16 +-
- docs/agents/03_mergetesting_registry.md            |  30 +-
- docs/agents/05_test_matrix.md                      |  13 +-
- docs/agents/08_priority_queue.yaml                 |   2 +-
- docs/agents/08_priority_queue_results.json         |   2 +-
- docs/agents/10_repo_map.md                         |  83 +++-
- docs/agents/11_openclaw_robot_integration.md       |   6 +-
- .../12_codex_prompt_real_emotion_care_demo.md      |   2 +-
- docs/agents/README.md                              |  21 +-
- docs/agents/_generated/file_inventory.md           | 229 +++++-----
- docs/architecture.md                               |   4 +-
- docs/archive/OPENFACE_XIAOAN_PROGRESS_HANDOFF.md   |   2 +-
- docs/archive/README.md                             |   4 +-
- docs/hardware_setup.md                             |  12 +-
- docs/local_api.md                                  |   4 +-
- docs/protocol.md                                   |   2 +-
- docs/runbooks/troubleshooting.md                   |   4 +-
- docs/setup/dk2500_deployment.md                    |   2 +-
- docs/setup/model_download.md                       |   2 +-
- docs/setup/sensevoice_model_setup.md               |   2 +-
- docs/status/2026-06-22.md                          |   8 +-
- docs/status/2026-06-26.md                          |   2 +-
- docs/status/2026-06-28.md                          |  14 +-
- .../plans/2026-06-28-dk2500-openclaw-care-loop.md  |  22 +-
- docs/testing/smoke/asr_vad_audio_file_smoke.md     |  36 +-
- hardware/wiring/esp32_pinout.md                    |  10 +
- robot/mergetesting/README.md                       |   6 +
- robot/mergetesting/platformio.ini                  |  57 +++
- robot/mergetesting/src/app/mergetesting_app.cpp    |   7 +
- robot/mergetesting/src/protocol.h                  |   1 +
- robot/mergetesting/src/services/command_router.cpp |  74 +++
- robot/mergetesting/src/services/command_router.h   |  19 +
- robot/mergetesting/src/speaker.cpp                 | 338 +++++++++++++-
- robot/mergetesting/src/speaker.h                   |   3 +
- robot/mergetesting/src/ws_client.cpp               |  41 ++
- scripts/README.md                                  |  37 +-
- tests/integration/test_ws_command_forwarding.py    |  89 +++-
- tests/integration/test_ws_control_channel.py       |  10 +
- tests/unit/test_mergetesting_layering.py           | 165 ++++++-
- tests/unit/test_ws_audio_channel.py                |   4 +
- 44 files changed, 1375 insertions(+), 646 deletions(-)
+docs/agents/02_firmware_registry.md           |   3 +-
+ docs/agents/_generated/file_inventory.md      | 101 +++++++++-----------------
+ robot/firmware/MIGRATION_FROM_MERGETESTING.md |   2 +-
+ robot/firmware/archive/README.md              |   4 +-
+ robot/firmware/platformio.ini                 |   3 +-
+ 5 files changed, 40 insertions(+), 73 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)
 
 | 文件 | 路径 | 字节 |
 | --- | --- | --- |
+| `integrated_main.cpp` | robot\firmware\src\archive\integrated_main.cpp | 6761 |
 | `board_pins.h` | robot\firmware\src\board_pins.h | 2425 |
 | `cam_stream.cpp` | robot\firmware\src\cam_stream.cpp | 4245 |
 | `cam_stream.h` | robot\firmware\src\cam_stream.h | 594 |
@@ -78,7 +40,6 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | `face240_roboeyes_test.cpp` | robot\firmware\src\face240_roboeyes_test.cpp | 30023 |
 | `face240_wire_test.cpp` | robot\firmware\src\face240_wire_test.cpp | 4260 |
 | `feature_flags.h` | robot\firmware\src\feature_flags.h | 678 |
-| `integrated_main.cpp` | robot\firmware\src\integrated_main.cpp | 6761 |
 | `keep_face_center_test.cpp` | robot\firmware\src\keep_face_center_test.cpp | 10535 |
 | `main.cpp` | robot\firmware\src\main.cpp | 6658 |
 | `mic_stream.cpp` | robot\firmware\src\mic_stream.cpp | 2693 |
@@ -138,25 +99,25 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | `mic_stream.h` | robot\mergetesting\src\mic_stream.h | 342 |
 | `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13526 |
 | `motor_ctrl.h` | robot\mergetesting\src\motor_ctrl.h | 1197 |
-| `protocol.h` | robot\mergetesting\src\protocol.h | 3860 |
-| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 7772 |
+| `protocol.h` | robot\mergetesting\src\protocol.h | 3927 |
+| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8002 |
 | `command_router.h` | robot\mergetesting\src\services\command_router.h | 1174 |
 | `motion_service.cpp` | robot\mergetesting\src\services\motion_service.cpp | 8283 |
 | `motion_service.h` | robot\mergetesting\src\services\motion_service.h | 1177 |
 | `robot_state.cpp` | robot\mergetesting\src\services\robot_state.cpp | 1824 |
 | `robot_state.h` | robot\mergetesting\src\services\robot_state.h | 1099 |
-| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 854 |
-| `status_service.h` | robot\mergetesting\src\services\status_service.h | 625 |
-| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 17390 |
-| `speaker.h` | robot\mergetesting\src\speaker.h | 342 |
-| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 13969 |
-| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2497 |
+| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 1017 |
+| `status_service.h` | robot\mergetesting\src\services\status_service.h | 713 |
+| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 19470 |
+| `speaker.h` | robot\mergetesting\src\speaker.h | 522 |
+| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 14642 |
+| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2585 |
 
 ## PlatformIO envs — mergetesting (31)
 
 `mergetesting`, `mergetesting_display_only`, `mergetesting_display_only_ota`, `mergetesting_care_demo_face240`, `mergetesting_care_demo_face240_ota`, `mergetesting_control_base`, `mergetesting_control_ping`, `mergetesting_control_ping_ota`, `mergetesting_motor_only`, `mergetesting_motor_only_ota`, `mergetesting_speaker_only`, `mergetesting_speaker_only_ota`, `mergetesting_speaker_phrase_only`, `mergetesting_speaker_phrase_only_ota`, `mergetesting_speaker_altpins_only`, `mergetesting_speaker_altpins_only_ota`, `mergetesting_speaker_altpins_phrase_only`, `mergetesting_speaker_altpins_phrase_only_ota`, `mergetesting_speaker_drain_only`, `mergetesting_speaker_drain_only_ota`, `mergetesting_control_only`, `mergetesting_control_only_ota`, `mergetesting_face240_only`, `mergetesting_face240_only_ota`, `mergetesting_cam_only`, `mergetesting_cam_only_ota`, `mergetesting_mic_only`, `mergetesting_mic_only_ota`, `mergetesting_full_face240`, `mergetesting_full_face240_ota`, `mergetesting_base64_video`
 
-## tests/**/test_*.py (96 files)
+## tests/**/test_*.py (104 files)
 
 | 路径 | 字节 |
 | --- | --- |
@@ -195,9 +156,14 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | tests\unit\test_emotion_db.py | 9198 |
 | tests\unit\test_emotion_event_loop.py | 6065 |
 | tests\unit\test_emotion_memory_bridge.py | 5300 |
-| tests\unit\test_emotion_monitor_skill.py | 17100 |
-| tests\unit\test_emotion_runtime.py | 28237 |
-| tests\unit\test_emotion_runtime_gate_delivery.py | 6127 |
+| tests\unit\test_emotion_monitor_skill.py | 18988 |
+| tests\unit\test_emotion_runtime.py | 28388 |
+| tests\unit\test_emotion_runtime_gate_delivery.py | 6288 |
+| tests\unit\test_eval_visual_gate_segments.py | 6711 |
+| tests\unit\test_eval_vlm_images.py | 4591 |
+| tests\unit\test_evaluate_route_a_events.py | 13802 |
+| tests\unit\test_evaluate_xiaoan_care_clips.py | 8958 |
+| tests\unit\test_evaluate_xiaoan_care_policy.py | 8647 |
 | tests\unit\test_face_emotion_model.py | 1985 |
 | tests\unit\test_face_emotion_pipeline.py | 4925 |
 | tests\unit\test_fake_camera.py | 1410 |
@@ -217,17 +183,19 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | tests\unit\test_memory_tasks.py | 6750 |
 | tests\unit\test_memory_tool_runs.py | 4593 |
 | tests\unit\test_memory_work_activity.py | 5146 |
-| tests\unit\test_mergetesting_layering.py | 37607 |
+| tests\unit\test_mergetesting_layering.py | 39480 |
 | tests\unit\test_openclaw_adapter.py | 5922 |
 | tests\unit\test_openclaw_adapter_factory.py | 5717 |
 | tests\unit\test_openclaw_tool_call_runtime.py | 26079 |
 | tests\unit\test_opencv_camera.py | 4728 |
 | tests\unit\test_openface_cv_pipeline.py | 4551 |
+| tests\unit\test_openface_ov_adapter.py | 1734 |
 | tests\unit\test_openvino_face_emotion_model.py | 11141 |
 | tests\unit\test_openvino_qwen_vl_emotion_model.py | 7034 |
+| tests\unit\test_prepare_xiaoan_care_report_assets.py | 13259 |
 | tests\unit\test_probe_camera.py | 4416 |
 | tests\unit\test_probe_cv_gate.py | 17920 |
-| tests\unit\test_probe_openface_routeA_trace.py | 22152 |
+| tests\unit\test_probe_openface_routeA_trace.py | 22155 |
 | tests\unit\test_probe_qwen_vl_openvino.py | 1998 |
 | tests\unit\test_project_memory.py | 16529 |
 | tests\unit\test_protocol_schema.py | 1677 |
@@ -235,6 +203,7 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | tests\unit\test_qwen_vl_openvino_runner.py | 5470 |
 | tests\unit\test_reminder_scheduler.py | 4352 |
 | tests\unit\test_robot_motion_skill.py | 3755 |
+| tests\unit\test_run_e2e_emotion_smoke.py | 5058 |
 | tests\unit\test_run_integration_loop.py | 3884 |
 | tests\unit\test_run_ws_video_runtime.py | 942 |
 | tests\unit\test_send_robot_command.py | 5905 |
@@ -246,7 +215,7 @@ a3bfcd3 Add static image Qwen VL OpenVINO emotion smoke path
 | tests\unit\test_tts_stream.py | 1220 |
 | tests\unit\test_vad.py | 9010 |
 | tests\unit\test_valence_mapping.py | 2110 |
-| tests\unit\test_vlm_face_analyzer.py | 4595 |
+| tests\unit\test_vlm_face_analyzer.py | 7791 |
 | tests\unit\test_vlm_trigger_gate.py | 6321 |
 | tests\unit\test_work_activity.py | 2228 |
 | tests\unit\test_work_activity_runtime.py | 2478 |

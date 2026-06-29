@@ -2,6 +2,8 @@
 
 Importing this module doesn't import heavy model dependencies. They are loaded
 only when ``VLMFaceAnalyzer`` is instantiated or real image analysis runs.
+Runtime code treats this output as an explanation supplement under sample["vlm"];
+it must not overwrite the primary CV sample's top-level decision fields.
 """
 
 from __future__ import annotations
@@ -86,7 +88,7 @@ def _context_prompt(context: dict | None) -> str:
 
 
 class VLMFaceAnalyzer:
-    """Triggered VLM analyzer; load once, then call predict()/analyze_frame()."""
+    """Triggered VLM analyzer; load once, then return explanatory fields."""
 
     def __init__(
         self,

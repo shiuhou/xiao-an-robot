@@ -86,6 +86,35 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "fatigue")
         self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
 
+    async def test_openface_fatigue_score_uses_0_to_100_scale(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 80,
+            "algorithm_version": "rule_v0",
+        })
+
+        self.assertTrue(result["handled"])
+        self.assertEqual(result["reason"], "fatigue")
+
+    async def test_legacy_fractional_fatigue_score_is_scaled_to_100(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "mock",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 0.8,
+        })
+
+        self.assertTrue(result["handled"])
+        self.assertEqual(result["reason"], "fatigue")
+
     async def test_neutral_low_fatigue_does_not_trigger_care(self) -> None:
         gateway = FakeGateway()
         skill = EmotionMonitorSkill(gateway=gateway)
@@ -94,6 +123,60 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
             "emotion_tag": "neutral",
             "confidence": 0.8,
             "fatigue_score": 0.2,
+        })
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(result["reason"], "normal")
+        self.assertEqual(gateway.calls, [])
+
+    async def test_low_openface_fatigue_score_does_not_trigger_care(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 30,
+            "algorithm_version": "rule_v0",
+        })
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(result["reason"], "normal")
+        self.assertEqual(gateway.calls, [])
+
+    async def test_missing_or_insufficient_fatigue_score_does_not_trigger_care(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": None,
+            "fatigue_level": "insufficient_evidence",
+            "observation_quality": 0.0,
+        })
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(result["reason"], "normal")
+        self.assertEqual(gateway.calls, [])
+
+    async def test_nested_vlm_fatigue_score_does_not_drive_primary_care_decision(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 20,
+            "algorithm_version": "rule_v0",
+            "vlm": {
+                "expression_label": "severe_sleepy",
+                "confidence": 0.99,
+                "fatigue_score": 0.95,
+            },
         })
 
         self.assertFalse(result["handled"])
@@ -145,11 +228,11 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory.inserted[0]["source"], "face")
         self.assertEqual(memory.inserted[0]["emotion_tag"], "neutral")
         self.assertEqual(memory.inserted[0]["confidence"], 0.8)
-        self.assertEqual(memory.inserted[0]["fatigue_score"], 0.3)
+        self.assertEqual(memory.inserted[0]["fatigue_score"], 30.0)
 
     async def test_memory_mode_high_average_fatigue_triggers_care(self) -> None:
         gateway = FakeGateway()
-        memory = FakeMemory(make_summary(avg_fatigue_score=0.8, emotions_count={"neutral": 2}))
+        memory = FakeMemory(make_summary(avg_fatigue_score=80.0, emotions_count={"neutral": 2}))
         skill = EmotionMonitorSkill(gateway=gateway, memory=memory)
 
         result = await skill.run({
@@ -193,7 +276,7 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_memory_mode_cooldown_skips_second_intervention(self) -> None:
         gateway = FakeGateway()
-        memory = FakeMemory(make_summary(avg_fatigue_score=0.8, emotions_count={"neutral": 2}))
+        memory = FakeMemory(make_summary(avg_fatigue_score=80.0, emotions_count={"neutral": 2}))
         skill = EmotionMonitorSkill(gateway=gateway, memory=memory, cooldown_seconds=300)
 
         first = await skill.run({

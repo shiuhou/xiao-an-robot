@@ -7,6 +7,7 @@ object. It does not depend on OpenClaw, LLMs, OpenVINO, ASR, or TTS synthesis.
 from __future__ import annotations
 
 import time
+import math
 from typing import Any
 
 from agent.skills.robot_motion import RobotMotionSkill
@@ -24,6 +25,67 @@ CARE_MESSAGES = {
 
 WATCHED_EMOTIONS = {"anxious", "sad", "stressed", "tired"}
 VALID_SOURCES = {"face", "voice"}
+OPENFACE_FATIGUE_SOURCES = {"openface_fatigue_metrics", "openface", "openface_ov"}
+LOW_QUALITY_STATES = {"low", "insufficient_evidence"}
+
+
+def _clamp_0_100(value: float) -> float:
+    return max(0.0, min(100.0, value))
+
+
+def _is_openface_fatigue_sample(sample: dict[str, Any]) -> bool:
+    source = str(sample.get("source", "") or "").lower()
+    algorithm_version = str(sample.get("algorithm_version", "") or "").lower()
+    return source in OPENFACE_FATIGUE_SOURCES or algorithm_version == "rule_v0"
+
+
+def _has_insufficient_fatigue_evidence(sample: dict[str, Any]) -> bool:
+    fatigue_level = str(sample.get("fatigue_level", "") or "").lower()
+    if fatigue_level == "insufficient_evidence":
+        return True
+
+    observation_quality = sample.get("observation_quality")
+    if isinstance(observation_quality, str):
+        return observation_quality.strip().lower() in LOW_QUALITY_STATES
+
+    if _is_openface_fatigue_sample(sample) and observation_quality is not None:
+        try:
+            return float(observation_quality) < 0.5
+        except (TypeError, ValueError):
+            return False
+
+    return False
+
+
+def normalize_fatigue_score_100(sample_or_score: Any) -> float | None:
+    """Return fatigue score on a 0..100 scale, or None for missing/invalid evidence.
+
+    OpenFace Route A samples already use 0..100. Legacy mock/VLM-like samples may
+    still use 0..1, so fractional scores are scaled for backward compatibility.
+    Out-of-range numeric values are clamped to keep the care layer bounded.
+    Nested VLM scores are deliberately ignored; the primary sample owns care.
+    """
+
+    sample = sample_or_score if isinstance(sample_or_score, dict) else None
+    raw_score = sample.get("fatigue_score") if sample is not None else sample_or_score
+
+    if sample is not None and _has_insufficient_fatigue_evidence(sample):
+        return None
+    if raw_score is None:
+        return None
+
+    try:
+        score = float(raw_score)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(score):
+        return None
+
+    if sample is not None and _is_openface_fatigue_sample(sample):
+        return _clamp_0_100(score)
+    if 0.0 <= score <= 1.0:
+        return score * 100.0
+    return _clamp_0_100(score)
 
 
 class EmotionMonitorSkill:
@@ -36,10 +98,10 @@ class EmotionMonitorSkill:
         gateway: Any | None = None,
         memory: Any | None = None,
         window_seconds: int = 300,
-        avg_fatigue_threshold: float = 0.7,
+        avg_fatigue_threshold: float = 67.0,
         negative_count_threshold: int = 2,
         cooldown_seconds: int = 300,
-        fatigue_threshold: float = 0.7,
+        fatigue_threshold: float = 67.0,
         negative_confidence_threshold: float = 0.65,
     ):
         self.gateway = gateway
@@ -66,7 +128,7 @@ class EmotionMonitorSkill:
             "source": source,
             "emotion": str(payload.get("emotion_tag") or payload.get("emotion") or "normal").lower(),
             "confidence": float(payload.get("confidence", 0.0) or 0.0),
-            "fatigue_score": float(payload.get("fatigue_score", 0.0) or 0.0),
+            "fatigue_score": normalize_fatigue_score_100(payload),
         }
 
     def _has_memory_db(self) -> bool:
@@ -87,7 +149,7 @@ class EmotionMonitorSkill:
         confidence = parsed["confidence"]
         fatigue_score = parsed["fatigue_score"]
 
-        if fatigue_score >= self.fatigue_threshold:
+        if fatigue_score is not None and fatigue_score >= self.fatigue_threshold:
             return True, "fatigue", CARE_MESSAGES["fatigue"]
 
         if emotion in WATCHED_EMOTIONS and confidence >= self.negative_confidence_threshold:
@@ -96,8 +158,8 @@ class EmotionMonitorSkill:
         return False, "normal", ""
 
     def _should_intervene_from_summary(self, summary: dict[str, Any]) -> tuple[bool, str, str]:
-        avg_fatigue = float(summary.get("avg_fatigue_score", 0.0) or 0.0)
-        if avg_fatigue >= self.avg_fatigue_threshold:
+        avg_fatigue = normalize_fatigue_score_100(summary.get("avg_fatigue_score"))
+        if avg_fatigue is not None and avg_fatigue >= self.avg_fatigue_threshold:
             return True, "fatigue_window", CARE_MESSAGES["fatigue_window"]
 
         emotions_count = summary.get("emotions_count", {}) or {}

@@ -120,17 +120,16 @@ class DirectModelEmotionPipeline:
         return self.model.predict(frame).copy()
 
 
-# Perception-only signals (the VLM does NOT produce these). On triggered frames
-# the top level is the VLM verdict and cv_sample is nested, so these would only
-# be reachable inside cv_sample; we promote them to the top level so the emitted
-# sample has the same shape whether or not the VLM ran. Deliberately EXCLUDES:
-#   - emotion_tag / confidence / fatigue_score: VLM owns these at the top level
-#     on triggered frames (the final verdict); never overwrite them.
+# Top-level decision fields always belong to the primary CV sample. VLM output is
+# an explanatory supplement only: it is normalized under sample["vlm"] and must
+# not overwrite top-level emotion_tag / confidence / fatigue_score. Triggered
+# frames also keep a nested cv_sample copy so audits can compare the CV judgment
+# and the VLM explanation without changing the care policy input.
+# Deliberately EXCLUDES:
+#   - emotion_tag / confidence / fatigue_score: owned by CV/OpenFace/mock.
 #   - au_json: AU semantics unconfirmed -> record-only, must not reach decisions.
 #   - frame_b64 / algorithm_version: bulky / debug-only, stay nested in cv_sample.
-#   - valence: on triggered frames polarity follows the VLM verdict tag (set
-#     below); CV's valence would describe a different (CV) label, so it stays
-#     nested in cv_sample as supporting evidence rather than top level.
+#   - valence: CV valence is supporting evidence, not a VLM verdict.
 _PERCEPTION_PROMOTE_FIELDS = (
     "fatigue_level",
     "observation_quality",
@@ -150,7 +149,7 @@ def _as_evidence_list(value: Any) -> list:
 
 
 def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> dict:
-    """Normalize VLM output into the runtime delivery contract."""
+    """Normalize VLM output for sample["vlm"], never for top-level policy fields."""
 
     raw = raw or {}
     expression_label = (
@@ -181,7 +180,7 @@ def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> di
 
 
 class VLMGatedCameraEmotionSource:
-    """Run a lightweight CV sample first, then call VLM only when the gate asks."""
+    """Run CV first, then attach VLM explanation without changing the CV verdict."""
 
     def __init__(
         self,

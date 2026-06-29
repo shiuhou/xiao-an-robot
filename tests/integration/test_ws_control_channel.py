@@ -58,6 +58,11 @@ class WebSocketControlChannelTest(unittest.IsolatedAsyncioTestCase):
                     "device_id": device_id,
                     "firmware": "control-test",
                     "battery": 91,
+                    "ip": "192.168.137.42",
+                    "wifi_rssi": -48,
+                    "reset_reason": "poweron",
+                    "reset_reason_code": 1,
+                    "free_heap": 251000,
                 },
             )),
             timeout=2,
@@ -70,6 +75,11 @@ class WebSocketControlChannelTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(welcome["type"], "system.welcome")
         self.assertIn("control-test-robot", ws_server.sessions)
         self.assertEqual(ws_server.sessions["control-test-robot"]["battery"], 91)
+        self.assertEqual(ws_server.sessions["control-test-robot"]["ip"], "192.168.137.42")
+        self.assertEqual(ws_server.sessions["control-test-robot"]["wifi_rssi"], -48)
+        self.assertEqual(ws_server.sessions["control-test-robot"]["reset_reason"], "poweron")
+        self.assertEqual(ws_server.sessions["control-test-robot"]["reset_reason_code"], 1)
+        self.assertEqual(ws_server.sessions["control-test-robot"]["free_heap"], 251000)
 
     async def test_heartbeat_updates_session_after_invalid_json_is_ignored(self) -> None:
         await self.send_hello()

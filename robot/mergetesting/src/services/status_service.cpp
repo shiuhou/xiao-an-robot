@@ -23,6 +23,10 @@ void StatusService::error(const char* where, const char* message, const char* co
   _ws.sendErrorReport(where, message, code);
 }
 
+void StatusService::audioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs, const char* status) {
+  _ws.sendAudioPlaybackDone(bytesWritten, durationMs, status);
+}
+
 void StatusService::motionCompleted(
     const char* actionId,
     const char* result,

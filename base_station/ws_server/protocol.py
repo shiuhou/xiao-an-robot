@@ -25,6 +25,7 @@ class MessageType(str, Enum):
     SENSOR_DOCK_STATUS = "sensor.dock_status"
     MOTION_COMPLETED   = "motion.completed"
     ERROR_REPORT       = "error.report"
+    AUDIO_PLAYBACK_DONE = "audio.playback_done"
 
     # Base Station -> Robot
     SYSTEM_WELCOME     = "system.welcome"
@@ -32,6 +33,7 @@ class MessageType(str, Enum):
     MOTION_EXECUTE     = "motion.execute"
     AUDIO_PLAY_TTS     = "audio.play_tts"
     AUDIO_PLAY_LOCAL   = "audio.play_local"
+    AUDIO_STREAM_END   = "audio.stream_end"
     CONFIG_UPDATE      = "config.update"
     SYSTEM_SHUTDOWN    = "system.shutdown"
 
@@ -110,18 +112,33 @@ def make_motion(action_id: str, action: MotionAction,
     })
 
 def make_play_tts(audio_id: str, audio_url: str,
-                  duration_ms: int, text_preview: str = "") -> dict:
-    return build_message(MessageType.AUDIO_PLAY_TTS, {
+                  duration_ms: int, text_preview: str = "",
+                  audio_format: str = "",
+                  sample_rate: int = 0,
+                  channels: int = 0) -> dict:
+    payload = {
         "audio_id":     audio_id,
         "audio_url":    audio_url,
         "duration_ms":  duration_ms,
         "text_preview": text_preview,
-    })
+    }
+    if audio_format:
+        payload["audio_format"] = audio_format
+    if sample_rate:
+        payload["sample_rate"] = sample_rate
+    if channels:
+        payload["channels"] = channels
+    return build_message(MessageType.AUDIO_PLAY_TTS, payload)
 
 def make_play_local(sound: str, volume: float = 0.7) -> dict:
     return build_message(MessageType.AUDIO_PLAY_LOCAL, {
         "sound":  sound,
         "volume": volume,
+    })
+
+def make_audio_stream_end(audio_id: str) -> dict:
+    return build_message(MessageType.AUDIO_STREAM_END, {
+        "audio_id": audio_id,
     })
 
 

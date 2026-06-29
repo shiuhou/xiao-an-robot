@@ -1,10 +1,39 @@
 #include "ws_client.h"
 #include "config.h"
 #include "debug_log.h"
+#include "speaker.h"
 #include <WiFi.h>
+#include <esp_system.h>
 #include <memory>
 
 namespace {
+
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "poweron";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt_wdt";
+    case ESP_RST_TASK_WDT:
+      return "task_wdt";
+    case ESP_RST_WDT:
+      return "other_wdt";
+    case ESP_RST_DEEPSLEEP:
+      return "deepsleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "unknown";
+  }
+}
 
 size_t base64EncodedLength(size_t inputLen) {
   return 4 * ((inputLen + 2) / 3);
@@ -150,6 +179,10 @@ void WSClient::sendHello() {
   payload["battery"] = 87;
   payload["ip"] = WiFi.localIP().toString();
   payload["wifi_rssi"] = WiFi.RSSI();
+  const esp_reset_reason_t resetReason = esp_reset_reason();
+  payload["reset_reason"] = resetReasonName(resetReason);
+  payload["reset_reason_code"] = static_cast<int>(resetReason);
+  payload["free_heap"] = ESP.getFreeHeap();
 
   JsonArray caps = payload["capabilities"].to<JsonArray>();
 #if MERGETEST_ENABLE_DISPLAY
@@ -224,6 +257,23 @@ void WSClient::sendCommandAck(
   }
   sendControl(doc);
   LOGI("WS", "command.ack %s -> %s", commandType ? commandType : "-", status ? status : "-");
+}
+
+void WSClient::sendAudioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs, const char* status) {
+  auto doc = buildMsg(MsgType::AUDIO_PLAYBACK_DONE, _seq++);
+  auto payload = doc["payload"].to<JsonObject>();
+  payload["device_id"] = MERGETEST_DEVICE_ID;
+  payload["command_type"] = MsgType::AUDIO_PLAY_TTS;
+  payload["bytes_written"] = bytesWritten;
+  payload["duration_ms"] = durationMs;
+  payload["status"] = status ? status : "unknown";
+  sendControl(doc);
+  LOGI(
+      "WS",
+      "audio.playback_done status=%s bytes=%lu duration_ms=%lu",
+      status ? status : "unknown",
+      static_cast<unsigned long>(bytesWritten),
+      static_cast<unsigned long>(durationMs));
 }
 
 void WSClient::sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser) {
@@ -378,6 +428,14 @@ void WSClient::_onControlEvent(WStype_t type, uint8_t* payload, size_t length) {
       }
       break;
     }
+
+    case WStype_BIN:
+#if MERGETEST_ENABLE_SPEAKER
+      if (!speaker_write_pcm_chunk(payload, length)) {
+        LOGW("WS", "speaker pcm binary chunk failed len=%u", static_cast<unsigned>(length));
+      }
+#endif
+      break;
 
     default:
       break;

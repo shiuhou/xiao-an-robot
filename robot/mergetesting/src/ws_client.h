@@ -24,6 +24,7 @@ public:
       const char* status,
       const char* detail = nullptr,
       const char* actionId = nullptr);
+  void sendAudioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs, const char* status);
   void sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser);
   void sendErrorReport(const char* where, const char* message, const char* code = ErrorCode::UNSUPPORTED_COMMAND);
   void sendVideoFrameMeta(uint32_t frameId, uint16_t width, uint16_t height);

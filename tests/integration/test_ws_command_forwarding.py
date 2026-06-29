@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from unittest import mock
 
 try:
     import websockets
@@ -205,21 +206,89 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(robot_message["payload"]["sound"], sound)
                 self.assertAlmostEqual(robot_message["payload"]["volume"], 0.7)
 
-    async def test_audio_play_tts_command_is_forwarded_as_mock_tone(self) -> None:
+    async def test_audio_play_tts_command_defaults_to_metadata_only(self) -> None:
         text = "hello xiao an"
-        robot_message = await self.send_agent_command_and_assert_forwarded(
-            {
-                "command": "audio.play_tts",
-                "text": text,
-            },
-            "audio.play_tts",
+
+        original_synthesizer = ws_server.synthesize_tts_pcm_stream
+        ws_server.synthesize_tts_pcm_stream = lambda requested_text: ws_server.TtsPcmStream(
+            audio_id="tts-test-001",
+            text_preview=requested_text,
+            pcm=b"\x01\x02",
+            sample_rate=16000,
+            channels=1,
         )
+        try:
+            robot_message = await self.send_agent_command_and_assert_forwarded(
+                {
+                    "command": "audio.play_tts",
+                    "text": text,
+                },
+                "audio.play_tts",
+            )
+        finally:
+            ws_server.synthesize_tts_pcm_stream = original_synthesizer
 
         self.assertEqual(robot_message["payload"]["text_preview"], text)
-        self.assertIn("audio_id", robot_message["payload"])
-        self.assertIn("audio_url", robot_message["payload"])
+        self.assertNotIn("audio_format", robot_message["payload"])
+        self.assertNotIn("sample_rate", robot_message["payload"])
+        self.assertNotIn("channels", robot_message["payload"])
         self.assertTrue(robot_message["payload"]["audio_url"].startswith("mock://tts/"))
-        self.assertFalse(robot_message["payload"]["audio_url"].endswith(".mp3"))
+        self.assertFalse(robot_message["payload"]["audio_url"].startswith("stream://control/"))
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(self.robot.recv(), timeout=0.05)
+
+    async def test_audio_play_tts_command_streams_pcm_after_metadata(self) -> None:
+        text = "hello xiao an"
+
+        original_synthesizer = ws_server.synthesize_tts_pcm_stream
+        ws_server.synthesize_tts_pcm_stream = lambda requested_text: ws_server.TtsPcmStream(
+            audio_id="tts-test-001",
+            text_preview=requested_text,
+            pcm=b"\x01\x02\x03\x04",
+            sample_rate=16000,
+            channels=1,
+        )
+        try:
+            with mock.patch.dict(
+                "os.environ",
+                {ws_server.CONTROL_TTS_STREAM_ENV: "1"},
+                clear=False,
+            ):
+                await asyncio.wait_for(
+                    self.agent.send(json.dumps({
+                        "type": "agent.command",
+                        "payload": {
+                            "command": "audio.play_tts",
+                            "text": text,
+                        },
+                    }, ensure_ascii=False)),
+                    timeout=2,
+                )
+
+                robot_message = await self.recv_json(self.robot)
+                self.assertEqual(robot_message["type"], "audio.play_tts")
+
+                pcm_chunk = await asyncio.wait_for(self.robot.recv(), timeout=2)
+                self.assertEqual(pcm_chunk, b"\x01\x02\x03\x04")
+
+                stream_end = json.loads(await asyncio.wait_for(self.robot.recv(), timeout=2))
+                self.assertEqual(stream_end["type"], "audio.stream_end")
+                self.assertEqual(stream_end["payload"]["audio_id"], "tts-test-001")
+
+                ack = await self.recv_json(self.agent)
+                self.assertEqual(ack["type"], "agent.ack")
+                self.assertTrue(ack["payload"]["ok"])
+                self.assertEqual(ack["payload"]["device_id"], "test-robot-001")
+                self.assertEqual(ack["payload"]["forwarded_type"], "audio.play_tts")
+        finally:
+            ws_server.synthesize_tts_pcm_stream = original_synthesizer
+
+        self.assertEqual(robot_message["payload"]["text_preview"], text)
+        self.assertEqual(robot_message["payload"]["audio_id"], "tts-test-001")
+        self.assertEqual(robot_message["payload"]["audio_url"], "stream://control/tts-test-001")
+        self.assertEqual(robot_message["payload"]["audio_format"], "pcm_s16le")
+        self.assertEqual(robot_message["payload"]["sample_rate"], 16000)
+        self.assertEqual(robot_message["payload"]["channels"], 1)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <cstring>
+#include "config.h"
 #include "debug_log.h"
 #include "display.h"
 #include "protocol.h"
@@ -50,6 +51,22 @@ CommandRouter::CommandRouter(
     MotionService& motion)
     : _ws(ws), _state(state), _status(status), _motion(motion) {}
 
+void CommandRouter::loop() {
+  if (_pendingPcmStream.active) {
+    startPendingPcmStream();
+  }
+  if (_pendingPcmStreamEnd.active) {
+    finishPendingPcmStream();
+  }
+  SpeakerPlaybackResult playback{};
+  if (speaker_take_tts_playback_result(&playback)) {
+    _status.audioPlaybackDone(
+        playback.bytes_written,
+        playback.duration_ms,
+        playback.ok ? "ok" : "error");
+  }
+}
+
 void CommandRouter::handle(const String& type, JsonObject payload) {
   LOGI("Router", "Dispatch: %s", type.c_str());
 
@@ -63,6 +80,8 @@ void CommandRouter::handle(const String& type, JsonObject payload) {
     handleAudioPlayLocal(payload);
   } else if (type == MsgType::AUDIO_PLAY_TTS) {
     handleAudioPlayTts(payload);
+  } else if (type == MsgType::AUDIO_STREAM_END) {
+    handleAudioStreamEnd(payload);
   } else if (type == MsgType::CONFIG_UPDATE) {
     _status.ack(MsgType::CONFIG_UPDATE, "ok");
   } else if (type == MsgType::SYSTEM_SHUTDOWN) {
@@ -140,12 +159,34 @@ void CommandRouter::handleAudioPlayLocal(JsonObject payload) {
 void CommandRouter::handleAudioPlayTts(JsonObject payload) {
   const char* url = payload["audio_url"] | "";
   const char* preview = payload["text_preview"] | payload["text"] | "";
+  const char* audioFormat = payload["audio_format"] | "";
+  const uint32_t sampleRate = payload["sample_rate"] | MERGETEST_SPEAKER_SAMPLE_RATE;
+  const uint8_t channels = payload["channels"] | 1;
+
+  if (strcmp(audioFormat, "pcm_s16le") == 0 || strncmp(url, "stream://control/", 17) == 0) {
+    LOGI(
+        "Router",
+        "audio.play_tts pcm_stream url=%s preview=%s sample_rate=%lu channels=%u",
+        url,
+        preview,
+        static_cast<unsigned long>(sampleRate),
+        static_cast<unsigned>(channels));
+    _pendingPcmStream.active = true;
+    _pendingPcmStream.sampleRate = sampleRate;
+    _pendingPcmStream.channels = channels;
+    strncpy(_pendingPcmStream.url, url, sizeof(_pendingPcmStream.url) - 1);
+    _pendingPcmStream.url[sizeof(_pendingPcmStream.url) - 1] = '\0';
+    strncpy(_pendingPcmStream.preview, preview, sizeof(_pendingPcmStream.preview) - 1);
+    _pendingPcmStream.preview[sizeof(_pendingPcmStream.preview) - 1] = '\0';
+    return;
+  }
+
   LOGI("Router", "audio.play_tts mock tone fallback url=%s preview=%s", url, preview);
 
   const bool ok = speaker_play_tts_mock(preview);
   if (ok) {
     _status.sendCurrent();
-    _status.ack(MsgType::AUDIO_PLAY_TTS, "ok", "mock_tone");
+    _status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "queued");
   } else {
     _status.error(
         MsgType::AUDIO_PLAY_TTS,
@@ -153,6 +194,46 @@ void CommandRouter::handleAudioPlayTts(JsonObject payload) {
         ErrorCode::AUDIO_UNSUPPORTED);
     _status.ack(MsgType::AUDIO_PLAY_TTS, "error", "speaker_init_fail");
   }
+}
+
+void CommandRouter::startPendingPcmStream() {
+  PendingPcmStream pending = _pendingPcmStream;
+  _pendingPcmStream.active = false;
+
+  LOGI(
+      "Router",
+      "audio.play_tts pcm_stream start url=%s preview=%s sample_rate=%lu channels=%u",
+      pending.url,
+      pending.preview,
+      static_cast<unsigned long>(pending.sampleRate),
+      static_cast<unsigned>(pending.channels));
+
+  const bool ok = speaker_begin_pcm_stream(pending.sampleRate, pending.channels);
+  if (ok) {
+    _status.sendCurrent();
+    _status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "pcm_stream");
+  } else {
+    _status.error(
+        MsgType::AUDIO_PLAY_TTS,
+        "speaker not ready",
+        ErrorCode::AUDIO_UNSUPPORTED);
+    _status.ack(MsgType::AUDIO_PLAY_TTS, "error", "speaker_init_fail");
+  }
+}
+
+void CommandRouter::handleAudioStreamEnd(JsonObject payload) {
+  const char* audioId = payload["audio_id"] | "";
+  LOGI("Router", "audio.stream_end queued audio_id=%s", audioId);
+  _pendingPcmStreamEnd.active = true;
+  strncpy(_pendingPcmStreamEnd.audioId, audioId, sizeof(_pendingPcmStreamEnd.audioId) - 1);
+  _pendingPcmStreamEnd.audioId[sizeof(_pendingPcmStreamEnd.audioId) - 1] = '\0';
+}
+
+void CommandRouter::finishPendingPcmStream() {
+  PendingPcmStreamEnd pending = _pendingPcmStreamEnd;
+  _pendingPcmStreamEnd.active = false;
+  LOGI("Router", "audio.stream_end finish audio_id=%s", pending.audioId);
+  speaker_end_pcm_stream();
 }
 
 void CommandRouter::handleUnsupported(const String& type) {

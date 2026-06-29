@@ -15,6 +15,7 @@ public:
       const char* detail = nullptr,
       const char* actionId = nullptr);
   void error(const char* where, const char* message, const char* code = ErrorCode::UNSUPPORTED_COMMAND);
+  void audioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs, const char* status);
   void motionCompleted(const char* actionId, const char* result, const char* position, bool facingUser);
 
 private:

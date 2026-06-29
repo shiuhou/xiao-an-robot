@@ -12,6 +12,7 @@ Author: Team Xiao An
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
@@ -20,6 +21,7 @@ from typing import Dict, Optional
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from base_station.perception.audio_diagnostics import pcm_s16le_stats
 from base_station.perception.ws_video_source import VideoFrameDecodeError
 
 from .protocol import (
@@ -27,12 +29,14 @@ from .protocol import (
     MessageType,
     MotionAction,
     make_expression,
+    make_audio_stream_end,
     make_motion,
     make_play_local,
     make_play_tts,
     make_welcome,
     parse_message,
 )
+from .tts_stream import TtsPcmStream, synthesize_tts_pcm_stream
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,6 +60,21 @@ BENCH_MAX_SPEED = 1.0
 BENCH_MAX_TIMEOUT_MS = 10000
 BENCH_MAX_DISTANCE_CM = 100.0
 BENCH_MAX_DURATION_MS = 10000
+CONTROL_TTS_CHUNK_BYTES = 512
+CONTROL_TTS_START_DELAY_SECONDS = 0.2
+CONTROL_TTS_STREAM_ENV = "XIAOAN_CONTROL_TTS_STREAM"
+TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def control_tts_stream_enabled() -> bool:
+    return os.getenv(CONTROL_TTS_STREAM_ENV, "").strip().lower() in TRUE_ENV_VALUES
+
+
+def pcm_stream_chunk_duration_seconds(pcm_stream: TtsPcmStream, chunk_bytes: int) -> float:
+    bytes_per_frame = pcm_stream.channels * 2
+    if pcm_stream.sample_rate <= 0 or bytes_per_frame <= 0 or chunk_bytes <= 0:
+        return 0.0
+    return chunk_bytes / bytes_per_frame / pcm_stream.sample_rate
 
 
 def _initial_audio_stats() -> dict:
@@ -68,6 +87,7 @@ def _initial_audio_stats() -> dict:
         "latest_chunk_bytes": 0,
         "latest_file_bytes": 0,
         "latest_file_max_bytes": audio_latest_pcm_max_bytes,
+        "latest_window": None,
         "last_chunk_id": None,
         "last_meta": None,
         "updated_at": None,
@@ -240,8 +260,15 @@ def record_audio_chunk(pcm_frame: bytes) -> None:
         with latest_path.open("ab") as pcm_file:
             pcm_file.write(pcm_frame)
         audio_runtime_stats["latest_file_bytes"] = _trim_latest_audio_file(latest_path)
+        audio_runtime_stats["latest_window"] = pcm_s16le_stats(
+            latest_path.read_bytes(),
+            sample_rate=audio_runtime_stats["sample_rate"],
+            channels=audio_runtime_stats["channels"],
+        )
     except OSError as exc:
         logger.warning("Failed to write latest audio PCM: %s", exc)
+    except ValueError as exc:
+        logger.warning("Failed to analyze latest audio PCM: %s", exc)
 
     _write_audio_stats()
 
@@ -283,6 +310,15 @@ async def handle_control(websocket: ServerConnection):
                     "Command ack: type=%s status=%s",
                     payload.get("command_type"),
                     payload.get("status"),
+                )
+                continue
+
+            if raw_type == "audio.playback_done":
+                logger.info(
+                    "Audio playback done: status=%s bytes_written=%s duration_ms=%s",
+                    payload.get("status"),
+                    payload.get("bytes_written"),
+                    payload.get("duration_ms"),
                 )
                 continue
 
@@ -334,8 +370,21 @@ async def handle_control(websocket: ServerConnection):
                     "session_id": session_id,
                     "last_hb": time.time(),
                     "battery": payload.get("battery", 100),
+                    "ip": payload.get("ip"),
+                    "wifi_rssi": payload.get("wifi_rssi"),
+                    "reset_reason": payload.get("reset_reason"),
+                    "reset_reason_code": payload.get("reset_reason_code"),
+                    "free_heap": payload.get("free_heap"),
                 }
-                logger.info(f"Robot connected: {device_id} (session {session_id})")
+                logger.info(
+                    "Robot connected: %s ip=%s rssi=%s reset=%s heap=%s (session %s)",
+                    device_id,
+                    payload.get("ip") or "-",
+                    payload.get("wifi_rssi", "-"),
+                    payload.get("reset_reason", "-"),
+                    payload.get("free_heap", "-"),
+                    session_id,
+                )
                 welcome = make_welcome(session_id)
                 await websocket.send(json.dumps(welcome, ensure_ascii=False))
 
@@ -402,6 +451,33 @@ async def send_to_robot(message: dict, device_id: Optional[str] = None) -> tuple
     return True, device_id, None
 
 
+async def stream_control_binary_to_robot(
+    pcm_stream: TtsPcmStream,
+    device_id: str,
+) -> tuple[bool, Optional[str]]:
+    """Send synthesized PCM bytes to the robot on the existing /control socket."""
+
+    session = sessions.get(device_id)
+    if not session:
+        return False, f"Robot is not online: {device_id}"
+
+    websocket = session["ws"]
+    try:
+        await asyncio.sleep(CONTROL_TTS_START_DELAY_SECONDS)
+        for offset in range(0, len(pcm_stream.pcm), CONTROL_TTS_CHUNK_BYTES):
+            chunk = pcm_stream.pcm[offset:offset + CONTROL_TTS_CHUNK_BYTES]
+            await websocket.send(chunk)
+            await asyncio.sleep(pcm_stream_chunk_duration_seconds(pcm_stream, len(chunk)))
+        await websocket.send(json.dumps(make_audio_stream_end(pcm_stream.audio_id), ensure_ascii=False))
+    except ConnectionClosed:
+        remove_session_if_current(device_id, websocket)
+        return False, f"Robot connection is closed: {device_id}"
+    except Exception as exc:
+        return False, f"Failed to stream TTS audio to robot {device_id}: {exc}"
+
+    return True, None
+
+
 def build_robot_message(command_payload: dict) -> dict:
     """Convert a local agent.command payload into a robot protocol message."""
 
@@ -443,6 +519,18 @@ def build_robot_message(command_payload: dict) -> dict:
     raise ValueError(f"Unsupported agent command: {command}")
 
 
+def build_tts_robot_message(pcm_stream: TtsPcmStream) -> dict:
+    return make_play_tts(
+        audio_id=pcm_stream.audio_id,
+        audio_url=f"stream://control/{pcm_stream.audio_id}",
+        duration_ms=pcm_stream.duration_ms,
+        text_preview=pcm_stream.text_preview,
+        audio_format="pcm_s16le",
+        sample_rate=pcm_stream.sample_rate,
+        channels=pcm_stream.channels,
+    )
+
+
 async def send_agent_ack(
     websocket: ServerConnection,
     ok: bool,
@@ -478,8 +566,18 @@ async def handle_agent(websocket: ServerConnection):
 
                 payload = data.get("payload", {})
                 device_id = payload.get("device_id")
-                robot_message = build_robot_message(payload)
+                tts_stream = None
+                if (
+                    payload.get("command") == MessageType.AUDIO_PLAY_TTS.value
+                    and control_tts_stream_enabled()
+                ):
+                    tts_stream = synthesize_tts_pcm_stream(payload.get("text", ""))
+                    robot_message = build_tts_robot_message(tts_stream)
+                else:
+                    robot_message = build_robot_message(payload)
                 ok, selected_device_id, error = await send_to_robot(robot_message, device_id=device_id)
+                if ok and tts_stream is not None and selected_device_id is not None:
+                    ok, error = await stream_control_binary_to_robot(tts_stream, selected_device_id)
                 if ok:
                     await send_agent_ack(
                         websocket,

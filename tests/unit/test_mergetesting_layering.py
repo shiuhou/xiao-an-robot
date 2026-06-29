@@ -139,6 +139,40 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("upload_protocol = espota", speaker_ota_body)
         self.assertIn("upload_port = xiao-an-esp32.local", speaker_ota_body)
         self.assertIn("--host_ip=192.168.137.1", speaker_ota_body)
+        self.assertIn("[env:mergetesting_speaker_drain_only_ota]", platformio)
+        self.assertIn("-DMERGETEST_SPEAKER_PCM_DRAIN_ONLY=1", platformio)
+
+        self.assertIn("[env:mergetesting_speaker_altpins_only]", platformio)
+        altpins_body = platformio.split("[env:mergetesting_speaker_altpins_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_only", altpins_body)
+        self.assertIn("-DMERGETEST_SPEAKER_BCLK=39", altpins_body)
+        self.assertIn("-DMERGETEST_SPEAKER_LRC=40", altpins_body)
+        self.assertIn("-DMERGETEST_SPEAKER_DIN=41", altpins_body)
+        self.assertIn("[env:mergetesting_speaker_altpins_only_ota]", platformio)
+        altpins_ota_body = platformio.split("[env:mergetesting_speaker_altpins_only_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_altpins_only", altpins_ota_body)
+        self.assertIn("upload_protocol = espota", altpins_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", altpins_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", altpins_ota_body)
+        self.assertIn("[env:mergetesting_speaker_altpins_phrase_only]", platformio)
+        altpins_phrase_body = platformio.split("[env:mergetesting_speaker_altpins_phrase_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_altpins_only", altpins_phrase_body)
+        self.assertIn("-DMERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE=1", altpins_phrase_body)
+        self.assertIn("-DEMBEDDED_TTS_GAIN=12", altpins_phrase_body)
+        self.assertIn("[env:mergetesting_speaker_altpins_phrase_only_ota]", platformio)
+        altpins_phrase_ota_body = platformio.split("[env:mergetesting_speaker_altpins_phrase_only_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_altpins_phrase_only", altpins_phrase_ota_body)
+        self.assertIn("upload_protocol = espota", altpins_phrase_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", altpins_phrase_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", altpins_phrase_ota_body)
 
         face240_ota_body = platformio.split("[env:mergetesting_face240_only_ota]", 1)[1].split(
             "[env:", 1
@@ -336,7 +370,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_LOCAL, "error", "unsupported_sound")', local_body)
         self.assertIn("speaker_init_fail", local_body)
 
-    def test_audio_router_tts_failure_reports_error_and_uses_mock_tone_ack(self) -> None:
+    def test_audio_router_tts_failure_reports_error_and_reports_accepted_ack(self) -> None:
         router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
             encoding="utf-8"
         )
@@ -345,7 +379,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         )[0]
 
         self.assertIn('LOGI("Router", "audio.play_tts mock tone', tts_body)
-        self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "ok", "mock_tone")', tts_body)
+        self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "queued")', tts_body)
         self.assertIn("_status.error", tts_body)
         self.assertIn("speaker not ready", tts_body)
         self.assertIn("ErrorCode::AUDIO_UNSUPPORTED", tts_body)
@@ -367,9 +401,9 @@ class MergetestingLayeringTest(unittest.TestCase):
             "bool speaker_play_tts_mock", 1
         )[0]
         blocking_body = speaker_cpp.split("bool playLocalBlocking", 1)[1].split(
-            "bool playTtsBlocking", 1
+            "TtsBlockingResult playTtsBlocking", 1
         )[0]
-        tts_blocking_body = speaker_cpp.split("bool playTtsBlocking", 1)[1].split(
+        tts_blocking_body = speaker_cpp.split("TtsBlockingResult playTtsBlocking", 1)[1].split(
             "void speakerTask", 1
         )[0]
 
@@ -401,21 +435,180 @@ class MergetestingLayeringTest(unittest.TestCase):
             "void speaker_stop", 1
         )[0]
 
-        self.assertIn("bool playTtsBlocking", speaker_cpp)
+        self.assertIn("TtsBlockingResult playTtsBlocking", speaker_cpp)
         self.assertIn("startTtsTask", speaker_cpp)
         self.assertIn("return startTtsTask(textPreview);", tts_body)
         self.assertNotIn("playTone(", tts_body)
+
+    def test_serial_mock_can_trigger_tts_for_usb_speaker_debug(self) -> None:
+        app_cpp = (MERGETEST_SRC / "app" / "mergetesting_app.cpp").read_text(
+            encoding="utf-8"
+        )
+        serial_body = app_cpp.split("void MergetestingApp::pollSerialMockAsr", 1)[1].split(
+            "void MergetestingApp::updateTransportState", 1
+        )[0]
+
+        self.assertIn('line == "tts"', serial_body)
+        self.assertIn('line.startsWith("tts ")', serial_body)
+        self.assertIn("speaker_play_tts_mock", serial_body)
+        self.assertIn('"serial test tts"', serial_body)
+
+    def test_speaker_only_can_play_embedded_sentence_for_tts(self) -> None:
+        platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
+            encoding="utf-8"
+        )
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        embedded_header = (MERGETEST_SRC / "embedded_tts_phrase.h").read_text(
+            encoding="utf-8"
+        )
+
+        speaker_body = platformio.split("[env:mergetesting_speaker_phrase_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_only", speaker_body)
+        self.assertIn("-DMERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE=1", speaker_body)
+        self.assertIn("[env:mergetesting_speaker_phrase_only_ota]", platformio)
+        self.assertIn('#include "embedded_tts_phrase.h"', speaker_cpp)
+        self.assertIn("EmbeddedTtsPhrase::PCM", speaker_cpp)
+        self.assertIn("writeMonoPcmS16Le(", speaker_cpp)
+        self.assertIn("EMBEDDED_TTS_GAIN", speaker_cpp)
+        self.assertIn("scalePcmSample", speaker_cpp)
+        self.assertIn("INT16_MAX", speaker_cpp)
+        self.assertIn("INT16_MIN", speaker_cpp)
+        self.assertIn('TEXT = "I can speak now."', embedded_header)
+        self.assertIn("PCM_LEN = ", embedded_header)
+
+    def test_speaker_tts_reports_playback_done_after_async_completion(self) -> None:
+        protocol = (MERGETEST_SRC / "protocol.h").read_text(encoding="utf-8")
+        speaker_header = (MERGETEST_SRC / "speaker.h").read_text(encoding="utf-8")
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
+            encoding="utf-8"
+        )
+        status_header = (MERGETEST_SRC / "services" / "status_service.h").read_text(
+            encoding="utf-8"
+        )
+        ws_header = (MERGETEST_SRC / "ws_client.h").read_text(encoding="utf-8")
+        ws_cpp = (MERGETEST_SRC / "ws_client.cpp").read_text(encoding="utf-8")
+
+        self.assertIn('AUDIO_PLAYBACK_DONE', protocol)
+        self.assertIn('"audio.playback_done"', protocol)
+        self.assertIn("struct SpeakerPlaybackResult", speaker_header)
+        self.assertIn("speaker_take_tts_playback_result", speaker_header)
+        self.assertIn("storeTtsPlaybackResult", speaker_cpp)
+        self.assertIn("bytesWritten", speaker_cpp)
+        self.assertIn("durationMs", speaker_cpp)
+        self.assertIn("speaker_take_tts_playback_result", router_cpp)
+        self.assertIn("audioPlaybackDone", router_cpp)
+        self.assertIn('"accepted"', router_cpp)
+        self.assertIn("void audioPlaybackDone", status_header)
+        self.assertIn("sendAudioPlaybackDone", ws_header)
+        self.assertIn("sendAudioPlaybackDone", ws_cpp)
+
+    def test_speaker_accepts_pcm_chunks_from_control_binary_frames(self) -> None:
+        speaker_header = (MERGETEST_SRC / "speaker.h").read_text(encoding="utf-8")
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        ws_cpp = (MERGETEST_SRC / "ws_client.cpp").read_text(encoding="utf-8")
+        router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("speaker_begin_pcm_stream", speaker_header)
+        self.assertIn("speaker_write_pcm_chunk", speaker_header)
+        self.assertIn("speaker_end_pcm_stream", speaker_header)
+        self.assertIn("bool speaker_write_pcm_chunk(const uint8_t* pcm, size_t len)", speaker_cpp)
+        self.assertIn("speaker_write_pcm_chunk(payload, length)", ws_cpp)
+        self.assertIn("case WStype_BIN:", ws_cpp)
+        self.assertIn("audio_format", router_cpp)
+        self.assertIn("pcm_stream", router_cpp)
+        self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "pcm_stream")', router_cpp)
+
+    def test_speaker_pcm_stream_is_played_incrementally_from_chunks(self) -> None:
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        write_body = speaker_cpp.split("bool speaker_write_pcm_chunk", 1)[1].split(
+            "void speaker_end_pcm_stream", 1
+        )[0]
+        end_body = speaker_cpp.split("void speaker_end_pcm_stream", 1)[1].split(
+            "void speaker_stop", 1
+        )[0]
+
+        self.assertIn("resetPcmBuffer", speaker_cpp)
+        self.assertIn("enqueuePcmChunk(pcm, len)", write_body)
+        self.assertIn("xQueueSend", speaker_cpp)
+        self.assertIn("void pcmStreamTask(void* arg)", speaker_cpp)
+        self.assertIn("writeMonoPcmS16Le(job.data", speaker_cpp)
+        self.assertIn("finishPcmPlayback();", end_body)
+        self.assertNotIn("appendPcmBuffer(pcm, len)", write_body)
+        self.assertNotIn("xTaskCreate", end_body)
+        self.assertNotIn("speaker_begin_pcm_stream", write_body)
+        self.assertNotIn("void pcmPlaybackTask(void* arg)", speaker_cpp)
+
+    def test_speaker_pcm_playback_skips_leading_silence_before_i2s_write(self) -> None:
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        pcm_body = speaker_cpp.split("bool writeMonoPcmS16Le", 1)[1].split(
+            "void resetPcmBuffer", 1
+        )[0]
+
+        self.assertIn("countLeadingQuietPcmFrames", speaker_cpp)
+        self.assertIn("PCM_LEADING_TRIM_THRESHOLD", speaker_cpp)
+        self.assertIn("size_t offset = countLeadingQuietPcmFrames(pcm, frames);", pcm_body)
+        self.assertIn("pcm mono skipped leading quiet frames", pcm_body)
+
+    def test_pcm_stream_keeps_i2s_driver_installed_after_stream(self) -> None:
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+        task_body = speaker_cpp.split("void pcmStreamTask", 1)[1].split(
+            "void speakerTask", 1
+        )[0]
+        end_body = speaker_cpp.split("void speaker_end_pcm_stream", 1)[1].split(
+            "void speaker_stop", 1
+        )[0]
+        finish_body = speaker_cpp.split("void finishPcmPlayback", 1)[1].split(
+            "void pcmStreamTask", 1
+        )[0]
+
+        self.assertIn("finishPcmPlayback", speaker_cpp)
+        self.assertIn("finishPcmPlayback();", task_body)
+        self.assertIn("i2s_zero_dma_buffer(SPEAKER_I2S_PORT)", finish_body)
+        self.assertNotIn("releaseSpeakerI2S();", end_body)
+
+    def test_tts_pcm_stream_starts_from_app_loop_not_websocket_callback(self) -> None:
+        app_cpp = (MERGETEST_SRC / "app" / "mergetesting_app.cpp").read_text(
+            encoding="utf-8"
+        )
+        router_header = (MERGETEST_SRC / "services" / "command_router.h").read_text(
+            encoding="utf-8"
+        )
+        router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
+            encoding="utf-8"
+        )
+        tts_body = router_cpp.split("void CommandRouter::handleAudioPlayTts", 1)[1].split(
+            "void CommandRouter::startPendingPcmStream", 1
+        )[0]
+
+        self.assertIn("_router.loop();", app_cpp)
+        self.assertIn("void loop();", router_header)
+        self.assertIn("PendingPcmStream", router_header)
+        self.assertIn("void CommandRouter::startPendingPcmStream", router_cpp)
+        self.assertIn("void CommandRouter::finishPendingPcmStream", router_cpp)
+        self.assertIn("PendingPcmStreamEnd", router_header)
+        self.assertNotIn("speaker_begin_pcm_stream", tts_body)
 
     def test_speaker_i2s_writes_use_timeout_and_yield(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
 
         self.assertNotIn("portMAX_DELAY", speaker_cpp)
         self.assertIn("SPEAKER_WRITE_TIMEOUT_TICKS", speaker_cpp)
+        self.assertIn("PCM_WRITE_TIMEOUT_TICKS", speaker_cpp)
+        self.assertIn("PCM_PLAYBACK_FRAMES_PER_BUFFER = 128", speaker_cpp)
+        self.assertIn("PCM_WRITE_TIMEOUT_TICKS = pdMS_TO_TICKS(20)", speaker_cpp)
         self.assertIn("pdMS_TO_TICKS", speaker_cpp)
-        self.assertIn("yield();", speaker_cpp)
+        self.assertIn("vTaskDelay(1);", speaker_cpp)
+        self.assertIn("writeFramesWithTimeout", speaker_cpp)
+        self.assertIn("writeFramesWithTimeout(stereoBuffer, chunk, timeoutTicks)", speaker_cpp)
+        self.assertNotIn("esp_task_wdt_reset();", speaker_cpp)
         self.assertIn("ESP_OK", speaker_cpp)
-        self.assertIn("bytesWritten != bytesToWrite", speaker_cpp)
         self.assertIn("bool playTone", speaker_cpp)
+        self.assertNotIn("pcm playback progress", speaker_cpp)
 
     def test_speaker_i2s_is_lazy_and_released_between_playbacks(self) -> None:
         app_cpp = (MERGETEST_SRC / "app" / "mergetesting_app.cpp").read_text(
@@ -488,7 +681,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_LOCAL, "error"', local_body)
 
         self.assertIn("_status.sendCurrent();", tts_body)
-        self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "ok"', tts_body)
+        self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "accepted"', tts_body)
         self.assertIn("_status.error", tts_body)
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "error"', tts_body)
 

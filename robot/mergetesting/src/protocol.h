@@ -12,6 +12,7 @@ namespace MsgType {
   constexpr const char* MOTION_COMPLETED     = "motion.completed";
   constexpr const char* ERROR_REPORT         = "error.report";
   constexpr const char* COMMAND_ACK          = "command.ack";
+  constexpr const char* AUDIO_PLAYBACK_DONE  = "audio.playback_done";
   constexpr const char* VIDEO_FRAME_META     = "video.frame_meta";
   constexpr const char* VIDEO_FRAME          = "video.frame";
   constexpr const char* AUDIO_CHUNK_META     = "audio.chunk_meta";
@@ -23,6 +24,7 @@ namespace MsgType {
   constexpr const char* MOTION_EXECUTE       = "motion.execute";
   constexpr const char* AUDIO_PLAY_TTS         = "audio.play_tts";
   constexpr const char* AUDIO_PLAY_LOCAL     = "audio.play_local";
+  constexpr const char* AUDIO_STREAM_END     = "audio.stream_end";
   constexpr const char* CONFIG_UPDATE        = "config.update";
   constexpr const char* SYSTEM_SHUTDOWN      = "system.shutdown";
 }

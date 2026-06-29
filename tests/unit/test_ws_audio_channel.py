@@ -77,6 +77,10 @@ class WebSocketAudioChannelTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["bytes"], len(first) + len(second))
         self.assertEqual(stats["latest_chunk_bytes"], len(second))
         self.assertLessEqual(stats["latest_file_bytes"], stats["latest_file_max_bytes"])
+        self.assertEqual(stats["latest_window"]["sample_rate"], 16000)
+        self.assertEqual(stats["latest_window"]["sample_count"], 5)
+        self.assertEqual(stats["latest_window"]["peak"], 5)
+        self.assertEqual(stats["latest_window"]["clipping_samples"], 0)
 
     async def test_handle_control_accepts_audio_chunk_meta_without_warning(self) -> None:
         websocket = FakeAudioWebSocket([

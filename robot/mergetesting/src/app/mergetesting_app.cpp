@@ -177,6 +177,12 @@ void MergetestingApp::pollSerialMockAsr() {
     String sound = line.substring(6);
     speaker_play_local(sound.c_str());
     LOGI("Main", "serial test sound=%s", sound.c_str());
+    return;
+  }
+  if (line == "tts" || line.startsWith("tts ")) {
+    String text = line.length() > 4 ? line.substring(4) : String("serial test tts");
+    speaker_play_tts_mock(text.c_str());
+    LOGI("Main", "serial test tts=%s", text.c_str());
   }
 #endif
 }
@@ -252,6 +258,7 @@ void MergetestingApp::loop() {
   maintainWiFi();
   pollOta();
   _wsClient.loop();
+  _router.loop();
   _motion.loop();
   updateTransportState();
   display_tick();

@@ -54,11 +54,11 @@
 
 // MAX98357A 喇叭
 #ifndef SPEAKER_I2S_BCLK
-#define SPEAKER_I2S_BCLK 35
+#define SPEAKER_I2S_BCLK 39
 #endif
 #ifndef SPEAKER_I2S_LRC
-#define SPEAKER_I2S_LRC 36
+#define SPEAKER_I2S_LRC 40
 #endif
 #ifndef SPEAKER_I2S_DIN
-#define SPEAKER_I2S_DIN 37
+#define SPEAKER_I2S_DIN 47
 #endif

@@ -174,6 +174,38 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("upload_port = xiao-an-esp32.local", altpins_phrase_ota_body)
         self.assertIn("--host_ip=192.168.137.1", altpins_phrase_ota_body)
 
+        self.assertIn("[env:mergetesting_speaker_shared_clock_only]", platformio)
+        shared_clock_body = platformio.split("[env:mergetesting_speaker_shared_clock_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_only", shared_clock_body)
+        self.assertIn("-DMERGETEST_SPEAKER_BCLK=39", shared_clock_body)
+        self.assertIn("-DMERGETEST_SPEAKER_LRC=40", shared_clock_body)
+        self.assertIn("-DMERGETEST_SPEAKER_DIN=47", shared_clock_body)
+        self.assertIn("[env:mergetesting_speaker_shared_clock_only_ota]", platformio)
+        shared_clock_ota_body = platformio.split("[env:mergetesting_speaker_shared_clock_only_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_shared_clock_only", shared_clock_ota_body)
+        self.assertIn("upload_protocol = espota", shared_clock_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", shared_clock_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", shared_clock_ota_body)
+        self.assertIn("[env:mergetesting_speaker_shared_clock_phrase_only]", platformio)
+        shared_clock_phrase_body = platformio.split("[env:mergetesting_speaker_shared_clock_phrase_only]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_shared_clock_only", shared_clock_phrase_body)
+        self.assertIn("-DMERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE=1", shared_clock_phrase_body)
+        self.assertIn("-DEMBEDDED_TTS_GAIN=16", shared_clock_phrase_body)
+        self.assertIn("[env:mergetesting_speaker_shared_clock_phrase_only_ota]", platformio)
+        shared_clock_phrase_ota_body = platformio.split("[env:mergetesting_speaker_shared_clock_phrase_only_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_speaker_shared_clock_phrase_only", shared_clock_phrase_ota_body)
+        self.assertIn("upload_protocol = espota", shared_clock_phrase_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", shared_clock_phrase_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", shared_clock_phrase_ota_body)
+
         face240_ota_body = platformio.split("[env:mergetesting_face240_only_ota]", 1)[1].split(
             "[env:", 1
         )[0]
@@ -226,6 +258,95 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("upload_protocol = espota", mic_ota_body)
         self.assertIn("upload_port = xiao-an-esp32.local", mic_ota_body)
 
+    def test_audio_shared_i2s_diag_env_is_half_duplex_and_pin_safe(self) -> None:
+        platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
+            encoding="utf-8"
+        )
+        diag_source_path = MERGETEST_SRC / "audio_shared_i2s_diag_main.cpp"
+        self.assertTrue(
+            diag_source_path.exists(),
+            "missing audio_shared_i2s_diag_main.cpp",
+        )
+        diag_cpp = diag_source_path.read_text(encoding="utf-8")
+
+        self.assertIn("[env:mergetesting_audio_shared_i2s_diag]", platformio)
+        diag_body = platformio.split("[env:mergetesting_audio_shared_i2s_diag]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("-DMERGETEST_AUDIO_SHARED_I2S_DIAG=1", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_DISPLAY=0", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_CAMERA=0", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_MOTOR=0", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_SPEAKER=0", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_MIC=0", diag_body)
+        self.assertIn("-DMERGETEST_ENABLE_SERIAL_MOCK_ASR=0", diag_body)
+        self.assertIn("-DI2S_SHARED_BCLK=39", diag_body)
+        self.assertIn("-DI2S_SHARED_WS=40", diag_body)
+        self.assertIn("-DI2S_MIC_SD=41", diag_body)
+        self.assertIn("-DI2S_SPK_DIN=47", diag_body)
+        self.assertIn("-DEMBEDDED_TTS_GAIN=20", diag_body)
+        self.assertIn("-DAUDIO_DIAG_LOG_UART0=1", diag_body)
+        self.assertIn("-DAUDIO_DIAG_UART0_RX=44", diag_body)
+        self.assertIn("-DAUDIO_DIAG_UART0_TX=43", diag_body)
+        self.assertIn("-<*>", diag_body)
+        self.assertIn("+<audio_shared_i2s_diag_main.cpp>", diag_body)
+        self.assertNotIn("+<*>", diag_body)
+        self.assertNotIn("-DI2S_SHARED_BCLK=35", diag_body)
+        self.assertNotIn("-DI2S_SHARED_BCLK=36", diag_body)
+        self.assertNotIn("-DI2S_SHARED_BCLK=37", diag_body)
+        self.assertNotIn("-DI2S_SHARED_WS=35", diag_body)
+        self.assertNotIn("-DI2S_SHARED_WS=36", diag_body)
+        self.assertNotIn("-DI2S_SHARED_WS=37", diag_body)
+        self.assertNotIn("-DI2S_MIC_SD=35", diag_body)
+        self.assertNotIn("-DI2S_MIC_SD=36", diag_body)
+        self.assertNotIn("-DI2S_MIC_SD=37", diag_body)
+        self.assertNotIn("-DI2S_SPK_DIN=35", diag_body)
+        self.assertNotIn("-DI2S_SPK_DIN=36", diag_body)
+        self.assertNotIn("-DI2S_SPK_DIN=37", diag_body)
+
+        self.assertIn("#define I2S_SHARED_BCLK 39", diag_cpp)
+        self.assertIn("#define I2S_SHARED_WS 40", diag_cpp)
+        self.assertIn("#define I2S_MIC_SD 41", diag_cpp)
+        self.assertIn("#define I2S_SPK_DIN 47", diag_cpp)
+        self.assertIn("#define AUDIO_DIAG_LOG_SERIAL Serial0", diag_cpp)
+        self.assertIn("AUDIO_DIAG_LOG_SERIAL.begin(115200, SERIAL_8N1, AUDIO_DIAG_UART0_RX, AUDIO_DIAG_UART0_TX)", diag_cpp)
+        self.assertNotIn("Serial.begin(115200)", diag_cpp)
+        self.assertIn("I2S_MODE_MASTER | I2S_MODE_RX", diag_cpp)
+        self.assertIn("I2S_MODE_MASTER | I2S_MODE_TX", diag_cpp)
+        self.assertNotIn("I2S_MODE_RX | I2S_MODE_TX", diag_cpp)
+        self.assertIn("i2s_driver_uninstall", diag_cpp)
+        self.assertIn("digitalWrite(I2S_SPK_DIN, LOW)", diag_cpp)
+        self.assertIn('"[AudioDiag] mode=LISTEN start"', diag_cpp)
+        self.assertIn('"[AudioDiag] i2s_rx_init ok"', diag_cpp)
+        self.assertIn('"[AudioDiag] rms=', diag_cpp)
+        self.assertIn("voice_detected", diag_cpp)
+        self.assertIn('"[AudioDiag] i2s_rx_stop ok"', diag_cpp)
+        self.assertIn('"[AudioDiag] mode=SPEAK start"', diag_cpp)
+        self.assertIn('"[AudioDiag] i2s_tx_init ok"', diag_cpp)
+        self.assertIn("OUTPUT_PROBE_AMPLITUDE = 30000", diag_cpp)
+        self.assertIn("OUTPUT_PROBE_FREQUENCY_HZ = 1000", diag_cpp)
+        self.assertIn("playOutputProbeTone", diag_cpp)
+        self.assertIn('"[AudioDiag] output_probe_tone frequency_hz=%u amplitude=%d duration_ms=%u', diag_cpp)
+        self.assertIn("pcm_samples", diag_cpp)
+        self.assertIn("gain", diag_cpp)
+        self.assertIn("bytes_written", diag_cpp)
+        self.assertIn('"[AudioDiag] playback_done ok"', diag_cpp)
+        self.assertIn('"[AudioDiag] i2s_tx_stop ok"', diag_cpp)
+        self.assertIn("free_heap", diag_cpp)
+        self.assertIn("free_psram", diag_cpp)
+        self.assertIn("stack_high_water_mark", diag_cpp)
+        self.assertIn("i2s_read return code", diag_cpp)
+        self.assertIn("i2s_write return code", diag_cpp)
+        self.assertIn("LISTEN_MS = 2000", diag_cpp)
+        self.assertIn("SWITCH_TEST_CYCLES = 5", diag_cpp)
+        self.assertIn("STABILITY_TEST_MS = 180000", diag_cpp)
+        self.assertIn("runListenSpeakCycle", diag_cpp)
+        self.assertIn("#if MERGETEST_AUDIO_SHARED_I2S_DIAG", diag_cpp)
+        self.assertIn("MIC_RX_I2S_PORT = I2S_NUM_0", diag_cpp)
+        self.assertIn("SPEAKER_TX_I2S_PORT = I2S_NUM_1", diag_cpp)
+        self.assertIn("#define EMBEDDED_TTS_GAIN 20", diag_cpp)
+        self.assertNotIn("AUDIO_I2S_PORT = I2S_NUM_0", diag_cpp)
+
     def test_full_face240_env_combines_verified_hardware_paths_with_ota(self) -> None:
         platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
             encoding="utf-8"
@@ -243,6 +364,9 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("-DMERGETEST_ENABLE_MOTOR=1", full_body)
         self.assertIn("-DMERGETEST_ENABLE_SPEAKER=1", full_body)
         self.assertIn("-DMERGETEST_ENABLE_MIC=1", full_body)
+        self.assertIn("-DMERGETEST_SPEAKER_BCLK=39", full_body)
+        self.assertIn("-DMERGETEST_SPEAKER_LRC=40", full_body)
+        self.assertIn("-DMERGETEST_SPEAKER_DIN=47", full_body)
 
         self.assertIn("[env:mergetesting_full_face240_ota]", platformio)
         ota_body = platformio.split("[env:mergetesting_full_face240_ota]", 1)[1].split(
@@ -388,12 +512,12 @@ class MergetestingLayeringTest(unittest.TestCase):
         pins = (MERGETEST_SRC / "hardware_pins.h").read_text(encoding="utf-8")
         config = (MERGETEST_SRC / "config.h").read_text(encoding="utf-8")
 
-        self.assertIn("#define SPEAKER_I2S_BCLK 35", pins)
-        self.assertIn("#define SPEAKER_I2S_LRC 36", pins)
-        self.assertIn("#define SPEAKER_I2S_DIN 37", pins)
-        self.assertIn("#define MERGETEST_SPEAKER_BCLK 35", config)
-        self.assertIn("#define MERGETEST_SPEAKER_LRC 36", config)
-        self.assertIn("#define MERGETEST_SPEAKER_DIN 37", config)
+        self.assertIn("#define SPEAKER_I2S_BCLK 39", pins)
+        self.assertIn("#define SPEAKER_I2S_LRC 40", pins)
+        self.assertIn("#define SPEAKER_I2S_DIN 47", pins)
+        self.assertIn("#define MERGETEST_SPEAKER_BCLK 39", config)
+        self.assertIn("#define MERGETEST_SPEAKER_LRC 40", config)
+        self.assertIn("#define MERGETEST_SPEAKER_DIN 47", config)
 
     def test_speaker_local_sounds_map_to_distinct_chimes_and_tts_mock_tone(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
@@ -709,16 +833,52 @@ class MergetestingLayeringTest(unittest.TestCase):
         pins = (MERGETEST_SRC / "hardware_pins.h").read_text(encoding="utf-8")
         mic_cpp = (MERGETEST_SRC / "mic_stream.cpp").read_text(encoding="utf-8")
         ws_cpp = (MERGETEST_SRC / "ws_client.cpp").read_text(encoding="utf-8")
+        platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("#define MIC_I2S_BCLK 39", pins)
         self.assertIn("#define MIC_I2S_WS 40", pins)
         self.assertIn("#define MIC_I2S_DIN 41", pins)
+        self.assertIn("MERGETEST_MIC_CHANNEL_FORMAT", mic_cpp)
+        self.assertIn("MERGETEST_MIC_SHIFT_BITS", mic_cpp)
+        self.assertIn("MERGETEST_MIC_SEND_INTERVAL_MS", mic_cpp)
+        self.assertIn("raw >> MERGETEST_MIC_SHIFT_BITS", mic_cpp)
         self.assertIn("if (!_active || !ws.isAudioConnected())", mic_cpp)
         self.assertIn("i2s_read", mic_cpp)
         self.assertIn("ws.sendAudioChunkMeta(_chunkId);", mic_cpp)
         self.assertIn("ws.sendAudioBinary", mic_cpp)
         self.assertIn("payload[\"format\"] = \"pcm_s16le\";", ws_cpp)
         self.assertIn("_audio.sendBIN(pcm, len);", ws_cpp)
+
+        self.assertIn("[env:mergetesting_mic_only_shift16]", platformio)
+        shift16_body = platformio.split("[env:mergetesting_mic_only_shift16]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only", shift16_body)
+        self.assertIn("-DMERGETEST_MIC_SHIFT_BITS=16", shift16_body)
+
+        self.assertIn("[env:mergetesting_mic_only_shift16_asr]", platformio)
+        asr_body = platformio.split("[env:mergetesting_mic_only_shift16_asr]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only_shift16", asr_body)
+        self.assertIn("-DMERGETEST_MIC_SEND_INTERVAL_MS=20", asr_body)
+
+        self.assertIn("[env:mergetesting_mic_only_shift18_asr]", platformio)
+        shift18_asr_body = platformio.split("[env:mergetesting_mic_only_shift18_asr]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only", shift18_asr_body)
+        self.assertIn("-DMERGETEST_MIC_SHIFT_BITS=18", shift18_asr_body)
+        self.assertIn("-DMERGETEST_MIC_SEND_INTERVAL_MS=20", shift18_asr_body)
+
+        self.assertIn("[env:mergetesting_mic_only_right_shift16]", platformio)
+        right_shift16_body = platformio.split("[env:mergetesting_mic_only_right_shift16]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only_shift16", right_shift16_body)
+        self.assertIn("-DMERGETEST_MIC_CHANNEL_FORMAT=I2S_CHANNEL_FMT_ONLY_RIGHT", right_shift16_body)
 
     def test_motion_service_rejects_when_motor_disabled(self) -> None:
         motion_cpp = (MERGETEST_SRC / "services" / "motion_service.cpp").read_text(

@@ -11,9 +11,21 @@
 
 namespace {
 
+#ifndef MERGETEST_MIC_CHANNEL_FORMAT
+#define MERGETEST_MIC_CHANNEL_FORMAT I2S_CHANNEL_FMT_ONLY_LEFT
+#endif
+
+#ifndef MERGETEST_MIC_SHIFT_BITS
+#define MERGETEST_MIC_SHIFT_BITS 14
+#endif
+
+#ifndef MERGETEST_MIC_SEND_INTERVAL_MS
+#define MERGETEST_MIC_SEND_INTERVAL_MS 100
+#endif
+
 constexpr i2s_port_t MIC_I2S_PORT = I2S_NUM_0;
 constexpr size_t SAMPLE_COUNT = 320;  // 20ms @ 16kHz mono
-constexpr uint32_t SEND_INTERVAL_MS = 100;
+constexpr uint32_t SEND_INTERVAL_MS = MERGETEST_MIC_SEND_INTERVAL_MS;
 
 int32_t samples[SAMPLE_COUNT];
 
@@ -22,7 +34,7 @@ bool installMicI2S() {
       .mode = static_cast<i2s_mode_t>(I2S_MODE_MASTER | I2S_MODE_RX),
       .sample_rate = MERGETEST_SPEAKER_SAMPLE_RATE,
       .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
-      .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
+      .channel_format = MERGETEST_MIC_CHANNEL_FORMAT,
       .communication_format = I2S_COMM_FORMAT_STAND_I2S,
       .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
       .dma_buf_count = 6,
@@ -50,7 +62,7 @@ bool installMicI2S() {
 }
 
 int32_t convertSample(int32_t raw) {
-  return raw >> 14;
+  return raw >> MERGETEST_MIC_SHIFT_BITS;
 }
 
 }  // namespace
@@ -61,7 +73,14 @@ void MicStream::begin() {
   }
   _active = installMicI2S();
   if (_active) {
-    LOGI("Mic", "INMP441 ready BCLK=%d WS=%d DIN=%d", MIC_I2S_BCLK, MIC_I2S_WS, MIC_I2S_DIN);
+    LOGI(
+        "Mic",
+        "INMP441 ready BCLK=%d WS=%d DIN=%d shift=%d send_interval_ms=%u",
+        MIC_I2S_BCLK,
+        MIC_I2S_WS,
+        MIC_I2S_DIN,
+        MERGETEST_MIC_SHIFT_BITS,
+        static_cast<unsigned>(SEND_INTERVAL_MS));
   } else {
     LOGE("Mic", "INMP441 init failed");
   }

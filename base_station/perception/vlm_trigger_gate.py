@@ -1,4 +1,4 @@
-"""Lightweight gate for deciding when to run a VLM emotion model."""
+"""Lightweight gate for deciding when to run a VLM explanation model."""
 
 from __future__ import annotations
 
@@ -9,7 +9,13 @@ NEGATIVE_EMOTIONS = {"tired", "sad", "anxious", "stressed"}
 
 
 class VLMTriggerGate:
-    """Decide whether a frame-level emotion sample should trigger VLM analysis."""
+    """Decide whether a CV sample should trigger VLM analysis.
+
+    The gate reads the primary CV/OpenFace/mock sample. It does not consume a
+    nested VLM prediction and it does not change the sample's top-level
+    emotion_tag, confidence, or fatigue_score. OpenFace Route A fatigue scores
+    are expected on a 0..100 scale, with 67+ treated as high fatigue.
+    """
 
     def __init__(
         self,

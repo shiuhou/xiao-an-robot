@@ -106,10 +106,10 @@ class VLMGateDeliveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(sample["vlm_triggered"])
         self.assertEqual(sample["vlm_trigger_reason"], "test_reason")
         self.assertEqual(sample["cv_sample"]["fatigue_score"], 42.0)
-        self.assertEqual(sample["emotion_tag"], "tired")
-        self.assertEqual(sample["fatigue_score"], 0.9)
-        self.assertEqual(sample["confidence"], 0.8)
-        self.assertEqual(sample["fusion"]["decision"], "vlm_promoted_negative")
+        self.assertEqual(sample["emotion_tag"], "neutral")
+        self.assertEqual(sample["fatigue_score"], 42.0)
+        self.assertEqual(sample["confidence"], 0.62)
+        self.assertEqual(sample["fusion"]["decision"], "vlm_negative_aux_only")
         self.assertEqual(sample["fatigue_level"], "medium")
         self.assertEqual(sample["observation_quality"], 0.91)
         self.assertEqual(sample["au_json"], {"AU01": 0.2})
@@ -118,6 +118,7 @@ class VLMGateDeliveryTest(unittest.IsolatedAsyncioTestCase):
             "status": "ok",
             "expression_label": "tired",
             "emotion_tag": "tired",
+            "emotion_score": None,
             "confidence": 0.8,
             "fatigue_score": 0.9,
             "visual_reason": "",
@@ -125,6 +126,7 @@ class VLMGateDeliveryTest(unittest.IsolatedAsyncioTestCase):
             "evidence": ["eyes_heavy"],
             "face_observation": "eyes look heavy",
             "message": "take a rest",
+            "valid_observation": None,
         })
 
     async def test_event_payload_contains_vlm_when_gate_true(self):
@@ -145,9 +147,9 @@ class VLMGateDeliveryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["type"], "emotion.sample")
         self.assertTrue(payload["vlm"]["executed"])
         self.assertEqual(payload["vlm"]["expression_label"], "tired")
-        self.assertEqual(payload["emotion_tag"], "tired")
-        self.assertEqual(payload["fatigue_score"], 0.8)
-        self.assertEqual(payload["fusion"]["decision"], "vlm_promoted_negative")
+        self.assertEqual(payload["emotion_tag"], "neutral")
+        self.assertEqual(payload["fatigue_score"], 42.0)
+        self.assertEqual(payload["fusion"]["decision"], "vlm_negative_aux_only")
         self.assertEqual(payload["fatigue_level"], "medium")
         self.assertEqual(payload["observation_quality"], 0.91)
 
@@ -162,13 +164,15 @@ class VLMGateDeliveryTest(unittest.IsolatedAsyncioTestCase):
             "status": "ok",
             "expression_label": "neutral",
             "emotion_tag": "neutral",
-            "confidence": 0.0,
-            "fatigue_score": 0.0,
+            "emotion_score": None,
+            "confidence": None,
+            "fatigue_score": None,
             "visual_reason": "",
             "vlm_observation": "",
             "evidence": [],
             "face_observation": "",
             "message": "",
+            "valid_observation": None,
         })
 
 

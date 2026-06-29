@@ -1,0 +1,23 @@
+{
+  "total_scenarios": 5,
+  "event_count": 6,
+  "pass_count": 5,
+  "fail_count": 0,
+  "fake_backend_used": true,
+  "real_openclaw_used": false,
+  "vlm_override_count": 0,
+  "cooldown_guard_passed": true,
+  "fatigue_scale_contract": "CV/OpenFace top-level fatigue_score is interpreted on 0..100; nested VLM fatigue_score is not used for care triggering.",
+  "notes": [
+    "Fake/mock smoke only; no real OpenClaw endpoint or real robot was used.",
+    "VLM is represented only as nested explanatory metadata and does not override CV primary fields.",
+    "low_quality_guard is handled as a smoke safety guard for insufficient evidence without changing Brain/OpenClaw main logic."
+  ],
+  "scenario_results": {
+    "normal_observe": "pass",
+    "fatigue_care": "pass",
+    "low_quality_guard": "pass",
+    "cooldown_guard": "pass",
+    "vlm_override_guard": "pass"
+  }
+}

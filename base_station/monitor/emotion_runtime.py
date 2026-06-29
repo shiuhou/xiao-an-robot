@@ -142,9 +142,17 @@ class DirectModelEmotionPipeline:
         return self.model.predict(frame).copy()
 
 
-# Legacy helpers kept for compatibility with older tests/imports. The current
-# VLM-gated flow keeps CV/OpenFace fields at the top level and stores VLM output
-# under final_sample["vlm"] instead of letting VLM own the emitted sample.
+# Legacy helpers kept for compatibility with older tests/imports. Top-level
+# decision fields always belong to the primary CV sample. VLM output is an
+# explanatory supplement only: it is normalized under sample["vlm"] and must
+# not overwrite top-level emotion_tag / confidence / fatigue_score. Triggered
+# frames also keep a nested cv_sample copy so audits can compare the CV judgment
+# and the VLM explanation without changing the care policy input.
+# Deliberately EXCLUDES:
+#   - emotion_tag / confidence / fatigue_score: owned by CV/OpenFace/mock.
+#   - au_json: AU semantics unconfirmed -> record-only, must not reach decisions.
+#   - frame_b64 / algorithm_version: bulky / debug-only, stay nested in cv_sample.
+#   - valence: CV valence is supporting evidence, not a VLM verdict.
 _PERCEPTION_PROMOTE_FIELDS = (
     "fatigue_level",
     "observation_quality",
@@ -188,7 +196,7 @@ _EMOTION_SEVERITY = {
 
 def _is_negative_polarity(value: Any) -> bool:
     text = str(value or "").strip().lower()
-    return "负" in text or text in {"negative", "neg"}
+    return "\u8d1f" in text or text in {"negative", "neg"}
 
 
 def _normalize_vlm_emotion_tag(value: Any, polarity: Any = None) -> str:
@@ -242,7 +250,7 @@ def _as_evidence_list(value: Any) -> list:
 
 
 def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> dict:
-    """Normalize VLM output into the runtime delivery contract."""
+    """Normalize VLM output for sample["vlm"], never for top-level policy fields."""
 
     raw = raw or {}
     expression_label = (
@@ -256,19 +264,24 @@ def normalize_vlm_result(raw: dict | None, *, executed: bool, status: str) -> di
         or raw.get("visual_reason")
         or ""
     )
+    evidence = raw.get("visible_evidence")
+    if evidence is None:
+        evidence = raw.get("evidence")
     emotion_tag = _normalize_vlm_emotion_tag(expression_label, raw.get("polarity"))
     return {
         "executed": bool(executed),
         "status": str(status),
         "expression_label": expression_label,
         "emotion_tag": emotion_tag,
-        "confidence": _clamp_float_01(raw.get("confidence")),
-        "fatigue_score": _clamp_float_01(raw.get("fatigue_score")),
+        "emotion_score": raw.get("emotion_score"),
+        "confidence": raw.get("confidence"),
+        "fatigue_score": raw.get("fatigue_score"),
         "visual_reason": raw.get("visual_reason") or "",
         "vlm_observation": raw.get("vlm_observation") or "",
-        "evidence": _as_evidence_list(raw.get("evidence")),
+        "evidence": _as_evidence_list(evidence),
         "face_observation": face_observation,
         "message": raw.get("message") or "",
+        "valid_observation": raw.get("valid_observation"),
         **({"error": _short_error(raw.get("error") or "")} if raw.get("error") else {}),
     }
 
@@ -280,16 +293,14 @@ def _more_severe_negative(left: str, right: str) -> str:
 
 
 def fuse_cv_vlm_sample(cv_sample: dict, vlm_result: dict) -> dict:
-    """Conservatively merge CV and VLM into the sample used for care decisions."""
+    """Attach VLM explanation without changing CV-owned top-level decisions."""
 
     final_sample = cv_sample.copy()
     cv_tag = _normalize_vlm_emotion_tag(cv_sample.get("emotion_tag") or cv_sample.get("emotion"))
     vlm_tag = _normalize_vlm_emotion_tag(vlm_result.get("emotion_tag"))
     cv_confidence = _clamp_float_01(cv_sample.get("confidence"))
     vlm_confidence = _clamp_float_01(vlm_result.get("confidence"))
-    cv_fatigue_raw = _numeric_or_default(cv_sample.get("fatigue_score"), 0.0)
     vlm_fatigue = _clamp_float_01(vlm_result.get("fatigue_score"))
-    cv_fatigue_for_threshold = _fatigue_for_threshold(cv_sample.get("fatigue_score"))
 
     fusion = {
         "strategy": "conservative_v1",
@@ -303,46 +314,33 @@ def fuse_cv_vlm_sample(cv_sample: dict, vlm_result: dict) -> dict:
         "vlm_fatigue_score": vlm_fatigue,
     }
 
-    if not vlm_result.get("executed") or str(vlm_result.get("status", "ok")) == "error":
+    if not vlm_result.get("executed") or str(vlm_result.get("status", "ok")) in {"error", "model_error"}:
         error = _short_error(vlm_result.get("error") or "VLM execution failed.")
         fusion["decision"] = "cv_only_vlm_error"
         fusion["reason"] = error
-        final_sample["cv_sample"] = cv_sample.copy()
-        final_sample["vlm"] = vlm_result.copy()
-        final_sample["fusion"] = fusion
-        return final_sample
-
-    cv_negative = cv_tag in _NEGATIVE_EMOTIONS
-    vlm_negative = vlm_tag in _NEGATIVE_EMOTIONS
-    if cv_negative and vlm_negative and vlm_confidence >= 0.65:
-        final_sample["emotion_tag"] = _more_severe_negative(cv_tag, vlm_tag)
-        final_sample["fatigue_score"] = max(cv_fatigue_raw, vlm_fatigue)
-        final_sample["confidence"] = max(cv_confidence, vlm_confidence)
+    elif cv_tag in _NEGATIVE_EMOTIONS and vlm_tag in _NEGATIVE_EMOTIONS and vlm_confidence >= 0.65:
         fusion["decision"] = "cv_vlm_agree_negative"
-        fusion["reason"] = "CV and VLM both indicate a negative or tired state with sufficient VLM confidence."
+        fusion["reason"] = (
+            "CV and VLM both indicate a negative or tired state; "
+            "top-level CV fields are unchanged."
+        )
     elif (
-        not cv_negative
-        and vlm_negative
+        cv_tag not in _NEGATIVE_EMOTIONS
+        and vlm_tag in _NEGATIVE_EMOTIONS
         and vlm_confidence >= 0.75
         and vlm_fatigue >= 0.70
     ):
-        final_sample["emotion_tag"] = vlm_tag
-        final_sample["fatigue_score"] = vlm_fatigue
-        final_sample["confidence"] = vlm_confidence
-        fusion["decision"] = "vlm_promoted_negative"
-        fusion["reason"] = "High-confidence VLM negative evidence promoted a neutral CV sample."
-    elif (
-        cv_negative
-        and vlm_tag == "neutral"
-        and vlm_confidence >= 0.85
-        and cv_confidence < 0.65
-        and cv_fatigue_for_threshold < 0.75
-    ):
-        final_sample["emotion_tag"] = "neutral"
-        final_sample["fatigue_score"] = min(cv_fatigue_raw, 0.4)
-        final_sample["confidence"] = vlm_confidence
-        fusion["decision"] = "vlm_suppressed_low_conf_cv"
-        fusion["reason"] = "High-confidence neutral VLM result reduced a low-confidence CV negative sample."
+        fusion["decision"] = "vlm_negative_aux_only"
+        fusion["reason"] = (
+            "High-confidence VLM negative evidence is recorded as explanation only; "
+            "top-level CV fields are unchanged."
+        )
+    elif cv_tag in _NEGATIVE_EMOTIONS and vlm_tag == "neutral" and vlm_confidence >= 0.85:
+        fusion["decision"] = "vlm_neutral_aux_only"
+        fusion["reason"] = (
+            "VLM neutral evidence is recorded as explanation only; "
+            "top-level CV fields are unchanged."
+        )
 
     final_sample["cv_sample"] = cv_sample.copy()
     final_sample["vlm"] = vlm_result.copy()

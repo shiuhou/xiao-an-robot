@@ -153,6 +153,59 @@ class EmotionMonitorSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "fatigue")
         self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
 
+    async def test_openface_source_uses_0_to_100_scale(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 80,
+            "algorithm_version": "rule_v0",
+        })
+
+        self.assertTrue(result["handled"])
+        self.assertEqual(result["reason"], "fatigue")
+
+    async def test_low_quality_openface_score_does_not_trigger_high_level_care(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 90,
+            "algorithm_version": "rule_v0",
+            "observation_quality": "low",
+        })
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(result["reason"], "normal")
+        self.assertEqual(gateway.calls, [])
+
+    async def test_nested_vlm_fatigue_score_does_not_drive_primary_care_decision(self) -> None:
+        gateway = FakeGateway()
+        skill = EmotionMonitorSkill(gateway=gateway)
+
+        result = await skill.run({
+            "source": "openface_fatigue_metrics",
+            "emotion_tag": "neutral",
+            "confidence": 0.4,
+            "fatigue_score": 20,
+            "algorithm_version": "rule_v0",
+            "vlm": {
+                "expression_label": "severe_sleepy",
+                "confidence": 0.99,
+                "fatigue_score": 0.95,
+            },
+        })
+
+        self.assertFalse(result["handled"])
+        self.assertEqual(result["reason"], "normal")
+        self.assertEqual(gateway.calls, [])
+
     async def test_openface_high_level_triggers_without_numeric_score(self) -> None:
         gateway = FakeGateway()
         skill = EmotionMonitorSkill(gateway=gateway)

@@ -2,6 +2,8 @@
 
 Importing this module doesn't import heavy model dependencies. They are loaded
 only when ``VLMFaceAnalyzer`` is instantiated or real image analysis runs.
+Runtime code treats this output as an explanation supplement under sample["vlm"];
+it must not overwrite the primary CV sample's top-level decision fields.
 """
 
 from __future__ import annotations
@@ -10,22 +12,38 @@ import time
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "Qwen2.5-VL-3B-OV-int4"
+_DEFAULT_PROMPT_FILE = _REPO_ROOT / "vlm_prompt.txt"
 
 MAX_PIXELS = 147456
 MAX_NEW_TOKENS = 160
 MAX_CONTEXT_PROMPT_CHARS = 3000
 
-PROMPT = """请观察图中人物，只根据画面中确实可见的面部和姿态线索判断，只返回 JSON：
+_FALLBACK_PROMPT = """请观察图中人物，只根据画面中确实可见的面部和姿态线索判断，只返回 JSON：
 - polarity：必须是以下之一（正面 / 负面）
 - emotion：用一个最贴切的英文词描述当前情绪，如 neutral, tired, irritable, depressed
+- emotion_score：情绪明显程度，0 到 1 的小数
 - fatigue_score：疲劳程度，0 到 1 的小数
 - confidence：你对本次判断的把握，0 到 1
+- visible_evidence：数组，列出 1 到 3 个画面中确实可见的线索；看不清时返回 []
+- valid_observation：布尔值；如果画面中人脸/姿态线索足够判断则为 true，否则为 false
 - message：如果 polarity 是正面或无需干预，必须为空字符串；如果 polarity 是负面，生成一句自然简短的中文关怀话
 要求：只描述你真正看到的，不要编造画面外的信息或用户在做的事，不确定就给低分。
 原样返回：
-{"polarity":"","emotion":"","fatigue_score":0.0,"confidence":0.0,"message":""}
+{"polarity":"","emotion":"","emotion_score":0.0,"fatigue_score":0.0,"confidence":0.0,"visible_evidence":[],"valid_observation":true,"message":""}
 只返回 JSON。"""
+
+
+def _load_prompt(path: Path = _DEFAULT_PROMPT_FILE) -> str:
+    if path.is_file():
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    return _FALLBACK_PROMPT
+
+
+PROMPT = _load_prompt()
 
 
 def _json_safe(value: Any) -> Any:
@@ -70,7 +88,7 @@ def _context_prompt(context: dict | None) -> str:
 
 
 class VLMFaceAnalyzer:
-    """Triggered VLM analyzer; load once, then call predict()/analyze_frame()."""
+    """Triggered VLM analyzer; load once, then return explanatory fields."""
 
     def __init__(
         self,
@@ -164,7 +182,8 @@ class VLMFaceAnalyzer:
         )[0].strip()
 
         result = _parse(raw)
-        result["face_found"] = found
+        if self.face_crop:
+            result["face_found"] = found
         return result
 
     def analyze_frame(self, frame: dict, context: dict | None = None) -> dict:
@@ -179,19 +198,24 @@ class VLMFaceAnalyzer:
 
     def predict(self, frame: dict, context: dict | None = None) -> dict:
         parsed = self.analyze_frame(frame, context=context)
-        return {
+        sample = {
             "polarity": parsed["polarity"],
             "emotion_tag": parsed["emotion"],
             "emotion": parsed["emotion"],
+            "emotion_score": parsed.get("emotion_score"),
             "fatigue_score": parsed["fatigue_score"],
             "confidence": parsed["confidence"],
+            "visible_evidence": parsed.get("visible_evidence", []),
+            "valid_observation": parsed.get("valid_observation", True),
             "message": parsed["message"],
-            "face_found": parsed.get("face_found", False),
             "source": "vlm_face",
             "frame_source": frame.get("source"),
             "frame_id": frame.get("frame_id"),
             "timestamp_ms": frame.get("timestamp_ms", int(time.time() * 1000)),
         }
+        if "face_found" in parsed:
+            sample["face_found"] = parsed["face_found"]
+        return sample
 
 
 def _normalize_polarity(value: Any) -> str:
@@ -209,12 +233,33 @@ def _clamp_float(value: Any) -> float:
     return max(0.0, min(1.0, number))
 
 
+def _optional_clamp_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return _clamp_float(value)
+
+
+def _evidence_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
 def _empty(raw: str, error: str) -> dict:
     return {
         "polarity": "正面",
         "emotion": "",
+        "emotion_score": None,
         "fatigue_score": 0.0,
         "confidence": 0.0,
+        "visible_evidence": [],
+        "valid_observation": False,
         "message": "",
         "_raw": raw,
         "_error": error,
@@ -238,7 +283,10 @@ def _parse(text: str) -> dict:
     return {
         "polarity": _normalize_polarity(data.get("polarity", "")),
         "emotion": str(data.get("emotion", "") or ""),
+        "emotion_score": _optional_clamp_float(data.get("emotion_score")),
         "fatigue_score": _clamp_float(data.get("fatigue_score", 0.0)),
         "confidence": _clamp_float(data.get("confidence", 0.0)),
+        "visible_evidence": _evidence_list(data.get("visible_evidence")),
+        "valid_observation": bool(data.get("valid_observation", True)),
         "message": str(data.get("message", "") or ""),
     }

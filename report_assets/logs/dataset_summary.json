@@ -1,0 +1,243 @@
+{
+  "dataset_root": "C:\\Users\\Lenovo\\Desktop\\datasets\\xiaoan_care_v1",
+  "totals": {
+    "static_images": 44,
+    "clips": 8,
+    "vlm_eval": 10,
+    "roi_manifest": 44
+  },
+  "columns": {
+    "images": [
+      "image_id",
+      "file_path",
+      "subject_id",
+      "scene",
+      "light",
+      "face_angle",
+      "face_visible",
+      "image_quality",
+      "eye_state",
+      "mouth_state",
+      "head_pose",
+      "affect_label",
+      "fatigue_label",
+      "care_needed",
+      "care_action",
+      "visible_evidence",
+      "note"
+    ],
+    "clips": [
+      "clip_id",
+      "file_path",
+      "subject_id",
+      "duration_sec",
+      "scene",
+      "light",
+      "clip_type",
+      "face_visible",
+      "image_quality",
+      "closed_eye_event",
+      "yawn_event",
+      "head_down_event",
+      "negative_affect_event",
+      "fatigue_label",
+      "care_needed",
+      "care_action",
+      "start_time_sec",
+      "end_time_sec",
+      "note"
+    ],
+    "vlm": [
+      "image_id",
+      "file_path",
+      "roi_path",
+      "expected_fatigue",
+      "expected_affect",
+      "expected_care_needed",
+      "expected_evidence",
+      "expected_sentence",
+      "split"
+    ],
+    "roi": [
+      "image_id",
+      "file_path",
+      "roi_path",
+      "status",
+      "x1",
+      "y1",
+      "x2",
+      "y2",
+      "detector",
+      "note"
+    ]
+  },
+  "images": {
+    "scene_distribution": {
+      "bad_frame": 3,
+      "lowlight": 4,
+      "mild_fatigue": 4,
+      "negative_affect": 5,
+      "no_face": 4,
+      "normal_focus": 7,
+      "normal_smile": 4,
+      "occlusion": 4,
+      "severe_sleepy": 5,
+      "yawn": 4
+    },
+    "care_needed_distribution": {
+      "0": 26,
+      "1": 18
+    },
+    "fatigue_label_distribution": {
+      "mild": 4,
+      "moderate": 4,
+      "none": 16,
+      "severe": 5,
+      "unknown": 15
+    },
+    "affect_label_distribution": {
+      "negative": 5,
+      "neutral": 20,
+      "positive": 4,
+      "unknown": 15
+    }
+  },
+  "clips": {
+    "care_needed_distribution": {
+      "0": 4,
+      "1": 4
+    },
+    "details": [
+      {
+        "clip_id": "s01_bad_quality_clip_0001",
+        "duration_sec": "9.99",
+        "scene": "bad_quality_clip",
+        "care_needed": "0",
+        "start_time_sec": "1",
+        "end_time_sec": "9"
+      },
+      {
+        "clip_id": "s01_clip_blink_normal_0001",
+        "duration_sec": "10.85",
+        "scene": "clip_blink_normal",
+        "care_needed": "0",
+        "start_time_sec": "1",
+        "end_time_sec": "10"
+      },
+      {
+        "clip_id": "s01_clip_eyes_closed_long_0001",
+        "duration_sec": "10.77",
+        "scene": "clip_eyes_closed_long",
+        "care_needed": "1",
+        "start_time_sec": "1",
+        "end_time_sec": "10"
+      },
+      {
+        "clip_id": "s01_clip_head_down_sleepy_0001",
+        "duration_sec": "8.56",
+        "scene": "clip_head_down_sleepy",
+        "care_needed": "1",
+        "start_time_sec": "1",
+        "end_time_sec": "8"
+      },
+      {
+        "clip_id": "s01_clip_no_face_clip_0001",
+        "duration_sec": "9.67",
+        "scene": "clip_no_face_clip",
+        "care_needed": "0",
+        "start_time_sec": "1",
+        "end_time_sec": "9"
+      },
+      {
+        "clip_id": "s01_clip_normal_working_0001",
+        "duration_sec": "11.79",
+        "scene": "clip_normal_working",
+        "care_needed": "0",
+        "start_time_sec": "1",
+        "end_time_sec": "11"
+      },
+      {
+        "clip_id": "s01_clip_yawn_clip_0001",
+        "duration_sec": "10.58",
+        "scene": "clip_yawn_clip",
+        "care_needed": "1",
+        "start_time_sec": "1",
+        "end_time_sec": "10"
+      },
+      {
+        "clip_id": "s01_eyes_closed_short_0001",
+        "duration_sec": "10.50",
+        "scene": "eyes_closed_short",
+        "care_needed": "1",
+        "start_time_sec": "1",
+        "end_time_sec": "10"
+      }
+    ]
+  },
+  "vlm": {
+    "expected_care_needed_distribution": {
+      "0": 6,
+      "1": 4
+    },
+    "scene_distribution": {
+      "bad_frame": 1,
+      "lowlight": 1,
+      "mild_fatigue": 1,
+      "negative_affect": 1,
+      "no_face": 1,
+      "normal_focus": 1,
+      "normal_smile": 1,
+      "occlusion": 1,
+      "severe_sleepy": 1,
+      "yawn": 1
+    }
+  },
+  "roi": {
+    "overall_status": {
+      "ok": 32,
+      "skipped": 12
+    },
+    "status_by_scene": {
+      "bad_frame": {
+        "ok": 3,
+        "skipped": 0
+      },
+      "lowlight": {
+        "ok": 3,
+        "skipped": 1
+      },
+      "mild_fatigue": {
+        "ok": 4,
+        "skipped": 0
+      },
+      "negative_affect": {
+        "ok": 5,
+        "skipped": 0
+      },
+      "no_face": {
+        "skipped": 4,
+        "ok": 0
+      },
+      "normal_focus": {
+        "ok": 5,
+        "skipped": 2
+      },
+      "normal_smile": {
+        "ok": 3,
+        "skipped": 1
+      },
+      "occlusion": {
+        "ok": 1,
+        "skipped": 3
+      },
+      "severe_sleepy": {
+        "ok": 4,
+        "skipped": 1
+      },
+      "yawn": {
+        "ok": 4,
+        "skipped": 0
+      }
+    }
+  }
+}

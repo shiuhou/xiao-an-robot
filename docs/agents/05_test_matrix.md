@@ -38,6 +38,7 @@ python tools/check_runtime_env.py
 | `face240_9expr_merged` | `pio run -e face240_9expr_merged` | P | H |
 | `voice_recognition_test` | `pio run -e voice_recognition_test` | P | H |
 | `speaker_amp_test` | `pio run -e speaker_amp_test` | P | H |
+| `esp32-s3-integrated_legacy` | `pio run -e esp32-s3-integrated_legacy` | P: 2026-06-29 after move to `src/archive/` | — legacy snapshot only; do not burn for DK-2500 integration |
 
 ## Mergetesting
 

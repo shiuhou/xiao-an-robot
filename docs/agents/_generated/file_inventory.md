@@ -5,22 +5,21 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+aed67be Move M600 deployment note into docs setup
 0d33fc0 Archive legacy firmware integration entrypoint
 1906401 Tune embedded TTS phrase gain
 a400f71 Add TTS audio streaming diagnostics path
 9ba74e8 Organize repo documentation entrypoints
-2c8755c Merge vision chain into 20260628 merged branch
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-docs/README.md                             | 1 +
- docs/agents/10_repo_map.md                 | 3 ++-
- docs/agents/13_code_structure_inventory.md | 4 ++--
- docs/setup/m600_deployment.md              | 4 ++--
- robot/mergetesting/README.md               | 2 +-
- 5 files changed, 8 insertions(+), 6 deletions(-)
+docs/agents/00_snapshot.md                 |  1 +
+ docs/agents/05_test_matrix.md              |  1 +
+ docs/agents/10_repo_map.md                 | 21 ++++++++++++++++++---
+ docs/agents/13_code_structure_inventory.md |  2 +-
+ 4 files changed, 21 insertions(+), 4 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

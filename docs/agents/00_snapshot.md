@@ -70,6 +70,7 @@
 | **机器人目录入口 2026-06-29** | `robot/README.md`, `robot/firmware/README.md`, `robot/mergetesting/MAIN_DEMO.md` | 明确 `robot/mergetesting` 是 DK-2500 主线，`robot/firmware` 是 bring-up lab；主 demo 命令集中到 `MAIN_DEMO.md` |
 | **运行目录入口 2026-06-29** | `base_station/README.md`, `agent/README.md`, `tools/README.md`, `scripts/README.md` | Base station、local Agent、tools、scripts 均有入口说明；先标注用途和 legacy/diagnostic 边界，不移动文件 |
 | **Git hygiene 盘点 2026-06-29** | `.gitignore`, `docs/runbooks/git_hygiene.md` | OpenFace IR 明确为 Git LFS 例外；`base_station/config.yaml` 已确认可公开并保留 tracked |
+| **代码结构 inventory 2026-06-29** | `docs/agents/13_code_structure_inventory.md`, `robot/firmware/src/archive/`, `docs/setup/m600_deployment.md` | 已建立结构整理批次清单；legacy `integrated_main.cpp` 移出 active src 根但保留 legacy env 编译；M600 部署笔记移入 `docs/setup/` |
 
 ## 硬件阻塞（剩余）
 

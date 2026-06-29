@@ -179,7 +179,22 @@ Mergetesting 工程内文档：
 
 ---
 
-## 7. 2026-06-28 仓库整理记录
+## 7. 2026-06-29 代码结构整理记录
+
+### 已分层
+
+- 新增 `docs/agents/13_code_structure_inventory.md`，记录主线 / diagnostic / legacy / archive 分类与后续批次。
+- `robot/firmware/src/integrated_main.cpp` → `robot/firmware/src/archive/integrated_main.cpp`；主 env 排除，`esp32-s3-integrated_legacy` 仍可显式编译。
+- `robot/mergetesting/m600.md` → `docs/setup/m600_deployment.md`；mergetesting 目录只保留固件工程相关文档。
+- 检查 `base_station/monitor/screen_watcher.py` 与 `agent/skills/screen_report.py`：已有 deprecated docstring，无需行为改动。
+
+### 验证
+
+- `python -m unittest tests.unit.test_firmware_ota_bootstrap tests.unit.test_mergetesting_layering -v`
+- `cd robot\firmware; pio run -e esp32-s3-integrated_legacy`
+- `git diff --check`
+
+## 8. 2026-06-28 仓库整理记录
 
 ### 已分层
 
@@ -195,7 +210,7 @@ Mergetesting 工程内文档：
 - troubleshooting → `docs/runbooks/troubleshooting.md`
 - M600 部署笔记 → `docs/setup/m600_deployment.md`
 
-## 8. 2026-06-27 仓库整理记录
+## 9. 2026-06-27 仓库整理记录
 
 ### 已删除（磁盘）
 
@@ -226,7 +241,7 @@ Mergetesting 工程内文档：
 
 ---
 
-## 9. 刷新本图
+## 10. 刷新本图
 
 ```powershell
 python tools/generate_agent_registry.py

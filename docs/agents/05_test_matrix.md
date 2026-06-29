@@ -21,6 +21,8 @@ python tools/check_runtime_env.py
 | WS video source | `tests/unit/test_ws_video_source.py`, `test_ws_server_video_source.py` | QVGA JPEG, frame_meta, binary send | P |
 | WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM persistence, latest-window RMS/peak/DC/clipping stats | P |
 | Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
+| Audio speech trimming | `tests/unit/test_audio_segments.py`, `tests/unit/test_asr_runtime.py` | fixed-window WAV energy trim before ASR; `--trim-speech` metadata | P |
+| Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 right-panel constraints | P |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
 
@@ -52,6 +54,10 @@ pio run -e mergetesting_face240_only
 pio run -e mergetesting_cam_only
 pio run -e mergetesting_cam_only_ota
 pio run -e mergetesting_mic_only
+pio run -e mergetesting_mic_only_shift16
+pio run -e mergetesting_mic_only_shift16_asr
+pio run -e mergetesting_mic_only_shift18_asr
+pio run -e mergetesting_mic_only_right_shift16
 pio run -e mergetesting_mic_only_ota
 pio run -e mergetesting
 ```
@@ -64,6 +70,10 @@ pio run -e mergetesting
 | `mergetesting_cam_only` | P: 2026-06-26 app/services split | H: QVGA JPEG + `video.frame_meta`, 2026-06-26 |
 | `mergetesting_cam_only_ota` | P: 2026-06-26 | H: espota upload, `/video`, `runtime/latest.jpg` valid JPEG, 2026-06-26 |
 | `mergetesting_mic_only` | P: 2026-06-26 | H: PCM `/audio`, heartbeat not starved, 2026-06-26 |
+| `mergetesting_mic_only_shift16` | P/H: COM22 upload 2026-06-29 | H: current mic diagnostic baseline; left channel with `MERGETEST_MIC_SHIFT_BITS=16` produced intelligible-range stats versus noisy `>>14`: RMS `-37.51 dBFS`, peak `-23.00 dBFS`, DC offset `0.79%` |
+| `mergetesting_mic_only_shift16_asr` | P/H: COM19 upload 2026-06-30 | H: 20 ms continuous `/audio` stream works, but close repeated speech clipped at peak `0.0 dBFS` with about `3.5%` clipping; not the current ASR demo gain |
+| `mergetesting_mic_only_shift18_asr` | P/H: COM19 upload 2026-06-30 | H: current fixed-window ASR calibration env; 20 ms continuous `/audio`, peak about `-12 dBFS`, clipping `0%`; use with base-station `--trim-speech` before SenseVoice |
+| `mergetesting_mic_only_right_shift16` | P/H: COM22 upload 2026-06-29 | H: right channel check produced all-zero PCM with INMP441 L/R tied to GND, confirming left channel is the active channel |
 | `mergetesting_mic_only_ota` | P: 2026-06-26 | H: espota upload + PCM stream, 2026-06-26 |
 | `mergetesting_motor_only` | P: 2026-06-26 | H: LEDC fix, motion ack/completed + physical direction, 2026-06-26 |
 | `mergetesting_speaker_only` | P: 2026-06-29 build/tests pass | H/P: COM19 upload restored safe firmware; serial `sound wakeup_chime` logged `play_local done ... ok=true`, user confirmed sound |
@@ -74,6 +84,7 @@ pio run -e mergetesting
 | `mergetesting_speaker_altpins_phrase_only` | P: 2026-06-29 build ok diagnostic env; repo gain now 16 | H/P: COM19 upload ok; corrected-wiring serial `tts serial` completed embedded sentence PCM and released I2S without WDT |
 | `mergetesting_speaker_altpins_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env; repo gain now 16 | H/P: OTA upload to `192.168.137.200` ok; WebSocket `audio.play_tts` at gain 12 was audible as `I can speak now.` and emitted `audio.playback_done status=ok bytes_written=97520 duration_ms=1557`; gain 16 not audibly retested yet |
 | `mergetesting_speaker_drain_only_ota` | P: 2026-06-28 build ok diagnostic env | H/P: accepts TTS PCM without I2S playback and avoids reset; isolates remaining fault to PCM-to-I2S playback |
+| `mergetesting_audio_shared_i2s_diag` | P: 2026-06-29 build ok after fix; standalone half-duplex diag; BCLK=39 WS=40 MIC_SD=41 SPK_DIN=47; RX uses I2S0, TX uses I2S1; COM22 logs use UART0 Serial0 RX=44 TX=43; embedded phrase gain now 20; SPEAK mode emits a 1 kHz `OUTPUT_PROBE_AMPLITUDE=30000` tone before the phrase; camera/TFT/motor/WiFi/WebSocket disabled | H partial: old I2S0-TX build wrote `97520` bytes but sounded like low-frequency noise; I2S1-TX fixed audible sentence on earlier COM19/native-USB setup. COM22/CH340 app logs now visible and show `output_probe_tone done bytes_written=18688`, `gain=20`, `bytes_written=97520`, `playback_done ok`, repeated `listen_ok=true speak_ok=true`, and no WDT/reset, but user reports no sound on COM22 wiring. Firmware/app execution is no longer the leading suspect; next check MAX98357A module/output stage, speaker +/- output path, 5V/SD/GAIN state, mic quiet/clap contrast, and 3-minute stability |
 | `mergetesting_face240_only_ota` | P: 2026-06-26 | H: espota upload + expression path, 2026-06-26 |
 | `mergetesting_care_demo_face240` | P: 2026-06-27 Step 33 care demo | H: face240+motor+speaker+/control preflight, no cam/mic, 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | P: 2026-06-27 | P: build/upload path verified; current T18 H used USB |

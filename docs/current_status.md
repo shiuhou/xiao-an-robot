@@ -51,7 +51,7 @@ Evidence:
 2. Keep `audio.play_local care_01` as the reliable audible proof until real spoken TTS is implemented and verified.
 3. Investigate speaker PCM spoken playback with USB serial/backtrace before using it in a demo.
 4. Calibrate physical route timing on charged battery before chaining autonomous movement.
-5. Before changing ASR settings, listen to the raw mic WAV and check RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
+5. Current fixed-window ASR demo path: use `mergetesting_mic_only_shift18_asr`, export the latest `/audio` WAV, then run `base_station.monitor.asr_runtime --trim-speech` before SenseVoice. Keep checking RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
 6. Keep generated runtime files, logs, DBs, model binaries, `.pio/`, and local configs out of Git.
 
 ## Commands

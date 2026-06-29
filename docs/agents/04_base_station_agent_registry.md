@@ -22,6 +22,19 @@
 
 启动：`python -m base_station.ws_server.server`
 
+### Dashboard — `base_station/dashboard/`
+
+| 路径 | 状态 | 说明 |
+|------|------|------|
+| `dashboard_server.py` | P | 7-inch Dock dashboard stdlib HTTP server；`/dashboard`、`/api/dashboard/state`、`/api/dashboard/today` |
+| `static/dashboard.html/css/js` | P | 1024x600 kiosk UI；右侧显示系统健康、`Robot -> Base -> Agent -> Action` 链路、最近 3 条触发 |
+| `data/triggers.json` | mock | pipeline/trigger mock；无真实 event store 时不得报错 |
+| `data/today.json` | mock | 左侧今日日程/待办/闹钟 mock |
+
+启动：`python -m base_station.dashboard.dashboard_server`
+入口：`http://127.0.0.1:8088/dashboard`
+测试：`python -m unittest tests.unit.test_dashboard_server`
+
 ### Perception — `base_station/perception/`
 
 | 文件 | 状态 | 说明 |

@@ -27,13 +27,14 @@
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
 | 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过 |
-| INMP441 麦克风 | ✅ H / 诊断增强 | RMS 测试 + mergetesting WS PCM `/audio`; base station now exports raw PCM to WAV and records latest-window RMS/peak/DC/clipping stats before ASR tuning |
+| INMP441 麦克风 | ✅ H / 固定窗口 ASR 前端 | RMS 测试 + mergetesting WS PCM `/audio`; current ASR demo path uses `mergetesting_mic_only_shift18_asr` plus base-station `--trim-speech` before SenseVoice |
 | MAX98357A 喇叭 | ✅ H | 音调测试 + mergetesting lazy-I2S `/control` 本地音效 |
 | OTA bootstrap | ✅ H | `ota_bootstrap` USB 首刷 + `ota_bootstrap_wifi` 无线刷新 bootstrap |
 | 舵机 | ⬜ | `servo_ctrl` 全 stub |
 | OpenVINO 真实 NPU 联调 | 🟡 | 单测/mock 多，硬件帧待接 |
 | OpenClaw 完整 tools | 🟡 | OpenClaw `xiaoan-runtime` 负责工具选择；本地 tools 保留兼容测试 |
 | Frontend | ⬜ | 早期占位 |
+| Dock dashboard | P | `base_station/dashboard` 提供 1024x600 kiosk UI；`/api/dashboard/state` 返回 health + pipeline + 最近 3 条 triggers；无真实 trigger store 时读取 mock |
 
 ## Step 30.1 职责边界
 
@@ -64,6 +65,7 @@
 | 喇叭 lazy-I2S 2026-06-26 | `robot/mergetesting/src/speaker.cpp` | 本地音效仍是可靠发声路径；显式开启 PCM spoken TTS 时仍会在 PCM-to-I2S 播放阶段 WDT |
 | Speaker OTA/TTS guard 2026-06-28 | `base_station/ws_server/server.py`, `robot/mergetesting/src/speaker.cpp`, `robot/mergetesting/platformio.ini` | ESP32 OTA IP `192.168.137.147`，host `192.168.137.1`；默认 `audio.play_tts` 为 metadata-only/mock-tone 安全路径，PCM 串流需 `XIAOAN_CONTROL_TTS_STREAM=1` 诊断 |
 | Speaker PCM playback diagnostics 2026-06-29 | `robot/mergetesting/src/speaker.cpp`, `robot/mergetesting/src/embedded_tts_phrase.h`, `tests/unit/test_mergetesting_layering.py` | COM19 证实原 GPIO35/36/37 speaker 路径在 embedded PCM first write 后 `TG1WDT_SYS_RST`；GPIO39/40/41 speaker-only A/B 已通过串口本地音效、corrected-wiring embedded PCM、以及外部 5V/no-USB WebSocket `audio.play_tts`，用户听到完整 `I can speak now.`；`audio.playback_done status=ok bytes_written=97520 duration_ms=1557`。Repo gain 已调到 16，但未在课堂期间 OTA/发声复测。 |
+| Audio shared I2S half-duplex diagnostic 2026-06-29 | `robot/mergetesting/src/audio_shared_i2s_diag_main.cpp`, `robot/mergetesting/platformio.ini`, `tests/unit/test_mergetesting_layering.py` | `mergetesting_audio_shared_i2s_diag`：BCLK=39、WS=40、Mic SD=41、Speaker DIN=47；只跑半双工 LISTEN/SPEAK，不跑 Camera/TFT/Motor/WiFi/WebSocket；旧版 I2S0-TX 写满 PCM 但低频杂音；改为 mic RX=I2S0、speaker TX=I2S1 后早前 COM19/native-USB 听到完整句子；COM22 日志走 UART0 Serial0 RX=44 TX=43，已确认 app boot、1 kHz probe tone 写入 `bytes_written=18688`、phrase 写入 `bytes_written=97520`、`playback_done ok`、无 WDT/reset。若仍无声，firmware 执行不再是第一嫌疑，转查/替换 MAX98357A、喇叭输出端、SD/GAIN、5V 供电。 |
 | **仓库整理 2026-06-27** | `docs/agents/10_repo_map.md`, `.gitignore`, `docs/archive/` | 删 `.pio`/clangd cache；归档 OpenFace handoff；跟踪 `.agents/skills/`；刷新 file_inventory |
 | **OpenClaw 联调分析 2026-06-27** | `docs/agents/11_openclaw_robot_integration.md` | fusion 分支 care demo 与 mergetesting `/control` 协议一致；实机替换 mock_robot 即可 |
 | **文档结构整理 2026-06-28** | `README.md`, `docs/README.md`, `docs/current_status.md`, `docs/status/`, `docs/setup/`, `docs/testing/smoke/` | Root README 变为入口页；当前状态与历史快照分离；新 Agent 先读 `docs/current_status.md` |
@@ -72,6 +74,7 @@
 | **Git hygiene 盘点 2026-06-29** | `.gitignore`, `docs/runbooks/git_hygiene.md` | OpenFace IR 明确为 Git LFS 例外；`base_station/config.yaml` 已确认可公开并保留 tracked |
 | **代码结构 inventory 2026-06-29** | `docs/agents/13_code_structure_inventory.md`, `robot/firmware/src/archive/`, `docs/setup/m600_deployment.md` | 已建立结构整理批次清单；legacy `integrated_main.cpp` 移出 active src 根但保留 legacy env 编译；M600 部署笔记移入 `docs/setup/` |
 | **OpenFace runtime 标记 2026-06-29** | `base_station/perception/openface_ov_runtime/README.md`, `docs/agents/04_base_station_agent_registry.md` | `openface_ov_runtime/` 是 bundled vendored runtime，`ov_perceive.py` 依赖 runtime root / `Pytorch_Retinaface` / `STAR` 的 `sys.path` 插入；普通仓库整理不要移动 |
+| **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
 
 ## 硬件阻塞（剩余）
 

@@ -232,24 +232,44 @@ Expected serial behavior: the firmware prints calibration information and then R
 
 ## MAX98357A Speaker Amp
 
-Current test mapping:
+Current shared-clock diagnostic mapping:
 
 | MAX98357A signal | ESP32-S3 GPIO |
 | --- | ---: |
-| BCLK | GPIO35 |
-| LRC/WS | GPIO36 |
-| DIN | GPIO37 |
-| VIN | 5V or board-approved amp supply |
+| BCLK | GPIO39, shared with INMP441 SCK/BCLK |
+| LRC/WS | GPIO40, shared with INMP441 WS/LRCL |
+| DIN | GPIO47 |
+| VIN | 5V |
 | GND | GND |
 
-Test command:
+Do not use GPIO35/36/37 for MAX98357A on the current ESP32-S3 Octal PSRAM module. The 2026-06-29 speaker diagnostics showed that long embedded PCM playback on GPIO35/36/37 can reset at the first I2S write with `TG1WDT_SYS_RST`.
+
+Shared mic+speaker half-duplex diagnostic:
 
 ```powershell
-cd robot\firmware
-pio run -e speaker_amp_test
+cd robot\mergetesting
+pio run -e mergetesting_audio_shared_i2s_diag
+pio run -e mergetesting_audio_shared_i2s_diag -t upload --upload-port COM19
+pio device monitor -b 115200 --port COM19
 ```
 
-Keep volume and amplitude conservative during first power-on. Confirm amp power, speaker impedance, and heat before repeated tests.
+Expected serial behavior:
+
+```text
+[AudioDiag] mode=LISTEN start
+[AudioDiag] i2s_rx_init ok
+[AudioDiag] rms=... peak=... voice_detected=...
+[AudioDiag] i2s_rx_stop ok
+[AudioDiag] mode=SPEAK start
+[AudioDiag] i2s_tx_init ok
+[AudioDiag] output_probe_tone frequency_hz=1000 amplitude=30000 duration_ms=260
+[AudioDiag] output_probe_tone done bytes_written=...
+[AudioDiag] pcm_samples=... gain=...
+[AudioDiag] i2s_write return code=...
+[AudioDiag] bytes_written=...
+[AudioDiag] playback_done ok
+[AudioDiag] i2s_tx_stop ok
+```
 
 Speaker-only PSRAM-conflict diagnostic confirmed on 2026-06-29:
 
@@ -260,6 +280,10 @@ Speaker-only PSRAM-conflict diagnostic confirmed on 2026-06-29:
 | DIN | GPIO41 |
 
 Use only `robot/mergetesting` diagnostic envs `mergetesting_speaker_altpins_only` and `mergetesting_speaker_altpins_phrase_only` with camera/mic/motor disabled. OTA upload variants are `mergetesting_speaker_altpins_only_ota` and `mergetesting_speaker_altpins_phrase_only_ota`. GPIO39/40/41 are also the default INMP441 pins, so this is not a permanent combined mic+speaker map. The A/B test showed the original GPIO35/36/37 path resets at embedded PCM playback, while GPIO39/40/41 completes the same PCM path without WDT.
+
+The product-candidate shared-clock wiring keeps GPIO39/40 shared but separates data pins: INMP441 SD/DOUT on GPIO41, MAX98357A DIN on GPIO47. The diagnostic env `mergetesting_audio_shared_i2s_diag` intentionally disables camera, TFT, motor, WiFi/WebSocket app flow, and full-duplex audio. It runs `LISTEN_MODE -> STOP_LISTEN -> SPEAK_MODE -> STOP_SPEAK`, using I2S0 for mic RX and I2S1 for speaker TX, and uninstalls the active driver before switching modes. A 2026-06-29 COM19 run of the earlier I2S0-TX version wrote PCM successfully but produced low-frequency noise instead of speech; switching TX to I2S1 fixed the sentence audio. Current diagnostic phrase gain is 20, and SPEAK mode first emits a short full-scale-ish 1 kHz probe tone (`amplitude=30000`, `duration_ms=260`) before the embedded phrase so the hardware output path can be checked independently of phrase loudness.
+
+When using the CH340 adapter path (`COM22`), this diagnostic routes app logs to UART0 (`Serial0`, RX=GPIO44, TX=GPIO43) instead of native USB `Serial`. COM22 can now show `[AudioDiag]` app logs, successful probe-tone writes, and successful embedded-phrase I2S writes. If COM22 logs show `output_probe_tone done`, `playback_done ok`, and no sound, inspect the MAX98357A hardware side first: VIN 5V, common GND with ESP32, GAIN/SD state, speaker connected to amp `+/-` outputs, speaker impedance/power, or a damaged MAX98357A module.
 
 ## DK-2500 Setup
 

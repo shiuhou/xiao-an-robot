@@ -27,6 +27,7 @@
 | `mergetesting_speaker_altpins_phrase_only` | 关 | 关 | 关 | altpins + 内置句子 PCM；正确接线后 `tts serial` 完成 PCM 写入并释放 I2S，无 WDT；repo gain 已调到 16，待可发声时复测 | ✅ H/P 2026-06-29 |
 | `mergetesting_speaker_altpins_phrase_only_ota` | 关 | 关 | 关 | GPIO39/40/41 altpins + 内置句子 PCM OTA target；外部 5V/no-USB 下 `audio.play_tts` 已听到 `I can speak now.`，`audio.playback_done` 正常；repo gain 已调到 16 但未上板复测 | ✅ H/P 2026-06-29 |
 | `mergetesting_speaker_drain_only_ota` | 关 | 关 | 关 | speaker PCM drain-only 诊断，跳过 I2S 播放 | ✅ P/H 2026-06-28 |
+| `mergetesting_audio_shared_i2s_diag` | 关 | 关 | 关 | 独立 USB Serial 半双工音频共存诊断；BCLK=39、WS=40、Mic SD=41、Speaker DIN=47；RX=I2S0、TX=I2S1；COM22 日志走 UART0 Serial0 RX=44 TX=43；SPEAK 先写 1 kHz probe tone，再写 embedded phrase gain=20；不跑主 app/WiFi/WS，不用 GPIO35/36/37 | ✅ P / H partial: COM19/native-USB 曾能出句子；COM22 app/I2S/probe 日志正常：probe `bytes_written=18688`、phrase `bytes_written=97520`、`playback_done ok`、无 WDT/reset；若仍无声，硬件音频输出侧待查 2026-06-29 |
 | `mergetesting_full_face240` | ST7789 | 开 | 开 | face240 + 全子系统合并 | ✅ H 2026-06-27 |
 | `mergetesting_full_face240_ota` | ST7789 | 开 | 开 | 上述合并 OTA | ✅ P/H smoke；当前 full H 用 USB |
 | `mergetesting_base64_video` | 开 | 开 | 关 | video base64 fallback | — |

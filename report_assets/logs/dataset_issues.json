@@ -1,0 +1,256 @@
+{
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "image_id_file_path_mismatch",
+      "file": "labels/images_labels.csv",
+      "row": 23,
+      "field": "image_id/file_path",
+      "value": "s01_normal_focus_normal_front_0002 != s01_normal_foucus_normal_front_0002",
+      "message": "image_id does not match file_path basename."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "labels/images_labels.csv",
+      "row": 23,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_focus_normal_front_0002 | raw/images/s01_normal_foucus_normal_front_0002.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "image_id_file_path_mismatch",
+      "file": "labels/images_labels.csv",
+      "row": 24,
+      "field": "image_id/file_path",
+      "value": "s01_normal_focus_normal_front_0003 != s01_normal_foucus_normal_front_0003",
+      "message": "image_id does not match file_path basename."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "labels/images_labels.csv",
+      "row": 24,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_focus_normal_front_0003 | raw/images/s01_normal_foucus_normal_front_0003.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "image_id_file_path_mismatch",
+      "file": "labels/images_labels.csv",
+      "row": 26,
+      "field": "image_id/file_path",
+      "value": "s01_normal_focus_normal_side_0005 != s01_normal_foucus_normal_side_0005",
+      "message": "image_id does not match file_path basename."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "labels/images_labels.csv",
+      "row": 26,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_focus_normal_side_0005 | raw/images/s01_normal_foucus_normal_side_0005.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "image_id_file_path_mismatch",
+      "file": "labels/images_labels.csv",
+      "row": 27,
+      "field": "image_id/file_path",
+      "value": "s01_normal_focus_normal_side_0006 != s01_normal_foucus_normal_side_0006",
+      "message": "image_id does not match file_path basename."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "labels/images_labels.csv",
+      "row": 27,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_focus_normal_side_0006 | raw/images/s01_normal_foucus_normal_side_0006.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "image_id_file_path_mismatch",
+      "file": "labels/images_labels.csv",
+      "row": 28,
+      "field": "image_id/file_path",
+      "value": "s01_normal_focus_normal_side_0007 != s01_normal_foucus_normal_side_0007",
+      "message": "image_id does not match file_path basename."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "labels/images_labels.csv",
+      "row": 28,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_focus_normal_side_0007 | raw/images/s01_normal_foucus_normal_side_0007.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "info",
+      "code": "roi_not_applicable",
+      "file": "labels/vlm_eval_labels.csv",
+      "row": 6,
+      "field": "roi_path",
+      "value": "N/A",
+      "message": "ROI is not applicable for no_face eval rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 6,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_lowlight_lowlight_front_0002.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 18,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_no_face_normal_none_0001.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 19,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_no_face_normal_none_0002.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 20,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_no_face_normal_none_0003.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 21,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_no_face_normal_none_0004.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 24,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_foucus_normal_front_0002 | raw/images/s01_normal_foucus_normal_front_0002.jpg | processed/face_roi/s01_normal_foucus_normal_front_0002.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 25,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_foucus_normal_front_0003 | raw/images/s01_normal_foucus_normal_front_0003.jpg | processed/face_roi/s01_normal_foucus_normal_front_0003.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 26,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_foucus_normal_side_0005 | raw/images/s01_normal_foucus_normal_side_0005.jpg | processed/face_roi/s01_normal_foucus_normal_side_0005.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 27,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_normal_foucus_normal_side_0006.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 27,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_foucus_normal_side_0006 | raw/images/s01_normal_foucus_normal_side_0006.jpg | processed/face_roi/s01_normal_foucus_normal_side_0006.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 28,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_normal_foucus_normal_side_0007.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "focus_foucus_inconsistency",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 28,
+      "field": "image_id/file_path/roi_path",
+      "value": "s01_normal_foucus_normal_side_0007 | raw/images/s01_normal_foucus_normal_side_0007.jpg | processed/face_roi/s01_normal_foucus_normal_side_0007.jpg",
+      "message": "Found foucus/focus naming inconsistency."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 32,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_normal_smile_normal_side_0004.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 34,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_occlusion_normal_front_0002.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 35,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_occlusion_normal_front_0003.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 36,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_occlusion_normal_front_0004.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    },
+    {
+      "severity": "warning",
+      "code": "skipped_roi_missing_path",
+      "file": "processed/face_roi/face_roi_manifest.csv",
+      "row": 40,
+      "field": "roi_path",
+      "value": "processed/face_roi/s01_severe_sleepy_normal_side_0002.jpg",
+      "message": "ROI manifest status=skipped has no usable roi_path; this is expected for skipped rows."
+    }
+  ]
+}

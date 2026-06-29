@@ -170,6 +170,62 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(event["payload"]["audio"]["channels"], 1)
         self.assertEqual(prepared["audio"]["duration_ms"], 1000)
 
+    async def test_audio_file_can_trim_speech_before_asr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "window.wav"
+            trimmed = Path(temp_dir) / "window.speech.wav"
+            frames = bytearray()
+            for _ in range(16000):
+                frames.extend(struct.pack("<h", 0))
+            for index in range(8000):
+                value = int(10000 * math.sin(2 * math.pi * 440 * index / 16000))
+                frames.extend(struct.pack("<h", value))
+            for _ in range(16000):
+                frames.extend(struct.pack("<h", 0))
+            with wave.open(str(source), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(bytes(frames))
+
+            event, prepared = build_audio_file_event(
+                audio_path=str(source),
+                vad_backend="fake",
+                vad_pattern="speech",
+                asr_backend="fake",
+                fake_transcript="帮我记一下，星期三下午有个会议",
+                trim_speech=True,
+                speech_trim_path=str(trimmed),
+                speech_trim_threshold=0.02,
+                speech_trim_padding_ms=100,
+            )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(event["payload"]["text"], "帮我记一下，星期三下午有个会议")
+        self.assertEqual(prepared["audio"]["audio_path"], str(trimmed))
+        self.assertEqual(prepared["audio"]["original_audio_path"], str(source))
+        self.assertTrue(prepared["audio"]["speech_trim"]["speech_detected"])
+        self.assertLess(prepared["audio"]["duration_ms"], 1000)
+        self.assertGreater(prepared["audio"]["duration_ms"], 500)
+
+    async def test_audio_file_trim_speech_uses_default_trim_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "window.wav"
+            write_wav(source)
+
+            event, prepared = build_audio_file_event(
+                audio_path=str(source),
+                vad_backend="fake",
+                vad_pattern="speech",
+                asr_backend="fake",
+                fake_transcript="小安小安",
+                trim_speech=True,
+                speech_trim_threshold=0.02,
+            )
+
+        self.assertIsNotNone(event)
+        self.assertEqual(prepared["audio"]["audio_path"], str(Path(temp_dir) / "window.speech.wav"))
+
     async def test_audio_file_fake_vad_silence_skips_asr(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             audio_path = Path(temp_dir) / "silence.wav"

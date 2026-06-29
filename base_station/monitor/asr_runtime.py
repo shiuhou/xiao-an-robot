@@ -6,10 +6,12 @@ import argparse
 import asyncio
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from agent.core.brain import XiaoAnBrain
 from base_station.perception.asr import FakeASRBackend, PATTERN_TRANSCRIPTS, SenseVoiceASRBackend
+from base_station.perception.audio_segments import trim_wav_to_speech
 from base_station.perception.audio_source import load_wav_audio_file
 from base_station.perception.vad import EnergyVADBackend, FakeVADBackend, SileroVADBackend
 
@@ -36,13 +38,18 @@ def resolve_transcript(text: str | None = None, pattern: str | None = None) -> s
 def audio_metadata(audio_clip: dict | None) -> dict | None:
     if not audio_clip:
         return None
-    return {
+    metadata = {
         "source": audio_clip.get("source"),
         "audio_path": audio_clip.get("audio_path"),
         "sample_rate": audio_clip.get("sample_rate"),
         "duration_ms": audio_clip.get("duration_ms"),
         "channels": audio_clip.get("channels"),
     }
+    if audio_clip.get("original_audio_path") is not None:
+        metadata["original_audio_path"] = audio_clip.get("original_audio_path")
+    if audio_clip.get("speech_trim") is not None:
+        metadata["speech_trim"] = audio_clip.get("speech_trim")
+    return metadata
 
 
 def build_asr_event(
@@ -147,8 +154,41 @@ def build_audio_file_event(
     pattern: str | None = None,
     asr_model_path: str | None = None,
     device: str = "cpu",
+    trim_speech: bool = False,
+    speech_trim_path: str | None = None,
+    speech_trim_threshold: float = 0.01,
+    speech_trim_frame_ms: int = 20,
+    speech_trim_padding_ms: int = 200,
 ) -> tuple[dict | None, dict]:
+    original_audio_path = audio_path
+    speech_trim = None
+    if trim_speech:
+        trim_target = speech_trim_path or _default_speech_trim_path(audio_path)
+        speech_trim = trim_wav_to_speech(
+            audio_path,
+            trim_target,
+            threshold=speech_trim_threshold,
+            frame_ms=speech_trim_frame_ms,
+            padding_ms=speech_trim_padding_ms,
+        )
+        if not speech_trim.get("speech_detected", False):
+            audio_clip = load_wav_audio_file(audio_path)
+            audio_clip["speech_trim"] = speech_trim
+            audio = audio_metadata(audio_clip)
+            vad = {
+                "speech_detected": False,
+                "confidence": 0.0,
+                "start_ms": None,
+                "end_ms": None,
+                "reason": "speech_trim_no_speech",
+            }
+            return None, build_no_speech_output(vad=vad, audio=audio)
+        audio_path = str(trim_target)
+
     audio_clip = load_wav_audio_file(audio_path)
+    if speech_trim is not None:
+        audio_clip["original_audio_path"] = original_audio_path
+        audio_clip["speech_trim"] = speech_trim
     audio = audio_metadata(audio_clip)
     vad = create_vad_backend(
         vad_backend,
@@ -187,6 +227,11 @@ def build_audio_file_event(
     return event, {"text": text, "vad": vad, "asr": asr, "audio": audio}
 
 
+def _default_speech_trim_path(audio_path: str) -> str:
+    path = Path(audio_path)
+    return str(path.with_name(f"{path.stem}.speech{path.suffix}"))
+
+
 async def run_once(
     text: str | None = None,
     pattern: str | None = None,
@@ -203,6 +248,11 @@ async def run_once(
     no_agent: bool = False,
     gateway_url: str = "ws://127.0.0.1:8765/agent",
     brain: Any | None = None,
+    trim_speech: bool = False,
+    speech_trim_path: str | None = None,
+    speech_trim_threshold: float = 0.01,
+    speech_trim_frame_ms: int = 20,
+    speech_trim_padding_ms: int = 200,
 ) -> dict:
     selected_source = source
     if selected_source is None:
@@ -222,6 +272,11 @@ async def run_once(
             pattern=pattern,
             asr_model_path=asr_model_path,
             device=device,
+            trim_speech=trim_speech,
+            speech_trim_path=speech_trim_path,
+            speech_trim_threshold=speech_trim_threshold,
+            speech_trim_frame_ms=speech_trim_frame_ms,
+            speech_trim_padding_ms=speech_trim_padding_ms,
         )
         if event is None:
             return prepared
@@ -270,6 +325,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--fake-transcript", default=None, help="Transcript returned by fake ASR for audio_file.")
     parser.add_argument("--asr-model-path", default=None, help="Local SenseVoice model directory.")
     parser.add_argument("--device", default="cpu", help="ASR/VAD device for future real backends.")
+    parser.add_argument("--trim-speech", action="store_true", help="Trim leading/trailing non-speech before ASR.")
+    parser.add_argument("--speech-trim-path", default=None, help="Optional output WAV path for --trim-speech.")
+    parser.add_argument("--speech-trim-threshold", type=float, default=0.01, help="Energy threshold for --trim-speech.")
+    parser.add_argument("--speech-trim-frame-ms", type=int, default=20, help="Frame size for --trim-speech.")
+    parser.add_argument("--speech-trim-padding-ms", type=int, default=200, help="Padding kept around detected speech.")
     parser.add_argument("--no-agent", action="store_true", help="Build ASR output without initializing XiaoAnBrain.")
     parser.add_argument("--gateway-url", default="ws://127.0.0.1:8765/agent", help="Base station /agent URL.")
     parser.add_argument("--verbose", action="store_true", help="Print JSON result.")
@@ -294,6 +354,11 @@ async def main(args: argparse.Namespace | None = None) -> dict:
         device=args.device,
         no_agent=args.no_agent,
         gateway_url=args.gateway_url,
+        trim_speech=args.trim_speech,
+        speech_trim_path=args.speech_trim_path,
+        speech_trim_threshold=args.speech_trim_threshold,
+        speech_trim_frame_ms=args.speech_trim_frame_ms,
+        speech_trim_padding_ms=args.speech_trim_padding_ms,
     )
     if args.verbose:
         print(json.dumps(output, ensure_ascii=False, indent=2))

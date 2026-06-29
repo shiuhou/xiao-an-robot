@@ -130,7 +130,7 @@ Mergetesting 工程内文档：
 - `robot/mergetesting/MAIN_DEMO.md`
 - `robot/mergetesting/CAPABILITIES.md`
 - `robot/mergetesting/EXTRACTION_MAP.md`
-- `robot/mergetesting/m600.md` — M600 mini PC 部署（未进 registry，按需读）
+- `docs/setup/m600_deployment.md` — M600 mini PC base-station 部署（按需读）
 
 ---
 
@@ -193,6 +193,7 @@ Mergetesting 工程内文档：
 - smoke 文档 → `docs/testing/smoke/`
 - perception 文档 → `docs/perception/`
 - troubleshooting → `docs/runbooks/troubleshooting.md`
+- M600 部署笔记 → `docs/setup/m600_deployment.md`
 
 ## 8. 2026-06-27 仓库整理记录
 

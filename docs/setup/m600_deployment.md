@@ -1,4 +1,4 @@
-# BASE_STATION_PLAN.md
+# M600 Base Station Deployment Note
 
 ## Purpose
 
@@ -77,7 +77,7 @@ Before modifying anything, read these files and folders first:
 ```text
 README.md
 AGENTS.md
-docs/project_status_2026-06-22.md
+docs/status/2026-06-22.md
 docs/protocol.md
 base_station/
 agent/

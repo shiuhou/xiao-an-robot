@@ -63,7 +63,7 @@ Do not move these modules while the speaker pin map is still under active hardwa
 | Candidate | Reason | Action |
 |-----------|--------|--------|
 | speaker phrase/altpins/drain envs | Diagnostic envs are valuable but numerous | Keep, mark as diagnostic in registry and test matrix |
-| `m600.md` | Machine-specific deployment note | Later move to `docs/setup/` after verifying it is still current |
+| `docs/setup/m600_deployment.md` | Machine-specific deployment note | Moved out of `robot/mergetesting` on 2026-06-29 |
 | `CAPABILITIES.md`, `EXTRACTION_MAP.md`, `MAIN_DEMO.md` | Current local docs | Keep beside firmware project |
 
 ## Base Station And Agent
@@ -102,7 +102,7 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | Batch | Scope | Risk | Verification |
 |-------|-------|------|--------------|
 | C1 | Move `robot/firmware/src/integrated_main.cpp` to `robot/firmware/src/archive/` and update docs/env | Done 2026-06-29 | `python -m unittest tests.unit.test_firmware_ota_bootstrap tests.unit.test_mergetesting_layering -v`; optional legacy env build |
-| C2 | Move `robot/mergetesting/m600.md` to `docs/setup/m600_deployment.md` if still current | Low | Link/rg check |
+| C2 | Move `robot/mergetesting/m600.md` to `docs/setup/m600_deployment.md` if still current | Done 2026-06-29 | Link/rg check |
 | C3 | Add deprecation headers to screen monitoring files | Low | API/router/unit tests |
 | C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
 | C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Medium/high | OpenFace/OpenVINO tests and live route smoke |

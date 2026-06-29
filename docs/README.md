@@ -58,3 +58,4 @@ For the latest full hardware/OpenClaw status, start from [current_status.md](cur
 | [../tools/README.md](../tools/README.md) | Operation, probe, setup, maintenance, and legacy tool grouping. |
 | [../scripts/README.md](../scripts/README.md) | Setup/start/debug script grouping. |
 | [runbooks/git_hygiene.md](runbooks/git_hygiene.md) | Git cleanup audit commands and keep/untrack guidance. |
+| [setup/m600_deployment.md](setup/m600_deployment.md) | Morefine M600 base-station bring-up note. |

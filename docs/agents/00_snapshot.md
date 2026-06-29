@@ -71,6 +71,7 @@
 | **运行目录入口 2026-06-29** | `base_station/README.md`, `agent/README.md`, `tools/README.md`, `scripts/README.md` | Base station、local Agent、tools、scripts 均有入口说明；先标注用途和 legacy/diagnostic 边界，不移动文件 |
 | **Git hygiene 盘点 2026-06-29** | `.gitignore`, `docs/runbooks/git_hygiene.md` | OpenFace IR 明确为 Git LFS 例外；`base_station/config.yaml` 已确认可公开并保留 tracked |
 | **代码结构 inventory 2026-06-29** | `docs/agents/13_code_structure_inventory.md`, `robot/firmware/src/archive/`, `docs/setup/m600_deployment.md` | 已建立结构整理批次清单；legacy `integrated_main.cpp` 移出 active src 根但保留 legacy env 编译；M600 部署笔记移入 `docs/setup/` |
+| **OpenFace runtime 标记 2026-06-29** | `base_station/perception/openface_ov_runtime/README.md`, `docs/agents/04_base_station_agent_registry.md` | `openface_ov_runtime/` 是 bundled vendored runtime，`ov_perceive.py` 依赖 runtime root / `Pytorch_Retinaface` / `STAR` 的 `sys.path` 插入；普通仓库整理不要移动 |
 
 ## 硬件阻塞（剩余）
 

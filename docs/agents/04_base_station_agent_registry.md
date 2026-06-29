@@ -32,6 +32,7 @@
 | `fake_camera.py` / `fake_face_emotion.py` | 🧪 | mock |
 | `asr.py` / `vad.py` | 🟡 | ASR/VAD 接口 |
 | `qwen_vl_*` / `openvino_qwen_*` | 🟡 | VLM 路径 staged |
+| `openface_ov_runtime/` | 🟡 | bundled vendored OpenFace/OpenVINO runtime；import path fragile，普通整理不要移动 |
 | `tts.py` | 🟡 | TTS 占位 |
 
 ### Monitor — `base_station/monitor/`

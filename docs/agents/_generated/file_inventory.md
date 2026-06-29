@@ -15,11 +15,11 @@ a400f71 Add TTS audio streaming diagnostics path
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                 |  1 +
- docs/agents/05_test_matrix.md              |  1 +
- docs/agents/10_repo_map.md                 | 21 ++++++++++++++++++---
- docs/agents/13_code_structure_inventory.md |  2 +-
- 4 files changed, 21 insertions(+), 4 deletions(-)
+base_station/README.md                        | 4 ++--
+ docs/agents/00_snapshot.md                    | 1 +
+ docs/agents/04_base_station_agent_registry.md | 1 +
+ docs/agents/13_code_structure_inventory.md    | 4 ++--
+ 4 files changed, 6 insertions(+), 4 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

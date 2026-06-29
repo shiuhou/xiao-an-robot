@@ -74,7 +74,7 @@ Do not move these modules while the speaker pin map is still under active hardwa
 |------|--------|
 | `base_station/ws_server/` | Current `/control` `/video` `/audio` `/agent` runtime |
 | `base_station/perception/audio_diagnostics.py` | Current mic bring-up and regression diagnostics |
-| `base_station/perception/openface_ov_runtime/` | Vendored/runtime code with fragile import paths |
+| `base_station/perception/openface_ov_runtime/` | Bundled vendored runtime with fragile import paths; keep in place |
 | `agent/core/*openclaw*` | OpenClaw bridge surface |
 
 ### Label, Do Not Delete Yet
@@ -105,7 +105,7 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C2 | Move `robot/mergetesting/m600.md` to `docs/setup/m600_deployment.md` if still current | Done 2026-06-29 | Link/rg check |
 | C3 | Add deprecation headers to screen monitoring files | Already satisfied | Existing docstrings checked 2026-06-29 |
 | C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
-| C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Medium/high | OpenFace/OpenVINO tests and live route smoke |
+| C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Labeled 2026-06-29; moving remains medium/high risk | OpenFace/OpenVINO tests and live route smoke |
 
 ## Current Decision
 

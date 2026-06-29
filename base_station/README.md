@@ -9,7 +9,7 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 | Path | Role |
 | --- | --- |
 | `ws_server/` | Main robot transport: `/control`, `/video`, `/audio`, `/agent`. |
-| `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. |
+| `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. `openface_ov_runtime/` is bundled vendored runtime; do not move it during ordinary cleanup. |
 | `monitor/` | Emotion runtime, event loop, context builder, SQLite local event store. |
 | `api/` | Local debug API for frontend/runtime inspection; not the main product API. |
 | `models/` | Local model placement area; large models should not be committed. |
@@ -39,7 +39,7 @@ Expected robot behavior:
 - `robot/mergetesting/src/protocol.h`
 - `base_station/ws_server/protocol.py`
 
-`perception/` contains model/runtime code. Keep raw camera/audio local unless a user explicitly approves another path.
+`perception/` contains model/runtime code. Keep raw camera/audio local unless a user explicitly approves another path. Treat `perception/openface_ov_runtime/` as vendored runtime with fragile import paths.
 
 `monitor/` and SQLite are a Local Event Store, not the user's long-term memory source. OpenClaw owns long-term memory, reminders, tasks, and natural-language interaction.
 

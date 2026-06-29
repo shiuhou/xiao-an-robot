@@ -3,7 +3,7 @@
 > **Status**: current DK2500/OpenClaw integration protocol for the Xiao-An robot.
 > `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28 hardware or hardware/software verification records.
 > **Last verified**: 2026-06-28.
-> **Evidence**: `docs/project_status_2026-06-26.md`, `docs/project_status_2026-06-27.md`, `docs/project_status_2026-06-28.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
+> **Evidence**: `docs/status/2026-06-26.md`, `docs/status/2026-06-27.md`, `docs/status/2026-06-28.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
 
 ## Current Implementation Status (2026-06-28)
 

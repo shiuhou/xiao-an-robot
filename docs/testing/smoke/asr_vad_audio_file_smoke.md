@@ -8,6 +8,40 @@ audio_file or fake input -> VAD -> ASR -> asr.transcript -> XiaoAnBrain/OpenClaw
 
 This step does not use a real microphone, ESP32, firmware flashing, real camera, real TTS hardware, or screen monitoring.
 
+## Raw Mic WAV First
+
+Do not debug ASR before the raw INMP441 recording is listenable. For real
+hardware, start the base station, flash/use `mergetesting_mic_only`, then record
+the `/audio` PCM that the server writes to `runtime/latest_audio.pcm`.
+
+Recommended capture set:
+
+```text
+1. quiet room, no speech, 5 seconds
+2. normal speech at 20 cm, 10 seconds
+3. normal speech at 50 cm, 10 seconds
+4. speak while the robot speaker is playing, 10 seconds
+```
+
+Convert the latest bounded PCM window to WAV and write a JSON report:
+
+```powershell
+python -m base_station.perception.audio_diagnostics runtime\latest_audio.pcm --wav-out runtime\manual_samples\mic_20cm.wav --report-out runtime\manual_samples\mic_20cm_stats.json
+```
+
+Default format assumptions are `pcm_s16le`, 16000 Hz, mono. The report includes
+RMS dBFS, peak dBFS, clipping percentage, DC offset, sample count, and duration.
+The WebSocket server also mirrors these fields under
+`runtime/audio_stats.json` as `latest_window`.
+
+Treat the result as the layer split:
+
+- 20 cm WAV clear but ASR bad: investigate ASR, language, VAD segmentation, or preprocessing.
+- 20 cm WAV noisy, distorted, tiny, or wrong speed: investigate I2S format, INMP441 shift, sample rate, channel, byte order, power, wiring, or acoustics.
+- Quiet-room RMS high: investigate noise, power, or gain.
+- Speech peak stuck near 0 dBFS or `clipping_percent` above 0: reduce gain or revisit the 32-bit to 16-bit shift.
+- Speaker playback breaks recognition: use half-duplex first; pause mic/ASR while robot audio is playing before attempting AEC.
+
 ## Current Boundary
 
 - `audio_file` reads a local PCM WAV file.
@@ -143,6 +177,6 @@ curl "http://127.0.0.1:8787/api/status"
 - `mock_robot offline`: tool runs may fail or no robot action will be acknowledged.
 
 For the real Silero + real SenseVoice audio-file smoke, see
-`docs/silero_vad_audio_file_smoke.md`.
+`docs/testing/smoke/silero_vad_audio_file_smoke.md`.
 
 Do not commit `runtime/manual_samples` audio, model files, databases, logs, `.venv`, `frontend/dist`, or `node_modules`.

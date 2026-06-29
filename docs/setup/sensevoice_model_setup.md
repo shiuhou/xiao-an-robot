@@ -141,7 +141,7 @@ Step 43.1 does not require real Silero. Step 43.2 wires real Silero for local
 WAV smoke through the `silero-vad` pip package and `load_silero_vad`; no
 separate Silero model file is required for that route.
 
-See `docs/silero_vad_audio_file_smoke.md`.
+See `docs/testing/smoke/silero_vad_audio_file_smoke.md`.
 
 ## Common Errors
 

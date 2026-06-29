@@ -8,6 +8,12 @@
 ESP32-S3 → WebSocket(/control,/video,/audio) → DK-2500 → JSON 指令 → 表情/电机/喇叭
 ```
 
+## 当前主 Demo
+
+当前 DK-2500/OpenClaw 主 demo 入口见 [MAIN_DEMO.md](./MAIN_DEMO.md)。
+
+`README.md` 保留工程结构与阶段说明；`MAIN_DEMO.md` 保留当前可执行 demo env、烧录命令、direct smoke、预期日志和停止条件。
+
 ## 快速开始
 
 1. 复制本地配置模板并填写 WiFi / M600 IP（`config.local.h` 已被 `.gitignore` 忽略）：

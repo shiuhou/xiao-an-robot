@@ -7,7 +7,7 @@
 | env | DISPLAY | CAMERA | MIC | 用途 | H |
 |-----|---------|--------|-----|------|---|
 | `mergetesting` | ST7735 | 开 | 关 | 默认合并 baseline | — |
-| `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1–2 `/control` | ✅ 2026-06-26 |
+| `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1-2 `/control` | ✅ 2026-06-26 |
 | `mergetesting_display_only_ota` | ST7735 | 关 | 关 | Phase 1-2 OTA upload | ✅ 2026-06-26 |
 | `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control` | ✅ 2026-06-26 |
 | `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
@@ -19,8 +19,14 @@
 | `mergetesting_mic_only_ota` | 关 | 关 | 开 | mic OTA + PCM stream | ✅ 2026-06-26 |
 | `mergetesting_motor_only` | 关 | 关 | 关 | motion 隔离 | ✅ 2026-06-26 |
 | `mergetesting_motor_only_ota` | 关 | 关 | 关 | motor OTA | ✅ P |
-| `mergetesting_speaker_only` | 关 | 关 | 关 | speaker 隔离 | ✅ 2026-06-26 |
-| `mergetesting_speaker_only_ota` | 关 | 关 | 关 | speaker OTA（hotspot 需 `--host_ip`） | ✅ 2026-06-26 |
+| `mergetesting_speaker_only` | 关 | 关 | 关 | speaker 隔离；COM19 安全本地音效已确认，spoken PCM TTS 仍为诊断路径 | ✅ 2026-06-29 |
+| `mergetesting_speaker_only_ota` | 关 | 关 | 关 | speaker OTA；host `192.168.137.1`，最新 robot IP `192.168.137.200` | ✅ 2026-06-29 |
+| `mergetesting_speaker_phrase_only_ota` | 关 | 关 | 关 | 内置句子 PCM 诊断；COM19 证实 first PCM write 后 WDT；已准备 leading-silence trim，等待发声复测 | ⚠️ 2026-06-29 |
+| `mergetesting_speaker_altpins_only` | 关 | 关 | 关 | speaker-only A/B 诊断；MAX98357A 临时 BCLK/LRC/DIN=GPIO39/40/41；串口本地音效无 WDT | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_altpins_only_ota` | 关 | 关 | 关 | GPIO39/40/41 speaker-only OTA target；外部 5V/no-USB 下 WebSocket 本地音效用户确认有声；已用于恢复安全固件 | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_altpins_phrase_only` | 关 | 关 | 关 | altpins + 内置句子 PCM；正确接线后 `tts serial` 完成 PCM 写入并释放 I2S，无 WDT；等待用户听感确认 | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_altpins_phrase_only_ota` | 关 | 关 | 关 | GPIO39/40/41 altpins + 内置句子 PCM OTA target；外部 5V/no-USB 下 OTA 与 `audio.play_tts` 转发通过，听感待确认 | ✅ H/P 2026-06-29 |
+| `mergetesting_speaker_drain_only_ota` | 关 | 关 | 关 | speaker PCM drain-only 诊断，跳过 I2S 播放 | ✅ P/H 2026-06-28 |
 | `mergetesting_full_face240` | ST7789 | 开 | 开 | face240 + 全子系统合并 | ✅ H 2026-06-27 |
 | `mergetesting_full_face240_ota` | ST7789 | 开 | 开 | 上述合并 OTA | ✅ P/H smoke；当前 full H 用 USB |
 | `mergetesting_base64_video` | 开 | 开 | 关 | video base64 fallback | — |
@@ -30,7 +36,7 @@
 | `mergetesting_control_only` | 关 | 关 | 关 | motor+speaker+control（无 display/cam/mic） | ✅ P |
 | `mergetesting_control_only_ota` | 关 | 关 | 关 | control-only OTA | ✅ P |
 
-编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/project_status_2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07–T17 全部 PASS_H）。`mergetesting_full_face240` 已在 2026-06-27 通过 full env `/control` motor、face240、speaker、`/video`、`/audio` 硬件 smoke。
+编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/status/2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07-T17 全部 PASS_H）。`mergetesting_full_face240` 已在 2026-06-27 通过 full env `/control` motor、face240、speaker、`/video`、`/audio` 硬件 smoke。
 
 ## 源文件注册表
 
@@ -51,19 +57,20 @@
 | `motor_ctrl.cpp/h` | firmware | ✅ | non-blocking motion；bench/manual 可用 timeout/duration 跑开环 |
 | `cam_stream.cpp/h` | firmware + WS | ✅ | 1fps → meta + binary/base64 |
 | `camera_ov2640_config.h` | 引脚常量 | ✅ | GOOUUU S3-CAM v1.5 |
-| `speaker.cpp/h` | `speaker_amp_test.cpp` | ✅ | care_01/alarm_01/wake_01 |
-| `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ | PCM chunk → `/audio` |
+| `speaker.cpp/h` | `speaker_amp_test.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
+| `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
 | `debug_log.h` | 新建 | ✅ | LOGI/LOGE 宏 |
 
 ## `MergetestingApp` loop 顺序
 
 1. `maintainWiFi()`
 2. `wsClient.loop()` — heartbeat 2s
-3. `_motion.loop()` — non-blocking motion completion
-4. `display_tick()` — face240 动画帧
-5. `pollSerialMockAsr()` — mock/expr/motion/sound
-6. `mic.streamLoop()` — 若启用
-7. `cam.captureLoop()` — 若 control 已连接
+3. `_router.loop()` — deferred `/control` work such as pending PCM stream starts
+4. `_motion.loop()` — non-blocking motion completion
+5. `display_tick()` — face240 动画帧
+6. `pollSerialMockAsr()` — mock/expr/motion/sound/tts
+7. `mic.streamLoop()` — 若启用
+8. `cam.captureLoop()` — 若 control 已连接
 
 ## 串口本地测试（无基站）
 
@@ -71,6 +78,7 @@
 expr caring
 motion move_out_of_dock
 sound care_01
+tts serial
 mock:帮我定闹钟
 ```
 

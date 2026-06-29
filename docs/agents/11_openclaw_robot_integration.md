@@ -86,8 +86,8 @@ python -m base_station.monitor.emotion_runtime `
 | 文档 | 分支 | 用途 |
 |------|------|------|
 | `docs/active_emotion_care_demo.md` | fusion | Step 33 软件 mock 全流程 |
-| `docs/openclaw_ownership_boundary.md` | fusion | OpenClaw vs 本仓库职责 |
-| `docs/dk2500_software_runtime_smoke.md` | fusion | 无硬件 smoke |
+| `docs/openclaw/openclaw_ownership_boundary.md` | fusion | OpenClaw vs 本仓库职责 |
+| `docs/testing/smoke/dk2500_software_runtime_smoke.md` | fusion | 无硬件 smoke |
 | 本文 | mergetestint_robot | **mock → 实机** 衔接 |
 
 ## Pull / Merge 建议
@@ -107,5 +107,5 @@ python -m unittest discover -s tests -p "test_*.py"
 - [x] merge fusion 分支到 mergetestint_robot
 - [ ] Step 33 mock 在你机器上 PASS
 - [ ] Step 33 **实机** tired demo（display + motor + TTS mock；T18 preflight H，Gateway `:18789` 待跑）
-- [ ] Step 38 真实摄像头 + 实机（见 fusion `docs/real_camera_emotion_smoke.md`）
+- [ ] Step 38 真实摄像头 + 实机（见 fusion `docs/testing/smoke/real_camera_emotion_smoke.md`）
 - [x] `mergetesting_full_face240` 合并 env 实机 H（T17，2026-06-27）

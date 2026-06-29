@@ -170,6 +170,16 @@ Env: `voice_recognition_test` (electrical / RMS test, not real ASR).
 
 Env: `speaker_amp_test`.
 
+Temporary speaker-only diagnostic for ESP32-S3 Octal PSRAM pin conflict confirmed on 2026-06-29:
+
+| MAX98357A pin | Temporary connect to |
+| --- | --- |
+| BCLK | GPIO39 |
+| LRC / WS | GPIO40 |
+| DIN | GPIO41 |
+
+Use `mergetesting_speaker_altpins_only` first, then `mergetesting_speaker_altpins_phrase_only` for the embedded-sentence retest. OTA variants are `mergetesting_speaker_altpins_only_ota` and `mergetesting_speaker_altpins_phrase_only_ota`. Do not use this map with INMP441 connected; GPIO39/40/41 are the default mic pins. The A/B result is: GPIO35/36/37 resets during embedded PCM playback, GPIO39/40/41 completes the same PCM path without WDT.
+
 ## GPIO Allocation Summary
 
 ```text

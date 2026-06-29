@@ -31,7 +31,7 @@
 - Modify `tests/unit/test_robot_motion_skill.py` and `tests/integration/test_robot_motion_skill.py`: cover safe speed, completion-aware sequencing, and local-sound fallback.
 - Create `tools/run_openclaw_care_demo.py`: reproducible demo runner that performs image observation, OpenClaw decision trigger, expression, forward, turn, and sound.
 - Create `tests/unit/test_openclaw_care_demo_runner.py`: validates demo sequence payloads without hardware.
-- Modify `docs/project_status_2026-06-28.md`: update completion status as tasks land.
+- Modify `docs/status/2026-06-28.md`: update completion status as tasks land.
 
 ---
 
@@ -42,7 +42,7 @@
 **Files:**
 - Create: `tools/run_dk2500_openclaw_smoke.py`
 - Create: `tests/unit/test_dk2500_openclaw_smoke.py`
-- Modify: `docs/project_status_2026-06-28.md`
+- Modify: `docs/status/2026-06-28.md`
 
 **Interfaces:**
 - Consumes: `tools.send_robot_command.build_agent_command`, runtime files under `runtime/`, base-station `/agent` URL.
@@ -280,7 +280,7 @@ Expected:
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add tools/run_dk2500_openclaw_smoke.py tests/unit/test_dk2500_openclaw_smoke.py docs/project_status_2026-06-28.md
+git add tools/run_dk2500_openclaw_smoke.py tests/unit/test_dk2500_openclaw_smoke.py docs/status/2026-06-28.md
 git commit -m "Add DK2500 OpenClaw smoke plan runner"
 ```
 
@@ -584,7 +584,7 @@ git commit -m "Wait for robot motion completion in care skill"
 **Files:**
 - Create: `tools/run_openclaw_care_demo.py`
 - Create: `tests/unit/test_openclaw_care_demo_runner.py`
-- Modify: `docs/project_status_2026-06-28.md`
+- Modify: `docs/status/2026-06-28.md`
 
 **Interfaces:**
 - Consumes: latest image at `runtime/latest.jpg`, OpenClaw/Gateway config, `RobotMotionSkill`.
@@ -725,7 +725,7 @@ Expected physical result:
 - [ ] **Step 6: Commit**
 
 ```powershell
-git add tools/run_openclaw_care_demo.py tests/unit/test_openclaw_care_demo_runner.py docs/project_status_2026-06-28.md
+git add tools/run_openclaw_care_demo.py tests/unit/test_openclaw_care_demo_runner.py docs/status/2026-06-28.md
 git commit -m "Add OpenClaw care demo runner"
 ```
 
@@ -736,8 +736,8 @@ git commit -m "Add OpenClaw care demo runner"
 **Why fifth:** Real spoken output and ASR are valuable, but they should not block the first reliable OpenClaw robot demo.
 
 **Files:**
-- Modify: `docs/model_download.md`
-- Modify: `docs/project_status_2026-06-28.md`
+- Modify: `docs/setup/model_download.md`
+- Modify: `docs/status/2026-06-28.md`
 - Optional create after decision: `docs/tts_path_plan.md`
 
 **Interfaces:**
@@ -747,7 +747,7 @@ git commit -m "Add OpenClaw care demo runner"
 
 - [ ] **Step 1: Document demo sound policy**
 
-Add to `docs/project_status_2026-06-28.md`:
+Add to `docs/status/2026-06-28.md`:
 
 ```markdown
 For public demos before real TTS lands, use `audio.play_local care_01`.
@@ -774,7 +774,7 @@ self.assertGreater(Path("runtime/latest_tts.wav").stat().st_size, 44)
 - [ ] **Step 4: Commit**
 
 ```powershell
-git add docs/model_download.md docs/project_status_2026-06-28.md docs/tts_path_plan.md
+git add docs/setup/model_download.md docs/status/2026-06-28.md docs/tts_path_plan.md
 git commit -m "Document robot TTS demo policy"
 ```
 
@@ -785,7 +785,7 @@ git commit -m "Document robot TTS demo policy"
 **Why sixth:** After the autonomous loop works, tune it for repeatable public demonstration.
 
 **Files:**
-- Modify: `docs/project_status_2026-06-28.md`
+- Modify: `docs/status/2026-06-28.md`
 - Optional create: `docs/hardware_motion_calibration.md`
 
 **Interfaces:**
@@ -816,7 +816,7 @@ Run through DK2500/OpenClaw smoke and ask the user to confirm:
 - [ ] **Step 3: Commit**
 
 ```powershell
-git add docs/project_status_2026-06-28.md docs/hardware_motion_calibration.md
+git add docs/status/2026-06-28.md docs/hardware_motion_calibration.md
 git commit -m "Document robot demo route calibration"
 ```
 

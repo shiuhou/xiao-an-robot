@@ -69,7 +69,7 @@ base_station/models/sensevoice-small
 Silero VAD Step 43.2 uses the `silero-vad` pip package and the package model
 loaded by `load_silero_vad`. It does not require a separate local Silero model
 file for the audio-file smoke. See
-`docs/silero_vad_audio_file_smoke.md`.
+`docs/testing/smoke/silero_vad_audio_file_smoke.md`.
 
 ## Current Runtime Status
 

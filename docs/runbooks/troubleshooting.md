@@ -82,7 +82,7 @@ Fix:
 
 - Create deployment directories during setup.
 - Do not commit `.db`, `.sqlite`, model files, or local private paths.
-- Use [model_download.md](model_download.md) for the current expected placement.
+- Use [model_download.md](../setup/model_download.md) for the current expected placement.
 
 ## ASR Audio File Smoke Fails
 
@@ -157,7 +157,7 @@ Symptom:
 Checks:
 
 - Raise the chassis or remove wheels.
-- Confirm DRV8833 mapping in [hardware/wiring/motor_driver.md](../hardware/wiring/motor_driver.md).
+- Confirm DRV8833 mapping in [hardware/wiring/motor_driver.md](../../hardware/wiring/motor_driver.md).
 - Correct wheel, wrong direction: flip `MOTOR_LEFT_FORWARD_USES_IN1` or `MOTOR_RIGHT_FORWARD_USES_IN1`.
 - Wrong wheel: change `PIN_MOTOR_*` mapping.
 - Continuous motion: disconnect motor power first, then inspect wiring and deadman logs.

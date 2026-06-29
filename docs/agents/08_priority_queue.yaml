@@ -55,7 +55,7 @@ tasks:
     priority: P0
     depends_on: [T05]
     status: READY
-    success_criteria: docs/project_status_2026-06-26.md and queue results reflect latest verification
+    success_criteria: docs/status/2026-06-26.md and queue results reflect latest verification
   - id: T07
     title: Prepare local mergetesting config
     priority: P1

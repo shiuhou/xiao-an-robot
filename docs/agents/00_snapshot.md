@@ -1,6 +1,6 @@
 # 项目快照 — 2026-06-26 split env 全部 H
 
-> 宽范围硬件/联调 baseline 仍是 `docs/project_status_2026-06-22.md`；OTA bootstrap 增量见 `docs/project_status_2026-06-25.md`；mergetesting split env 实机证据见 `docs/project_status_2026-06-26.md`。旧版见 `docs/archive/`。
+> 宽范围硬件/联调 baseline 仍是 `docs/status/2026-06-22.md`；OTA bootstrap 增量见 `docs/status/2026-06-25.md`；mergetesting split env 实机证据见 `docs/status/2026-06-26.md`。旧版见 `docs/archive/`。
 
 ## 当前目标
 
@@ -27,7 +27,7 @@
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
 | 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过 |
-| INMP441 麦克风 | ✅ H | RMS 测试 + mergetesting WS PCM `/audio` |
+| INMP441 麦克风 | ✅ H / 诊断增强 | RMS 测试 + mergetesting WS PCM `/audio`; base station now exports raw PCM to WAV and records latest-window RMS/peak/DC/clipping stats before ASR tuning |
 | MAX98357A 喇叭 | ✅ H | 音调测试 + mergetesting lazy-I2S `/control` 本地音效 |
 | OTA bootstrap | ✅ H | `ota_bootstrap` USB 首刷 + `ota_bootstrap_wifi` 无线刷新 bootstrap |
 | 舵机 | ⬜ | `servo_ctrl` 全 stub |
@@ -54,16 +54,22 @@
 | 基站收视频存盘 | `base_station/ws_server/server.py` | `runtime/latest.jpg` |
 | `send_robot_command local` | `tools/send_robot_command.py` | 测 `audio.play_local`；motion 支持 `--bench`、`--speed`、`--distance-cm`、`--duration-ms`、`--timeout-ms` |
 | face240 merged env | `face240_9expr_merged` in platformio.ini | 2.4 寸屏 bring-up |
-| OTA bootstrap 2026-06-25 | `docs/project_status_2026-06-25.md` | USB 首刷后可无线刷新 bootstrap；不是通用上传任意 env |
+| OTA bootstrap 2026-06-25 | `docs/status/2026-06-25.md` | USB 首刷后可无线刷新 bootstrap；不是通用上传任意 env |
 | 分层架构 spec 2026-06-25 | `docs/superpowers/specs/2026-06-25-layered-firmware-architecture-design.md` | 保留 bring-up env，逐步抽 services/hal/transport/protocol |
 | mergetesting 分层 Phase 1 2026-06-26 | `robot/mergetesting/src/app/`, `robot/mergetesting/src/services/` | `main.cpp` thin entrypoint；non-blocking motion + command router |
-| split env 实机 H 2026-06-26 | `docs/project_status_2026-06-26.md`, `08_priority_queue_results.json` | T07–T16 全部 PASS_H |
+| split env 实机 H 2026-06-26 | `docs/status/2026-06-26.md`, `08_priority_queue_results.json` | T07–T16 全部 PASS_H |
 | full env 实机 H 2026-06-27 | `mergetesting_full_face240`, `08_priority_queue_results.json` | T17 PASS_H；三通道 + full-speed 5s motor |
 | care-demo face240 env 2026-06-27 | `mergetesting_care_demo_face240`, `08_priority_queue_results.json` | Step 33 实机前置固件；face240/motor/speaker/control only，禁用 camera/mic |
 | 电机 LEDC 修复 2026-06-26/27 | `robot/mergetesting/src/motor_ctrl.cpp`, `platformio.ini` | split motor 保留 4–7；full 避开 camera LEDC；USB full upload 用 460800 |
-| 喇叭 lazy-I2S 2026-06-26 | `robot/mergetesting/src/speaker.cpp` | 消除 TG1WDT；OTA 需 `--host_ip=192.168.137.1` on Windows hotspot |
+| 喇叭 lazy-I2S 2026-06-26 | `robot/mergetesting/src/speaker.cpp` | 本地音效仍是可靠发声路径；显式开启 PCM spoken TTS 时仍会在 PCM-to-I2S 播放阶段 WDT |
+| Speaker OTA/TTS guard 2026-06-28 | `base_station/ws_server/server.py`, `robot/mergetesting/src/speaker.cpp`, `robot/mergetesting/platformio.ini` | ESP32 OTA IP `192.168.137.147`，host `192.168.137.1`；默认 `audio.play_tts` 为 metadata-only/mock-tone 安全路径，PCM 串流需 `XIAOAN_CONTROL_TTS_STREAM=1` 诊断 |
+| Speaker PCM playback diagnostics 2026-06-29 | `robot/mergetesting/src/speaker.cpp`, `robot/mergetesting/src/embedded_tts_phrase.h`, `tests/unit/test_mergetesting_layering.py` | COM19 证实原 GPIO35/36/37 speaker 路径在 embedded PCM first write 后 `TG1WDT_SYS_RST`；GPIO39/40/41 speaker-only A/B 已通过串口本地音效和正确接线后的 embedded sentence PCM，无 WDT。当前板子已回刷 `mergetesting_speaker_altpins_only`；完整句子听感仍等用户确认。 |
 | **仓库整理 2026-06-27** | `docs/agents/10_repo_map.md`, `.gitignore`, `docs/archive/` | 删 `.pio`/clangd cache；归档 OpenFace handoff；跟踪 `.agents/skills/`；刷新 file_inventory |
 | **OpenClaw 联调分析 2026-06-27** | `docs/agents/11_openclaw_robot_integration.md` | fusion 分支 care demo 与 mergetesting `/control` 协议一致；实机替换 mock_robot 即可 |
+| **文档结构整理 2026-06-28** | `README.md`, `docs/README.md`, `docs/current_status.md`, `docs/status/`, `docs/setup/`, `docs/testing/smoke/` | Root README 变为入口页；当前状态与历史快照分离；新 Agent 先读 `docs/current_status.md` |
+| **机器人目录入口 2026-06-29** | `robot/README.md`, `robot/firmware/README.md`, `robot/mergetesting/MAIN_DEMO.md` | 明确 `robot/mergetesting` 是 DK-2500 主线，`robot/firmware` 是 bring-up lab；主 demo 命令集中到 `MAIN_DEMO.md` |
+| **运行目录入口 2026-06-29** | `base_station/README.md`, `agent/README.md`, `tools/README.md`, `scripts/README.md` | Base station、local Agent、tools、scripts 均有入口说明；先标注用途和 legacy/diagnostic 边界，不移动文件 |
+| **Git hygiene 盘点 2026-06-29** | `.gitignore`, `docs/runbooks/git_hygiene.md` | OpenFace IR 明确为 Git LFS 例外；`base_station/config.yaml` 已确认可公开并保留 tracked |
 
 ## 硬件阻塞（剩余）
 

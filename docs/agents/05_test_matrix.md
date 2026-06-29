@@ -19,7 +19,8 @@ python tools/check_runtime_env.py
 | Protocol schema | `tests/unit/test_protocol_schema.py` | schema 一致 | P |
 | Mergetesting layering | `tests/unit/test_mergetesting_layering.py` | thin `main.cpp`, service files, busy heartbeat, non-blocking motion, split envs, OTA | P |
 | WS video source | `tests/unit/test_ws_video_source.py`, `test_ws_server_video_source.py` | QVGA JPEG, frame_meta, binary send | P |
-| WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM send | P |
+| WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM persistence, latest-window RMS/peak/DC/clipping stats | P |
+| Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
 
@@ -64,8 +65,14 @@ pio run -e mergetesting
 | `mergetesting_mic_only` | P: 2026-06-26 | H: PCM `/audio`, heartbeat not starved, 2026-06-26 |
 | `mergetesting_mic_only_ota` | P: 2026-06-26 | H: espota upload + PCM stream, 2026-06-26 |
 | `mergetesting_motor_only` | P: 2026-06-26 | H: LEDC fix, motion ack/completed + physical direction, 2026-06-26 |
-| `mergetesting_speaker_only` | P: 2026-06-26 | H: lazy I2S fix, `audio.play_local`/mock TTS audible, 2026-06-26 |
-| `mergetesting_speaker_only_ota` | P: 2026-06-26 | H: Windows hotspot `--host_ip=192.168.137.1`, 2026-06-26 |
+| `mergetesting_speaker_only` | P: 2026-06-29 build/tests pass | H/P: COM19 upload restored safe firmware; serial `sound wakeup_chime` logged `play_local done ... ok=true`, user confirmed sound |
+| `mergetesting_speaker_only_ota` | P: 2026-06-29 build ok | H/P: OTA upload works via hotspot host `192.168.137.1`; latest observed robot IP `192.168.137.200`; safe firmware restored after phrase diagnostic |
+| `mergetesting_speaker_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: embedded full sentence `I can speak now.` reached PCM write then WDT; leading-silence trim prepared, audible retest deferred until user confirms |
+| `mergetesting_speaker_altpins_only` | P: 2026-06-29 build ok diagnostic env | H/P: COM19 upload ok; temporary MAX98357A BCLK/LRC/DIN=39/40/41; serial `sound wakeup_chime` completed without WDT |
+| `mergetesting_speaker_altpins_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: OTA upload to `192.168.137.200` ok; external 5V/no-USB WebSocket `audio.play_local wakeup_chime` heard by user; safe firmware restored |
+| `mergetesting_speaker_altpins_phrase_only` | P: 2026-06-29 build ok diagnostic env | H/P: COM19 upload ok; corrected-wiring serial `tts serial` completed embedded sentence PCM and released I2S without WDT; audible confirmation pending |
+| `mergetesting_speaker_altpins_phrase_only_ota` | P: 2026-06-29 build ok diagnostic env | H/P: OTA upload to `192.168.137.200` ok; WebSocket `audio.play_tts` forwarded; audible sentence confirmation pending |
+| `mergetesting_speaker_drain_only_ota` | P: 2026-06-28 build ok diagnostic env | H/P: accepts TTS PCM without I2S playback and avoids reset; isolates remaining fault to PCM-to-I2S playback |
 | `mergetesting_face240_only_ota` | P: 2026-06-26 | H: espota upload + expression path, 2026-06-26 |
 | `mergetesting_care_demo_face240` | P: 2026-06-27 Step 33 care demo | H: face240+motor+speaker+/control preflight, no cam/mic, 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | P: 2026-06-27 | P: build/upload path verified; current T18 H used USB |

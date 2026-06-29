@@ -81,7 +81,7 @@ XIAO_AN_OPENCLAW_AGENT=xiaoan-runtime \
 python -m base_station.api.server --host 127.0.0.1 --port 8787 --db-path agent/data/xiao_an.db --verbose
 ```
 
-Bridge details: [openclaw_gateway_bridge.md](openclaw_gateway_bridge.md).
+Bridge details: [openclaw/openclaw_gateway_bridge.md](openclaw/openclaw_gateway_bridge.md).
 
 ### `GET /api/health`
 
@@ -156,7 +156,7 @@ not recommended to OpenClaw as Xiao An robot body tools.
 curl http://127.0.0.1:8787/api/tools
 ```
 
-Detailed manifest: [openclaw_tool_manifest.md](openclaw_tool_manifest.md).
+Detailed manifest: [openclaw/openclaw_tool_manifest.md](openclaw/openclaw_tool_manifest.md).
 
 ### `POST /api/tools/call`
 

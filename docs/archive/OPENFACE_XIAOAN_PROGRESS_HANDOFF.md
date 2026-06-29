@@ -1,6 +1,6 @@
 # Xiao-An OpenFace / VLM Progress Handoff
 
-> ⚠️ **ARCHIVED 2026-06-27** — moved from repo root. Use `docs/openface_au_mapping.md`, `docs/agents/04_base_station_agent_registry.md`, and latest `project_status_*` instead.
+> ⚠️ **ARCHIVED 2026-06-27** — moved from repo root. Use `docs/perception/openface_au_mapping.md`, `docs/agents/04_base_station_agent_registry.md`, and latest `project_status_*` instead.
 
 Last updated: 2026-06-18
 

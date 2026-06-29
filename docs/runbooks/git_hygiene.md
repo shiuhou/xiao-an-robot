@@ -1,0 +1,81 @@
+# Git Hygiene Runbook
+
+Use this before cleanup, staging, or release work. Do not delete or untrack files until the list has been reviewed.
+
+## Read-Only Audit
+
+Tracked local/generated candidates:
+
+```powershell
+git ls-files | rg "(^|/)(config\.yaml|config\.local|\.env|.*\.db|.*\.sqlite|runtime|logs|models|node_modules|\.pio|latest\.jpg|latest_audio|.*\.wav|.*\.pcm)$|(^|/)runtime/|(^|/)logs/|(^|/)models/|\.db$|\.sqlite$|\.pcm$|\.wav$|\.jpg$|\.png$|\.onnx$|\.bin$|\.xml$"
+```
+
+Ignored working-tree files:
+
+```powershell
+git status --short --ignored
+```
+
+Ignore rule check:
+
+```powershell
+git check-ignore --no-index -v base_station/config.yaml runtime/latest.jpg agent/data/xiao_an.db .env
+```
+
+## Current Findings
+
+### Keep Tracked
+
+These are intentionally tracked:
+
+- `.env.example`
+- `base_station/config.example.yaml`
+- `logs/.gitkeep`
+- `base_station/models/.gitkeep`
+- `base_station/models/README.md`
+- `base_station/models/download_models.sh`
+- `base_station/models/models_manifest.json`
+- `base_station/models/openface_ov/**/*.xml`
+- `base_station/models/openface_ov/**/*.bin`
+
+The OpenFace OpenVINO IR files are Git LFS assets. Confirm with:
+
+```powershell
+git check-attr filter diff merge text -- base_station/models/openface_ov/mtl/mtl.bin
+```
+
+Expected: `filter: lfs`, `diff: lfs`, `merge: lfs`, `text: unset`.
+
+### Public Tracked Config
+
+- `base_station/config.yaml`
+
+This file is confirmed public and may remain tracked.
+
+If a future checkout needs local-only base-station config, create a separate ignored local file such as:
+
+```powershell
+base_station/config.local.yaml
+```
+
+Keep `base_station/config.example.yaml` as the shareable template.
+
+### Keep Ignored
+
+These should remain ignored and untracked:
+
+- `.venv/`, `.vision-venv/`, `venv/`
+- `agent/data/*.db`
+- `runtime/`
+- `logs/*.log`
+- `.env`, `.env.local`, nested `.env`
+- `robot/firmware/src/config.local.h`
+- `robot/mergetesting/src/config.local.h`
+- `base_station/config.local.yaml`
+- `robot/*/.pio/`
+- `**/.cache/`
+- downloaded non-LFS model folders
+
+## Rule
+
+Do not commit real logs, databases, local configs, runtime captures, or downloaded model binaries. Use templates and LFS-tracked intentional assets only.

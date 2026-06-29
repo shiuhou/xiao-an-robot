@@ -18,7 +18,7 @@
 - docs/agents/00_snapshot.md
 - docs/agents/11_openclaw_robot_integration.md
 - docs/active_emotion_care_demo.md（merge 后已在仓库根 docs/）
-- docs/project_status_2026-06-26.md
+- docs/status/2026-06-26.md
 - docs/agents/08_priority_queue_results.json
 - docs/agents/09_hardware_bringup_checklist.md
 

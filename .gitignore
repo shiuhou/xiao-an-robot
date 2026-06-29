@@ -14,6 +14,10 @@ node_modules/
 **/node_modules/
 dist/
 build/
+
+# Model artifacts: ignore downloaded/runtime models by default.
+# The OpenFace OpenVINO IR files under base_station/models/openface_ov are
+# intentional Git LFS assets; keep their exceptions after generic model rules.
 base_station/models/*
 !base_station/models/.gitkeep
 !base_station/models/README.md
@@ -43,6 +47,11 @@ base_station/models/**/*.safetensors
 !base_station/models/openface_ov/**/*.xml
 !base_station/models/openface_ov/**/*.bin
 models/
+!base_station/models/
+!base_station/models/openface_ov/
+!base_station/models/openface_ov/**/
+!base_station/models/openface_ov/**/*.xml
+!base_station/models/openface_ov/**/*.bin
 *.pth
 *.safetensors
 *.bin
@@ -50,6 +59,10 @@ models/
 *.xml
 *.blob
 *.pt
+!base_station/models/openface_ov/
+!base_station/models/openface_ov/**/
+!base_station/models/openface_ov/**/*.xml
+!base_station/models/openface_ov/**/*.bin
 manual_outputs/
 agent/data/USER.md
 agent/data/*.db
@@ -72,10 +85,9 @@ Thumbs.db
 robot/firmware/compile_commands.json
 robot/firmware/src/config.local.h
 robot/mergetesting/src/config.local.h
+base_station/config.local.yaml
 .worktrees/
 worktrees/
-base_station/config.yaml
-
 # Agent local cache only — skills/ are tracked (see docs/agents/01_session_protocol.md)
 .agents/*
 !.agents/skills/

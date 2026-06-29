@@ -5,7 +5,7 @@ The project is still in staged integration: local simulation is runnable now,
 while real ASR/VAD/VLM model execution is intentionally represented by
 interfaces and placeholders.
 
-Updated status: 2026-06-22 baseline. **Current mergetesting split-env evidence:** [project_status_2026-06-26.md](project_status_2026-06-26.md). Repo map: [docs/agents/10_repo_map.md](agents/10_repo_map.md).
+Updated status: 2026-06-22 baseline. **Current mergetesting split-env evidence:** [2026-06-26.md](../status/2026-06-26.md). Repo map: [docs/agents/10_repo_map.md](../agents/10_repo_map.md).
 
 ## Local Simulation vs DK-2500
 

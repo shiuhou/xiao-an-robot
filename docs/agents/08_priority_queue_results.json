@@ -53,7 +53,7 @@
       "status": "PASS",
       "attempt": 1,
       "command": "manual status update",
-      "summary": "docs/project_status_2026-06-26.md contains fresh results and hardware loop evidence"
+      "summary": "docs/status/2026-06-26.md contains fresh results and hardware loop evidence"
     },
     "T07": {
       "status": "PASS_H",

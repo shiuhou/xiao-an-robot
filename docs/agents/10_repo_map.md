@@ -1,7 +1,7 @@
 # 仓库全图 — 目录 / 文档 / 工具索引
 
 > **整合 Agent 维护。** 机器清单见 `_generated/file_inventory.md`（`python tools/generate_agent_registry.py` 刷新）。
-> 开工/收工流程见 [01_session_protocol.md](./01_session_protocol.md)。最后整理：**2026-06-27**。
+> 开工/收工流程见 [01_session_protocol.md](./01_session_protocol.md)。最后整理：**2026-06-28**。
 
 ---
 
@@ -11,7 +11,7 @@
 |------|------|--------------|
 | `agent/` | OpenClaw brain、gateway、skills、SQLite schema | [04_base_station_agent_registry](./04_base_station_agent_registry.md) |
 | `base_station/` | WS 服务、perception、monitor、Local API | [04_*](./04_base_station_agent_registry.md) |
-| `docs/` | 架构、协议、部署、状态、agents 体系 | 本文 + [README](./README.md) |
+| `docs/` | 架构、协议、部署、状态、agents 体系 | [docs README](../README.md) + 本文 |
 | `frontend/` | Electron/Vite 早期 UI | [frontend/README.md](../../frontend/README.md) |
 | `hardware/` | BOM、接线、机械 | [hardware_setup.md](../hardware_setup.md) |
 | `robot/firmware/` | ESP32 本体单项 bring-up | [02_firmware_registry](./02_firmware_registry.md) |
@@ -32,11 +32,27 @@
 | `.env.example` | 环境变量模板 |
 | `.gitignore` | 忽略 `.pio/`、`runtime/`、`config.local.h`、模型权重等 |
 
+### 大目录入口
+
+| 文件 | 作用 |
+|------|------|
+| [base_station/README.md](../../base_station/README.md) | DK-2500 runtime 边界：WS/perception/monitor/API |
+| [agent/README.md](../../agent/README.md) | 本地 Agent 兼容层与 OpenClaw 责任边界 |
+| [tools/README.md](../../tools/README.md) | ops/probes/setup/maintenance/legacy 工具分组 |
+| [scripts/README.md](../../scripts/README.md) | setup/start/debug 脚本分组 |
+
 ---
 
 ## 2. 文档地图（`docs/`）
 
-### 2.1 Agent 体系（优先读）
+### 2.1 当前入口（优先读）
+
+| 文件 | 作用 |
+|------|------|
+| [docs/README.md](../README.md) | 文档入口、阅读顺序、真相优先级 |
+| [current_status.md](../current_status.md) | 当前 demo baseline、已验证路径、下一步命令 |
+
+### 2.2 Agent 体系
 
 | 文件 | 作用 |
 |------|------|
@@ -51,48 +67,50 @@
 | [10_repo_map.md](./10_repo_map.md) | **本文** |
 | `_generated/file_inventory.md` | 自动生成源码/env 清单 |
 
-### 2.2 契约与架构
+### 2.3 契约与架构
 
 | 文件 | 作用 |
 |------|------|
 | [protocol.md](../protocol.md) | WS 消息契约 v0.1 |
 | [architecture.md](../architecture.md) | 四模块架构（2026-06-27 已对齐 mergetesting 传画） |
 
-### 2.3 状态快照（dated）
+### 2.4 状态快照（dated）
 
 | 文件 | 用途 |
 |------|------|
-| [project_status_2026-06-22.md](../project_status_2026-06-22.md) | 宽范围 baseline |
-| [project_status_2026-06-25.md](../project_status_2026-06-25.md) | OTA bootstrap 增量 |
-| [project_status_2026-06-26.md](../project_status_2026-06-26.md) | split env 实机 H + 仓库整理 |
+| [2026-06-22.md](../status/2026-06-22.md) | 宽范围 baseline |
+| [2026-06-25.md](../status/2026-06-25.md) | OTA bootstrap 增量 |
+| [2026-06-26.md](../status/2026-06-26.md) | split env 实机 H + 仓库整理 |
+| [2026-06-27.md](../status/2026-06-27.md) | full mergetesting demo + DK2500/OpenClaw handoff |
+| [2026-06-28.md](../status/2026-06-28.md) | DK2500/OpenClaw live IO channel status |
 
-### 2.4 二级文档（按需读，非开工默认）
+### 2.5 二级文档（按需读，非开工默认）
 
 | 文件 | 何时读 |
 |------|--------|
-| [deployment_dk2500.md](../deployment_dk2500.md) | DK-2500 部署；**配合** `project_status_2026-06-26` |
-| [device_setup.md](../device_setup.md) | 新机器 OpenFace/VLM |
+| [dk2500_deployment.md](../setup/dk2500_deployment.md) | DK-2500 部署；**配合** `status/2026-06-26.md` |
+| [device_setup.md](../setup/device_setup.md) | 新机器 OpenFace/VLM |
 | [hardware_setup.md](../hardware_setup.md) | 硬件接线总览 |
 | [local_api.md](../local_api.md) | Local HTTP API |
-| [model_download.md](../model_download.md) | 模型下载 |
-| [troubleshooting.md](../troubleshooting.md) | 排障 |
-| [openface_au_mapping.md](../openface_au_mapping.md) | AU 8 维映射 |
-| [frontend_mvp.md](../frontend_mvp.md) | 前端 MVP |
+| [model_download.md](../setup/model_download.md) | 模型下载 |
+| [troubleshooting.md](../runbooks/troubleshooting.md) | 排障 |
+| [openface_au_mapping.md](../perception/openface_au_mapping.md) | AU 8 维映射 |
+| [frontend_setup.md](../setup/frontend_setup.md) | 前端 MVP |
 | [xiao_an_power_wiring_diagram.svg](../xiao_an_power_wiring_diagram.svg) | 电源接线图 |
 
-### 2.5 设计 / 计划
+### 2.6 设计 / 计划
 
 | 路径 | 状态 |
 |------|------|
 | [superpowers/specs/2026-06-25-layered-firmware-architecture-design.md](../superpowers/specs/2026-06-25-layered-firmware-architecture-design.md) | 分层架构 spec |
 | [superpowers/plans/2026-06-26-mergetesting-layered-firmware-slice.md](../superpowers/plans/2026-06-26-mergetesting-layered-firmware-slice.md) | **COMPLETE** — Phase 1 已落地 |
 
-### 2.6 归档（勿当真相）
+### 2.7 归档（勿当真相）
 
 | 路径 | 替代 |
 |------|------|
-| [docs/archive/](../archive/README.md) | `00_snapshot` + 最新 `project_status_*` |
-| 含 `OPENFACE_XIAOAN_PROGRESS_HANDOFF.md` | `openface_au_mapping.md` + `04_*` |
+| [docs/archive/](../archive/README.md) | `current_status` + 最新 `status/*` + `00_snapshot` |
+| 含 `OPENFACE_XIAOAN_PROGRESS_HANDOFF.md` | `perception/openface_au_mapping.md` + `04_*` |
 | 含 `hardware_minimum_loop_route_2026-06-17.xml` | `06_integration_phases` + `09_*` |
 
 ---
@@ -109,6 +127,7 @@
 Mergetesting 工程内文档：
 
 - `robot/mergetesting/README.md`
+- `robot/mergetesting/MAIN_DEMO.md`
 - `robot/mergetesting/CAPABILITIES.md`
 - `robot/mergetesting/EXTRACTION_MAP.md`
 - `robot/mergetesting/m600.md` — M600 mini PC 部署（未进 registry，按需读）
@@ -154,12 +173,28 @@ Mergetesting 工程内文档：
 | `**/.cache/clangd/` | **可删**；已加入 `.gitignore` |
 | `runtime/` | **可删**；WS 运行时日志；若 WS 进程占用需先停服 |
 | `robot/*/src/config.local.h` | **保留**；含 WiFi 凭证，勿提交 |
-| `base_station/config.yaml` | **保留**；本地配置，勿提交 |
-| `base_station/models/*.{bin,onnx,...}` | **保留**；大模型，勿提交 |
+| `base_station/config.yaml` | **保留 tracked**；已确认可公开 |
+| `base_station/models/openface_ov/**/*.bin/.xml` | **保留 tracked**；Git LFS intentional assets |
+| `base_station/models/*` 其他模型 | **保留本地**；大模型勿提交 |
 
 ---
 
-## 7. 2026-06-27 仓库整理记录
+## 7. 2026-06-28 仓库整理记录
+
+### 已分层
+
+- 新增 `docs/README.md` 与 `docs/current_status.md`
+- 精简 root `README.md` 为项目入口页，细节转到 `docs/`
+- 新增 `robot/README.md`, `robot/firmware/README.md`, `robot/mergetesting/MAIN_DEMO.md`
+- 新增 `base_station/README.md`, `agent/README.md`, `tools/README.md`；重写 `scripts/README.md` 为分组入口
+- `docs/project_status_2026-06-*.md` → `docs/status/YYYY-MM-DD.md`
+- setup 类文档 → `docs/setup/`
+- OpenClaw 文档 → `docs/openclaw/`
+- smoke 文档 → `docs/testing/smoke/`
+- perception 文档 → `docs/perception/`
+- troubleshooting → `docs/runbooks/troubleshooting.md`
+
+## 8. 2026-06-27 仓库整理记录
 
 ### 已删除（磁盘）
 
@@ -185,12 +220,12 @@ Mergetesting 工程内文档：
 ### 未自动处理（需人工）
 
 - `runtime/logs/` — WS 服务占用文件时无法删；停服后手动删 `runtime/`
-- `docs/deployment_dk2500.md` — 头部仍 pinned 2026-06-22；部署时对照 `project_status_2026-06-26`
+- `docs/setup/dk2500_deployment.md` — 头部仍 pinned 2026-06-22；部署时对照 `project_status_2026-06-26`
 - `mergetesting_full_face240(_ota)` 合并实机 H — 见 queue T17
 
 ---
 
-## 8. 刷新本图
+## 9. 刷新本图
 
 ```powershell
 python tools/generate_agent_registry.py

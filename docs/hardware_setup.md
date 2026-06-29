@@ -251,9 +251,19 @@ pio run -e speaker_amp_test
 
 Keep volume and amplitude conservative during first power-on. Confirm amp power, speaker impedance, and heat before repeated tests.
 
+Speaker-only PSRAM-conflict diagnostic confirmed on 2026-06-29:
+
+| MAX98357A signal | Temporary ESP32-S3 GPIO |
+| --- | ---: |
+| BCLK | GPIO39 |
+| LRC/WS | GPIO40 |
+| DIN | GPIO41 |
+
+Use only `robot/mergetesting` diagnostic envs `mergetesting_speaker_altpins_only` and `mergetesting_speaker_altpins_phrase_only` with camera/mic/motor disabled. OTA upload variants are `mergetesting_speaker_altpins_only_ota` and `mergetesting_speaker_altpins_phrase_only_ota`. GPIO39/40/41 are also the default INMP441 pins, so this is not a permanent combined mic+speaker map. The A/B test showed the original GPIO35/36/37 path resets at embedded PCM playback, while GPIO39/40/41 completes the same PCM path without WDT.
+
 ## DK-2500 Setup
 
-DK-2500 deployment notes are in [docs/deployment_dk2500.md](deployment_dk2500.md).
+DK-2500 deployment notes are in [setup/dk2500_deployment.md](setup/dk2500_deployment.md).
 
 Minimum local checks:
 

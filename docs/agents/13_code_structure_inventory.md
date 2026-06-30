@@ -133,7 +133,8 @@ Physical `scripts/` moves are complete. Implementations live under:
 | C18 | Physically group `scripts/` with root command wrappers | Done 2026-06-30 | `bash -n`; Python wrapper help/compile smoke; generated inventory; `git diff --check` |
 | N1 | Rename legacy manual smoke implementations away from `test_*` names while keeping root compatibility wrappers | Done 2026-06-30 | OpenClaw manual-tool unit tests; wrapper smoke; generated inventory; `git diff --check` |
 | N2 | Rename active firmware bring-up entrypoint files away from `_test.cpp` names while keeping env names stable | Done 2026-06-30 | Face240 helper tests; selected PlatformIO env builds; generated inventory; `git diff --check` |
+| N3 | Rename fixed-window ASR demo module away from `continuous_asr_demo.py` while keeping a compatibility wrapper | Done 2026-06-30 | Fixed-window ASR unit tests; module help smoke; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C4, C6-C18, N1, and N2 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.
+C1-C4, C6-C18, and N1-N3 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.

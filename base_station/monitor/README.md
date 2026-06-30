@@ -9,7 +9,7 @@ product domains.
 | Group | Files | Role |
 | --- | --- | --- |
 | Emotion runtime | `emotion_runtime.py`, `emotion_event_loop.py`, `emotion_context_builder.py`, `emotion_db.py` | Local emotion events, context, and SQLite-backed runtime history. |
-| ASR runtime | `asr_runtime.py`, `continuous_asr_demo.py` | Text/pattern/audio-file ASR event path and fixed-window `/audio` demo. |
+| ASR runtime | `asr_runtime.py`, `fixed_window_asr_demo.py` | Text/pattern/audio-file ASR event path and fixed-window `/audio` demo. `continuous_asr_demo.py` is a compatibility wrapper. |
 | Legacy / deprecated | `screen_watcher.py`, `work_activity_runtime.py` | Kept for compatibility; screen monitoring is outside the current MVP. |
 
 ## Current Rules

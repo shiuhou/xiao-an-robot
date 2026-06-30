@@ -5,25 +5,17 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+7909df0 Rename firmware bring-up entrypoints
 be6ae7d Document base station API dashboard boundaries
 d64c61e Document agent core data boundaries
 734d581 Document agent skill boundaries
 15d30f6 Document perception monitor boundaries
-5aafbbd Move setup and runbook docs into sections
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/02_firmware_registry.md                | 20 ++++++-------
- docs/agents/03_mergetesting_registry.md            |  4 +--
- docs/agents/13_code_structure_inventory.md         | 10 +++----
- docs/agents/14_naming_inventory.md                 |  6 ++--
- robot/firmware/README.md                           |  2 +-
- robot/firmware/platformio.ini                      | 34 +++++++++++-----------
- robot/firmware/tools/face240_preview.html          |  2 +-
- .../tools/test_face240_roboeyes_framebuffer.py     |  4 +--
- 8 files changed, 42 insertions(+), 40 deletions(-)
+(no output)
 ```
 
 ## robot/firmware/src (43 files)
@@ -156,7 +148,6 @@ docs/agents/02_firmware_registry.md                | 20 ++++++-------
 | tests\unit\test_companion_request_skill.py | 2558 |
 | tests\unit\test_context_builder.py | 13891 |
 | tests\unit\test_context_policy.py | 8069 |
-| tests\unit\test_continuous_asr_demo.py | 2464 |
 | tests\unit\test_daily_summary_builder.py | 7136 |
 | tests\unit\test_dashboard_server.py | 7244 |
 | tests\unit\test_emotion_context_builder.py | 8283 |
@@ -179,6 +170,7 @@ docs/agents/02_firmware_registry.md                | 20 ++++++-------
 | tests\unit\test_fatigue_face_metrics.py | 11011 |
 | tests\unit\test_fatigue_window_quality.py | 6009 |
 | tests\unit\test_firmware_ota_bootstrap.py | 1588 |
+| tests\unit\test_fixed_window_asr_demo.py | 2453 |
 | tests\unit\test_gateway_openclaw_adapter.py | 13762 |
 | tests\unit\test_http_openclaw_adapter.py | 4808 |
 | tests\unit\test_local_tools.py | 31928 |

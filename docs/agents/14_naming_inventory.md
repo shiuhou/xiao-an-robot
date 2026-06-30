@@ -61,6 +61,7 @@ Status: planned, not started.
 
 | Current path | Issue | Safer action |
 |--------------|-------|--------------|
+| `base_station/monitor/fixed_window_asr_demo.py` | Renamed from `continuous_asr_demo.py`; it is fixed-window ASR, not the final autonomous loop | `continuous_asr_demo.py` remains a compatibility wrapper |
 | `base_station/monitor/emotion_runtime.py` | Runtime now covers CV/OpenFace/VLM context, not only simple emotion samples | Defer physical rename; first add a public module alias if a new name is introduced |
 | `agent/core/local_tools.py` | Contains local compatibility tools, not the future OpenClaw-owned tool surface | Defer split until OpenClaw runtime ownership is stable |
 | `base_station/monitor/screen_watcher.py` | Deprecated screen monitoring placeholder | Keep as-is with deprecation label until imports disappear |

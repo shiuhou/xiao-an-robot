@@ -22,7 +22,7 @@ python tools/check_runtime_env.py
 | WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM persistence, latest-window RMS/peak/DC/clipping stats | P |
 | Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
 | Audio speech trimming | `tests/unit/test_audio_segments.py`, `tests/unit/test_asr_runtime.py` | fixed-window WAV energy trim before ASR; `--trim-speech` metadata | P |
-| Continuous ASR demo | `tests/unit/test_continuous_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
+| Fixed-window ASR demo | `tests/unit/test_fixed_window_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
 | Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 right-panel constraints | P |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |

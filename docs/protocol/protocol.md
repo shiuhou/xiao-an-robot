@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | `/control` | PASS_H | Robot command path is live through base-station/OpenClaw. Supports `device.hello`, heartbeat/status, `display.expression`, `motion.execute`, `audio.play_local`, `audio.play_tts`, `command.ack`, `audio.playback_done`, `motion.completed`, and `error.report`. |
 | `/video` | PASS_H/P | OV2640 robot camera frames reach base station as JPEG over `/video`; server updates `runtime/latest.jpg`; OpenClaw can inspect the latest image and return feedback. |
-| `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. Fixed-window and continuous ASR demo helpers now exist (`audio_segments.py`, `asr_runtime --trim-speech`, `continuous_asr_demo`), but the full autonomous ASR policy loop is not finished. |
+| `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. Fixed-window ASR helpers now exist (`audio_segments.py`, `asr_runtime --trim-speech`, `fixed_window_asr_demo`), but the full autonomous ASR policy loop is not finished. |
 | `mergetesting_full_face240` | PASS_H | Full face240 firmware has passed local hardware smoke for `/control`, motor, face display, speaker, `/video`, and `/audio`. |
 | OpenClaw handoff | PASS_H_OPENCLAW_BASE_IO | Base/OpenClaw has used live `/control`, `/video`, and `/audio`; next gate is a reproducible smoke script and consistent OpenClaw-side `motion.completed` observation. |
 

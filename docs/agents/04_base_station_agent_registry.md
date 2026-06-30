@@ -16,7 +16,7 @@
 |------|------|------|
 | `handle_control` | /control | hello 注册 session；welcome；heartbeat |
 | `handle_video` | /video | 解析 8B 头；写 `runtime/latest.jpg` |
-| `handle_audio` | /audio | 收 PCM，更新 `runtime/latest_audio.pcm` / audio stats；ASR demo 由 `audio_diagnostics.py`、`audio_segments.py`、`asr_runtime.py`、`continuous_asr_demo.py` 串接 |
+| `handle_audio` | /audio | 收 PCM，更新 `runtime/latest_audio.pcm` / audio stats；ASR demo 由 `audio_diagnostics.py`、`audio_segments.py`、`asr_runtime.py`、`fixed_window_asr_demo.py` 串接 |
 | `handle_agent` | /agent | `agent.command` → 转发机器人 |
 | `send_to_robot` | — | 按 device_id 下发 JSON |
 
@@ -58,7 +58,7 @@
 | `emotion_event_loop.py` | ✅ | 事件循环 |
 | `emotion_db.py` | ✅ | SQLite 情绪记录 |
 | `asr_runtime.py` | 🟡 | ASR 运行时；支持 audio-file path、SenseVoice backend、`--trim-speech` |
-| `continuous_asr_demo.py` | 🟡 | Rolling `runtime/latest_audio.pcm` fixed-window utterance demo; not the final autonomous ASR loop |
+| `fixed_window_asr_demo.py` | 🟡 | Rolling `runtime/latest_audio.pcm` fixed-window utterance demo; `continuous_asr_demo.py` remains a compatibility wrapper |
 | `emotion_context_builder.py` | ✅ | 上下文构建 |
 | `screen_watcher.py` | ⚪ | deprecated；屏幕监控已退出 MVP |
 

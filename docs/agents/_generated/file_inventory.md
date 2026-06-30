@@ -5,19 +5,43 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+be6ae7d Document base station API dashboard boundaries
 d64c61e Document agent core data boundaries
 734d581 Document agent skill boundaries
 15d30f6 Document perception monitor boundaries
 5aafbbd Move setup and runbook docs into sections
-5052d75 Group architecture and protocol docs
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-base_station/README.md                     | 4 ++--
- docs/agents/13_code_structure_inventory.md | 3 ++-
- 2 files changed, 4 insertions(+), 3 deletions(-)
+docs/agents/00_snapshot.md                      |  1 +
+ docs/agents/04_base_station_agent_registry.md   |  2 +
+ docs/agents/10_repo_map.md                      |  2 +
+ docs/agents/13_code_structure_inventory.md      | 19 ++++----
+ docs/agents/_generated/file_inventory.md        | 31 ++++++++++--
+ tools/README.md                                 | 64 ++++++++++++-------------
+ tools/evaluation/eval_vlm_images.py             |  2 +-
+ tools/evaluation/evaluate_xiaoan_care_clips.py  |  6 +--
+ tools/evaluation/evaluate_xiaoan_care_policy.py |  4 +-
+ tools/legacy/query_work_activity_summary.py     |  2 +-
+ tools/legacy/run_reminder_scheduler.py          |  2 +-
+ tools/legacy/send_frontend_message.py           |  2 +-
+ tools/legacy/test_emotion_trigger.py            |  2 +-
+ tools/legacy/test_openclaw_tool_calls.py        |  4 +-
+ tools/maintenance/check_runtime_env.py          |  2 +-
+ tools/maintenance/generate_agent_registry.py    |  4 +-
+ tools/ops/run_e2e_emotion_smoke.py              |  4 +-
+ tools/ops/run_integration_loop.py               |  2 +-
+ tools/ops/run_ws_video_runtime.py               |  2 +-
+ tools/probes/probe_camera.py                    |  2 +-
+ tools/probes/probe_cv_gate.py                   |  2 +-
+ tools/probes/probe_openface_routeA_live.py      |  2 +-
+ tools/probes/probe_qwen_vl_openvino.py          |  2 +-
+ tools/probes/send_test_video_frame.py           |  2 +-
+ tools/setup/setup_audio_models.py               |  2 +-
+ tools/setup/setup_models.py                     |  2 +-
+ 26 files changed, 100 insertions(+), 71 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

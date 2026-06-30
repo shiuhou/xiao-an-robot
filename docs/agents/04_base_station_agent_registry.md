@@ -104,6 +104,8 @@
 
 ## Tools — `tools/`
 
+> 2026-06-30: implementations are grouped under `tools/ops`, `tools/probes`, `tools/evaluation`, `tools/setup`, `tools/maintenance`, and `tools/legacy`; root-level `tools/*.py` files are compatibility wrappers.
+
 > 完整清单见 [10_repo_map.md](./10_repo_map.md) §Tools。改 CLI 时同步本表一行。
 
 | 脚本 | 用途 | 状态 |

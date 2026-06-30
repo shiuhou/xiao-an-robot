@@ -140,6 +140,8 @@ Mergetesting 工程内文档：
 
 见 [04_base_station_agent_registry §Tools](./04_base_station_agent_registry.md)。
 
+2026-06-30 起，`tools/` 实作按 `ops/`, `probes/`, `evaluation/`, `setup/`, `maintenance/`, `legacy/` 分组；根层 `tools/*.py` 保留为兼容 wrapper。
+
 ### 4.2 `robot/firmware/tools/`
 
 | 文件 | 用途 |

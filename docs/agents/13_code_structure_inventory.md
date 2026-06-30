@@ -11,7 +11,7 @@
 | `robot/firmware` | Bring-up lab plus reusable module pool; many isolated entrypoints still live in `src/` | Medium | Move confirmed historical snapshots into `archive/`; keep active bring-up entrypoints where `platformio.ini` expects them |
 | `base_station` | Runtime is clear; dashboard is now a separate `base_station/dashboard` surface; OpenFace vendor/runtime code is deep under `perception/` | Medium | Keep runtime paths stable; document vendored/runtime surfaces before any physical moves |
 | `agent` | Local compatibility layer plus OpenClaw adapters | Medium | Do not delete legacy compatibility; label deprecated surfaces clearly |
-| `tools` / `scripts` | Tools are documented but still flat | Medium | Defer physical moves; tests import `tools.*` modules directly |
+| `tools` / `scripts` | Tools are now physically grouped with root compatibility wrappers; scripts remain flat | Medium | Keep `tools/*.py` wrappers stable; group `scripts/` only with command wrappers |
 | `tests` | Broad but organized by unit/integration/mocks | Low | Keep import paths stable while source moves happen |
 
 ## Firmware Line
@@ -90,15 +90,16 @@ Do not move these modules while the speaker pin map is still under active hardwa
 
 ## Tools And Scripts
 
-Physical `tools/` moves are deferred because many tests import `tools.*` directly. The next safe step is to add thin subdirectory wrappers or keep flat files and rely on `tools/README.md` grouping.
+Physical `tools/` moves are complete. Implementations live under ownership subdirectories and root-level `tools/*.py` wrappers preserve existing commands and `tools.*` imports.
 
 | Group | Current files |
 |-------|---------------|
-| Ops | `send_robot_command.py`, `run_integration_loop.py`, `run_reminder_scheduler.py` |
-| Probes | `probe_camera.py`, `probe_cv_gate.py`, `probe_openface_routeA_live.py`, `probe_qwen_vl_openvino.py`, `serial_camera_viewer.py` |
-| Evaluation | `eval_*`, `evaluate_*`, `summarize_route_a_trace.py`, `prepare_xiaoan_care_report_assets.py` |
-| Maintenance | `check_runtime_env.py`, `generate_agent_registry.py`, `setup_models.py`, `setup_audio_models.py` |
-| Manual smoke scripts | `test_agent_brain.py`, `test_emotion_policy.py`, `test_emotion_trigger.py`, `test_openclaw_tool_calls.py` |
+| Ops | `tools/ops/send_robot_command.py`, `tools/ops/run_integration_loop.py`, `tools/ops/run_ws_video_runtime.py`, emotion stream/query/inject/smoke helpers |
+| Probes | `tools/probes/probe_camera.py`, `tools/probes/probe_cv_gate.py`, `tools/probes/probe_openface_routeA_live.py`, `tools/probes/probe_qwen_vl_openvino.py`, serial/test-frame helpers |
+| Evaluation | `tools/evaluation/eval_*`, `tools/evaluation/evaluate_*`, `tools/evaluation/prepare_xiaoan_care_report_assets.py` |
+| Maintenance | `tools/maintenance/check_runtime_env.py`, `tools/maintenance/generate_agent_registry.py`, `tools/maintenance/summarize_route_a_trace.py` |
+| Setup | `tools/setup/setup_models.py`, `tools/setup/setup_audio_models.py` |
+| Legacy / manual smoke | `tools/legacy/test_agent_brain.py`, `tools/legacy/test_emotion_policy.py`, `tools/legacy/test_emotion_trigger.py`, `tools/legacy/test_openclaw_tool_calls.py`, old local compatibility helpers |
 
 ## Recommended Cleanup Batches
 
@@ -107,7 +108,7 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C1 | Move `robot/firmware/src/integrated_main.cpp` to `robot/firmware/src/archive/` and update docs/env | Done 2026-06-29 | `python -m unittest tests.unit.test_firmware_ota_bootstrap tests.unit.test_mergetesting_layering -v`; optional legacy env build |
 | C2 | Move `robot/mergetesting/m600.md` to `docs/setup/m600_deployment.md` if still current | Done 2026-06-29 | Link/rg check |
 | C3 | Add deprecation headers to screen monitoring files | Already satisfied | Existing docstrings checked 2026-06-29 |
-| C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
+| C4 | Physically group `tools/` with root compatibility wrappers | Done 2026-06-30 | Full Python tests touching `tools.*` imports; wrapper import smoke; `git diff --check` |
 | C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Labeled 2026-06-29; moving remains medium/high risk | OpenFace/OpenVINO tests and live route smoke |
 | C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | Done 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
 | C7 | Refresh protocol/base-station/architecture registry after fixed-window ASR and dashboard work | Done 2026-06-30 | `rg` ASR/dashboard stale-reference scan; targeted docs diff; ASR unit tests; `git diff --check` |
@@ -124,4 +125,4 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 
 ## Current Decision
 
-C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. C8 is complete for the SenseVoice path/runbook cleanup. C9 is complete for the first root-doc physical grouping (`architecture/`, `protocol/`). C10 is complete for moving dashboard, hardware setup, and Local API docs into `runbooks/` and `setup/`. C11 documents base-station perception and monitor boundaries before any Python physical split. C12 adds the current hardware harness entry point. C13 completes the tools README grouping while keeping import paths stable. C14 documents intentional tracked report assets in the git hygiene audit. C15 documents Agent skill boundaries and legacy/deprecated surfaces. C16 documents Agent core/data boundaries and confirms local DB files stay ignored. C17 documents base-station API/dashboard local boundaries. The next safe cleanup batch should remain documentation-first unless hardware validation creates a clear code move.
+C1-C4 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. C8 is complete for the SenseVoice path/runbook cleanup. C9 is complete for the first root-doc physical grouping (`architecture/`, `protocol/`). C10 is complete for moving dashboard, hardware setup, and Local API docs into `runbooks/` and `setup/`. C11 documents base-station perception and monitor boundaries before any Python physical split. C12 adds the current hardware harness entry point. C13 completes the tools README grouping while keeping import paths stable. C14 documents intentional tracked report assets in the git hygiene audit. C15 documents Agent skill boundaries and legacy/deprecated surfaces. C16 documents Agent core/data boundaries and confirms local DB files stay ignored. C17 documents base-station API/dashboard local boundaries. The next safe cleanup batch is grouping `scripts/` with root command wrappers, then refreshing generated inventories.

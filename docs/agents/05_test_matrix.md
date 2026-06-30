@@ -67,7 +67,7 @@ pio run -e mergetesting
 |-----|------|--------|
 | `mergetesting_display_only` | P: 2026-06-26 Phase 1-2 hardening | H: `/control` hello/heartbeat/commands, 2026-06-26 |
 | `mergetesting_display_only_ota` | P: 2026-06-26 | H: espota upload path verified during split-env loop, 2026-06-26 |
-| `mergetesting_face240_only` | P: 2026-06-26 | H: expression caring/idle, no watchdog reset, 2026-06-26 |
+| `mergetesting_face240_only` | P: 2026-06-30 boot frame static test | H: expression caring/idle, no watchdog reset, 2026-06-26; USB upload on COM19 and reboot log `face=1` happy, 2026-06-30 |
 | `mergetesting_cam_only` | P: 2026-06-26 app/services split | H: QVGA JPEG + `video.frame_meta`, 2026-06-26 |
 | `mergetesting_cam_only_ota` | P: 2026-06-26 | H: espota upload, `/video`, `runtime/latest.jpg` valid JPEG, 2026-06-26 |
 | `mergetesting_mic_only` | P: 2026-06-26 | H: PCM `/audio`, heartbeat not starved, 2026-06-26 |

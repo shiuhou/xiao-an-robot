@@ -26,7 +26,7 @@
 | 电机 DRV8833 | ✅ H | isolated + mergetesting；LEDC 通道 4-7 修复后方向正确 |
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
-| 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过 |
+| 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过；2026-06-30 开机默认直接渲染 `face=1` happy |
 | INMP441 麦克风 | ✅ H / 固定窗口 ASR 前端 | RMS 测试 + mergetesting WS PCM `/audio`; current ASR demo path uses `mergetesting_mic_only_shift18_asr` plus base-station `--trim-speech` before SenseVoice |
 | MAX98357A 喇叭 | ✅ H | 音调测试 + mergetesting lazy-I2S `/control` 本地音效 |
 | OTA bootstrap | ✅ H | `ota_bootstrap` USB 首刷 + `ota_bootstrap_wifi` 无线刷新 bootstrap |

@@ -5,19 +5,22 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+4f63cc8 Add continuous ASR demo helper
 2e86637 Add dock dashboard server
 366b8d3 Add ASR speech window trimming
 a64a63a Add shared I2S audio diagnostics
 6a1ec24 Label OpenFace OV runtime as vendored
-aed67be Move M600 deployment note into docs setup
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/05_test_matrix.md |  1 +
- docs/status/2026-06-30.md     | 32 ++++++++++++++++++++++++++++++++
- 2 files changed, 33 insertions(+)
+docs/agents/00_snapshot.md                 | 2 +-
+ docs/agents/03_mergetesting_registry.md    | 2 +-
+ docs/agents/05_test_matrix.md              | 2 +-
+ robot/mergetesting/src/face240_display.cpp | 6 +++---
+ tests/unit/test_mergetesting_layering.py   | 9 +++++++++
+ 5 files changed, 15 insertions(+), 6 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)
@@ -184,7 +187,7 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\unit\test_memory_tasks.py | 6750 |
 | tests\unit\test_memory_tool_runs.py | 4593 |
 | tests\unit\test_memory_work_activity.py | 5146 |
-| tests\unit\test_mergetesting_layering.py | 48860 |
+| tests\unit\test_mergetesting_layering.py | 49383 |
 | tests\unit\test_openclaw_adapter.py | 5922 |
 | tests\unit\test_openclaw_adapter_factory.py | 5717 |
 | tests\unit\test_openclaw_tool_call_runtime.py | 26079 |

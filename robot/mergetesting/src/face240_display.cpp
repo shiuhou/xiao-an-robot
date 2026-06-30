@@ -948,9 +948,9 @@ void face240_init() {
     carouselStartMs = now;
     expressionStartMs = now;
     fpsWindowMs = now;
-    copyPoseImmediate(poseForExpression(FACE_CONTENT));
-    fillBuffer(C_BG);
-    pushFrameBuffer();
+    copyPoseImmediate(poseForExpression(expression));
+    renderRoboEyesFrame(now);
+    pushRoboEyesFrame();
     LOGI("Face240", "ST7789 RoboEyes renderer ready");
 }
 

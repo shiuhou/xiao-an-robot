@@ -9,7 +9,7 @@
 | `mergetesting` | ST7735 | 开 | 关 | 默认合并 baseline | — |
 | `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1-2 `/control` | ✅ 2026-06-26 |
 | `mergetesting_display_only_ota` | ST7735 | 关 | 关 | Phase 1-2 OTA upload | ✅ 2026-06-26 |
-| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control` | ✅ 2026-06-26 |
+| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control`; boot default `face=1` happy | ✅ 2026-06-30 |
 | `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
 | **`mergetesting_care_demo_face240`** | ST7789 九表情 | **关** | **关** | **OpenClaw Step 33 实机 care demo**（control+face240+motor+speaker，无 `/video`/`/audio`） | ✅ H 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | ST7789 | 关 | 关 | 上述 care demo OTA | ✅ P |

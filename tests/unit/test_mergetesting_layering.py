@@ -789,6 +789,15 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertNotIn("void loop()", face_cpp)
         self.assertIn("if (TFT_BL >= 0)", face_cpp)
 
+    def test_face240_boot_frame_uses_default_expression(self) -> None:
+        face_cpp = (MERGETEST_SRC / "face240_display.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("static FaceExpression expression = FACE_HAPPY;", face_cpp)
+        self.assertIn("copyPoseImmediate(poseForExpression(expression));", face_cpp)
+        self.assertIn("renderRoboEyesFrame(now);", face_cpp)
+        self.assertIn("pushRoboEyesFrame();", face_cpp)
+        self.assertNotIn("copyPoseImmediate(poseForExpression(FACE_CONTENT));", face_cpp)
+
     def test_audio_commands_ack_status_and_report_errors(self) -> None:
         router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
             encoding="utf-8"

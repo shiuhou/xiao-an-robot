@@ -2,7 +2,7 @@
 
 This page is the canonical wiring reference for Xiao An bench and integrated harnesses.
 
-Updated: **2026-06-25 doc sync over the 2026-06-22 integrated map**. Power distribution details: [power.md](power.md).
+Updated: **2026-06-30 audio wiring sync over the 2026-06-22 integrated map**. Power distribution details: [power.md](power.md).
 
 Hardware target:
 
@@ -19,6 +19,7 @@ Hardware target:
 - **TFT SPI uses the integrated map** (GPIO14/21/42/43/44, LED tied to 3V3) as the default in firmware and PlatformIO envs.
 - **Legacy TFT bench map** (GPIO9/10/11/12) remains only for explicit `face240_legacy` / `display_test_legacy` envs on old harnesses.
 - **Motor VM** comes from the battery rail, not the 5V distribution bus.
+- **Speaker + mic audio** uses the shared-clock candidate map in `robot/mergetesting`: INMP441 BCLK/WS/SD = GPIO39/40/41 and MAX98357A BCLK/WS/DIN = GPIO39/40/47. Do not use GPIO35/36/37 for the current MAX98357A path on the Octal PSRAM module.
 
 ## Power System
 
@@ -161,14 +162,16 @@ Env: `voice_recognition_test` (electrical / RMS test, not real ASR).
 | --- | --- |
 | VIN | Distribution 5V |
 | GND | Distribution GND |
-| BCLK | GPIO35 |
-| LRC / WS | GPIO36 |
-| DIN | GPIO37 |
+| BCLK | GPIO39, shared with INMP441 SCK / BCLK |
+| LRC / WS | GPIO40, shared with INMP441 WS / LRCL |
+| DIN | GPIO47 |
 | GAIN | Float or GND |
 | SD | 3V3 (enable) or float |
 | SPK +/- | 8 ohm speaker |
 
-Env: `speaker_amp_test`.
+Current product-candidate diagnostic env: `mergetesting_audio_shared_i2s_diag` in `robot/mergetesting`. It runs half-duplex audio only: LISTEN installs mic RX on I2S0, SPEAK installs speaker TX on I2S1, and the active I2S driver is uninstalled before switching modes. It also emits a 1 kHz probe tone before the embedded phrase so the amp/speaker output path can be checked independently of spoken phrase loudness.
+
+Do **not** use GPIO35/36/37 for MAX98357A on the current ESP32-S3 Octal PSRAM module. The 2026-06-29 A/B tests showed GPIO35/36/37 can reset at the first embedded PCM write with `TG1WDT_SYS_RST`.
 
 Temporary speaker-only diagnostic for ESP32-S3 Octal PSRAM pin conflict confirmed on 2026-06-29:
 
@@ -179,6 +182,8 @@ Temporary speaker-only diagnostic for ESP32-S3 Octal PSRAM pin conflict confirme
 | DIN | GPIO41 |
 
 Use `mergetesting_speaker_altpins_only` first, then `mergetesting_speaker_altpins_phrase_only` for the embedded-sentence retest. OTA variants are `mergetesting_speaker_altpins_only_ota` and `mergetesting_speaker_altpins_phrase_only_ota`. Do not use this map with INMP441 connected; GPIO39/40/41 are the default mic pins. The A/B result is: GPIO35/36/37 resets during embedded PCM playback, GPIO39/40/41 completes the same PCM path without WDT.
+
+Legacy isolated amp env `speaker_amp_test` remains a robot-body bring-up target, not the current DK-2500 integrated audio path. Before using it, verify its pin map against `robot/firmware/platformio.ini` and the actual harness.
 
 ## GPIO Allocation Summary
 
@@ -193,11 +198,12 @@ GPIO    Function
 15        Camera XCLK
 16–18     Camera D7, D6, D5
 21        TFT MOSI (integrated map)
-35–37     Speaker I2S
+35–37     Avoid for current MAX98357A on Octal PSRAM module
 3         Right motor IN1
 38        Previously right motor IN2; avoid for motor after reset-spin issue
-39–41     Microphone I2S
+39–41     INMP441 I2S; 39/40 also shared with MAX98357A clock in half-duplex diag
 42–44     TFT CS / DC / RST (integrated map)
+47        MAX98357A DIN in current shared-clock diagnostic
 48        Right motor IN2
 ──────────────────────────────────
 Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for now)
@@ -226,7 +232,9 @@ Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for no
 | Alias | `face240_integrated` | Same as `face240_wiretest` |
 | Camera + motor + WiFi demo | `motor_cam_wifi_manual` | SSID `XiaoAn-Motor`, password `12345678`, UI `http://192.168.4.1/` |
 | Microphone electrical test | `voice_recognition_test` | |
-| Speaker test | `speaker_amp_test` | |
+| Speaker electrical test | `speaker_amp_test` | Robot-body bring-up only; verify pins before use |
+| Shared mic/speaker diagnostic | `mergetesting_audio_shared_i2s_diag` | In `robot/mergetesting`; BCLK=39, WS=40, mic SD=41, speaker DIN=47 |
+| Fixed-window mic ASR calibration | `mergetesting_mic_only_shift18_asr` | In `robot/mergetesting`; current ASR demo gain path |
 | Motor bench | `motor_bench_once`, `motor_manual`, `motor_wifi_manual` | |
 | Main `/control` firmware | `esp32-s3-devkitc-1` | |
 | DK-2500 `/control` Phase 1-2 | `mergetesting_display_only`, `mergetesting_display_only_ota` | In `robot/mergetesting`; OTA target requires OTA-enabled firmware already running |

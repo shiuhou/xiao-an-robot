@@ -1,4 +1,4 @@
-# Code Structure Inventory — 2026-06-29
+# Code Structure Inventory — 2026-06-30
 
 > Purpose: keep repo cleanup mechanical and reversible. This file classifies code by current role before moving or archiving files.
 > Truth priority remains: live source / `platformio.ini` > `AGENTS.md` > `docs/current_status.md` > latest status snapshot > registries.
@@ -7,9 +7,9 @@
 
 | Area | Current shape | Cleanup pressure | First action |
 |------|---------------|------------------|--------------|
-| `robot/mergetesting` | Main DK-2500 integration firmware; app/services split is already clear | Low | Do not move runtime modules during hardware bring-up; only document diagnostic envs |
+| `robot/mergetesting` | Main DK-2500 integration firmware; app/services split is already clear; audio diagnostics are numerous but intentional | Low | Do not move runtime modules during hardware bring-up; keep diagnostic envs labeled in registry/test matrix |
 | `robot/firmware` | Bring-up lab plus reusable module pool; many isolated entrypoints still live in `src/` | Medium | Move confirmed historical snapshots into `archive/`; keep active bring-up entrypoints where `platformio.ini` expects them |
-| `base_station` | Runtime is clear, but OpenFace vendor/runtime code is deep under `perception/` | Medium | Keep as-is until model/runtime import paths are audited; document as vendored runtime |
+| `base_station` | Runtime is clear; dashboard is now a separate `base_station/dashboard` surface; OpenFace vendor/runtime code is deep under `perception/` | Medium | Keep runtime paths stable; document vendored/runtime surfaces before any physical moves |
 | `agent` | Local compatibility layer plus OpenClaw adapters | Medium | Do not delete legacy compatibility; label deprecated surfaces clearly |
 | `tools` / `scripts` | Tools are documented but still flat | Medium | Defer physical moves; tests import `tools.*` modules directly |
 | `tests` | Broad but organized by unit/integration/mocks | Low | Keep import paths stable while source moves happen |
@@ -65,6 +65,7 @@ Do not move these modules while the speaker pin map is still under active hardwa
 | speaker phrase/altpins/drain envs | Diagnostic envs are valuable but numerous | Keep, mark as diagnostic in registry and test matrix |
 | `docs/setup/m600_deployment.md` | Machine-specific deployment note | Moved out of `robot/mergetesting` on 2026-06-29 |
 | `CAPABILITIES.md`, `EXTRACTION_MAP.md`, `MAIN_DEMO.md` | Current local docs | Keep beside firmware project |
+| `audio_shared_i2s_diag_main.cpp` | Standalone shared-clock mic/speaker diagnostic with isolated `build_src_filter` | Keep in `src/` while hardware audio is still being validated; it is intentionally not part of normal app flow |
 
 ## Base Station And Agent
 
@@ -73,7 +74,9 @@ Do not move these modules while the speaker pin map is still under active hardwa
 | Path | Reason |
 |------|--------|
 | `base_station/ws_server/` | Current `/control` `/video` `/audio` `/agent` runtime |
+| `base_station/dashboard/` | Current standalone 7-inch Dock dashboard; separate from Electron/frontend |
 | `base_station/perception/audio_diagnostics.py` | Current mic bring-up and regression diagnostics |
+| `base_station/perception/audio_segments.py` | Current fixed-window ASR speech trimming helper |
 | `base_station/perception/openface_ov_runtime/` | Bundled vendored runtime with fragile import paths; keep in place |
 | `agent/core/*openclaw*` | OpenClaw bridge surface |
 
@@ -106,7 +109,8 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C3 | Add deprecation headers to screen monitoring files | Already satisfied | Existing docstrings checked 2026-06-29 |
 | C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
 | C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Labeled 2026-06-29; moving remains medium/high risk | OpenFace/OpenVINO tests and live route smoke |
+| C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | In progress 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
 
 ## Current Decision
 
-C1 has been applied first because it improves the firmware line boundary without touching active hardware/debug paths. Continue with C2 only after link checks.
+C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is the current safe cleanup batch: update wiring/status docs that still describe GPIO35/36/37 or pre-dashboard repo shape as current truth.

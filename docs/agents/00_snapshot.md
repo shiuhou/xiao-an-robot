@@ -75,6 +75,7 @@
 | **代码结构 inventory 2026-06-29** | `docs/agents/13_code_structure_inventory.md`, `robot/firmware/src/archive/`, `docs/setup/m600_deployment.md` | 已建立结构整理批次清单；legacy `integrated_main.cpp` 移出 active src 根但保留 legacy env 编译；M600 部署笔记移入 `docs/setup/` |
 | **OpenFace runtime 标记 2026-06-29** | `base_station/perception/openface_ov_runtime/README.md`, `docs/agents/04_base_station_agent_registry.md` | `openface_ov_runtime/` 是 bundled vendored runtime，`ov_perceive.py` 依赖 runtime root / `Pytorch_Retinaface` / `STAR` 的 `sys.path` 插入；普通仓库整理不要移动 |
 | **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
+| **Wiring stale-reference sweep 2026-06-30** | `hardware/wiring/esp32_pinout.md`, `docs/current_status.md`, `docs/agents/13_code_structure_inventory.md` | 修正 wiring canonical page：当前 shared-clock candidate 是 INMP441 39/40/41 + MAX98357A 39/40/47；GPIO35/36/37 标为当前 Octal PSRAM MAX98357A 避免项；inventory 下一批次改为 C6 stale wiring/status sweep |
 
 ## 硬件阻塞（剩余）
 

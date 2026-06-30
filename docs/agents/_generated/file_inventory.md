@@ -5,33 +5,22 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+2e86637 Add dock dashboard server
+366b8d3 Add ASR speech window trimming
+a64a63a Add shared I2S audio diagnostics
 6a1ec24 Label OpenFace OV runtime as vendored
 aed67be Move M600 deployment note into docs setup
-0d33fc0 Archive legacy firmware integration entrypoint
-1906401 Tune embedded TTS phrase gain
-a400f71 Add TTS audio streaming diagnostics path
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-base_station/README.md                        |  14 +++
- base_station/monitor/asr_runtime.py           |  67 +++++++++-
- docs/agents/00_snapshot.md                    |   5 +-
- docs/agents/03_mergetesting_registry.md       |   1 +
- docs/agents/04_base_station_agent_registry.md |  13 ++
- docs/agents/05_test_matrix.md                 |  11 ++
- docs/agents/_generated/file_inventory.md      |  36 ++++--
- docs/current_status.md                        |   2 +-
- docs/hardware_setup.md                        |  42 +++++--
- docs/status/2026-06-29.md                     | 160 ++++++++++++++++++++++++
- robot/mergetesting/platformio.ini             |  83 +++++++++++++
- robot/mergetesting/src/config.h               |   6 +-
- robot/mergetesting/src/hardware_pins.h        |   6 +-
- robot/mergetesting/src/mic_stream.cpp         |  27 +++-
- tests/unit/test_asr_runtime.py                |  56 +++++++++
- tests/unit/test_mergetesting_layering.py      | 172 +++++++++++++++++++++++++-
- 16 files changed, 660 insertions(+), 41 deletions(-)
+docs/agents/00_snapshot.md                 |  1 +
+ docs/agents/13_code_structure_inventory.md | 12 ++++++++----
+ docs/current_status.md                     | 17 ++++++++++++++++-
+ docs/status/2026-06-30.md                  | 23 +++++++++++++++++++++++
+ hardware/wiring/esp32_pinout.md            | 24 ++++++++++++++++--------
+ 5 files changed, 64 insertions(+), 13 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

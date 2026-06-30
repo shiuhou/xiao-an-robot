@@ -11,7 +11,7 @@
 | `robot/firmware` | Bring-up lab plus reusable module pool; many isolated entrypoints still live in `src/` | Medium | Move confirmed historical snapshots into `archive/`; keep active bring-up entrypoints where `platformio.ini` expects them |
 | `base_station` | Runtime is clear; dashboard is now a separate `base_station/dashboard` surface; OpenFace vendor/runtime code is deep under `perception/` | Medium | Keep runtime paths stable; document vendored/runtime surfaces before any physical moves |
 | `agent` | Local compatibility layer plus OpenClaw adapters | Medium | Do not delete legacy compatibility; label deprecated surfaces clearly |
-| `tools` / `scripts` | Tools are now physically grouped with root compatibility wrappers; scripts remain flat | Medium | Keep `tools/*.py` wrappers stable; group `scripts/` only with command wrappers |
+| `tools` / `scripts` | Tools and scripts are physically grouped with root compatibility wrappers | Low | Keep root wrappers stable; put new implementations in ownership subdirectories |
 | `tests` | Broad but organized by unit/integration/mocks | Low | Keep import paths stable while source moves happen |
 
 ## Firmware Line
@@ -101,6 +101,14 @@ Physical `tools/` moves are complete. Implementations live under ownership subdi
 | Setup | `tools/setup/setup_models.py`, `tools/setup/setup_audio_models.py` |
 | Legacy / manual smoke | `tools/legacy/test_agent_brain.py`, `tools/legacy/test_emotion_policy.py`, `tools/legacy/test_emotion_trigger.py`, `tools/legacy/test_openclaw_tool_calls.py`, old local compatibility helpers |
 
+Physical `scripts/` moves are complete. Implementations live under:
+
+| Group | Current files |
+|-------|---------------|
+| Setup | `scripts/setup/check_env.sh`, `scripts/setup/init_db.sh`, `scripts/setup/setup_intel_board.sh` |
+| Start | `scripts/start/start_base_station.sh`, `scripts/start/start_agent.sh`, `scripts/start/start_local_api.sh`, `scripts/start/start_all.sh`, `scripts/start/run_mock_robot.sh` |
+| Debug | `scripts/debug/debug_camera_cv_vlm_e2e.py`, `scripts/debug/try_vlm_once.py` |
+
 ## Recommended Cleanup Batches
 
 | Batch | Scope | Risk | Verification |
@@ -122,7 +130,8 @@ Physical `tools/` moves are complete. Implementations live under ownership subdi
 | C15 | Add agent skills local boundary README | Done 2026-06-30 | tracked Markdown link check; robot/Agent skill tests; `git diff --check` |
 | C16 | Add agent core/data local boundary READMEs | Done 2026-06-30 | ignored DB status check; tracked Markdown link check; Agent tests; `git diff --check` |
 | C17 | Add base-station API/dashboard local READMEs | Done 2026-06-30 | tracked Markdown link check; API/dashboard tests; `git diff --check` |
+| C18 | Physically group `scripts/` with root command wrappers | Done 2026-06-30 | `bash -n`; Python wrapper help/compile smoke; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C4 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. C8 is complete for the SenseVoice path/runbook cleanup. C9 is complete for the first root-doc physical grouping (`architecture/`, `protocol/`). C10 is complete for moving dashboard, hardware setup, and Local API docs into `runbooks/` and `setup/`. C11 documents base-station perception and monitor boundaries before any Python physical split. C12 adds the current hardware harness entry point. C13 completes the tools README grouping while keeping import paths stable. C14 documents intentional tracked report assets in the git hygiene audit. C15 documents Agent skill boundaries and legacy/deprecated surfaces. C16 documents Agent core/data boundaries and confirms local DB files stay ignored. C17 documents base-station API/dashboard local boundaries. The next safe cleanup batch is grouping `scripts/` with root command wrappers, then refreshing generated inventories.
+C1-C4 and C6-C18 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.

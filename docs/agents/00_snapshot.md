@@ -77,6 +77,7 @@
 | **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/runbooks/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
 | **Wiring stale-reference sweep 2026-06-30** | `hardware/wiring/esp32_pinout.md`, `docs/current_status.md`, `docs/agents/13_code_structure_inventory.md` | 修正 wiring canonical page：当前 shared-clock candidate 是 INMP441 39/40/41 + MAX98357A 39/40/47；GPIO35/36/37 标为当前 Octal PSRAM MAX98357A 避免项；inventory 下一批次改为 C6 stale wiring/status sweep |
 | **Tools physical grouping 2026-06-30** | `tools/ops/`, `tools/probes/`, `tools/evaluation/`, `tools/setup/`, `tools/maintenance/`, `tools/legacy/` | 工具实作已按职责实体现分组；根层 `tools/*.py` 保留兼容 wrapper，旧命令和 `tools.*` imports 继续可用 |
+| **Scripts physical grouping 2026-06-30** | `scripts/setup/`, `scripts/start/`, `scripts/debug/` | 启动、setup、debug 脚本已按职责实体现分组；根层 `scripts/*.sh` / `scripts/*.py` 保留 wrapper，旧命令继续可用 |
 
 ## 硬件阻塞（剩余）
 

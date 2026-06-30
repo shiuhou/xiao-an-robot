@@ -16,7 +16,7 @@
 | `hardware/` | BOM、接线、机械 | [hardware_setup.md](../setup/hardware_setup.md) |
 | `robot/firmware/` | ESP32 本体单项 bring-up | [02_firmware_registry](./02_firmware_registry.md) |
 | `robot/mergetesting/` | **DK-2500 联调固件** | [03_mergetesting_registry](./03_mergetesting_registry.md) |
-| `scripts/` | 启动/环境脚本（非 Python tools） | 按需读目录 |
+| `scripts/` | 启动/环境/debug 脚本（非 Python tools） | [scripts/README.md](../../scripts/README.md) |
 | `shared/` | 协议常量、schema、示例 JSON | 改协议必同步 |
 | `tests/` | unit + integration + mock_robot | [05_test_matrix](./05_test_matrix.md) |
 | `tools/` | 联调/探测 CLI（Python） | [04_* §Tools](./04_base_station_agent_registry.md) |
@@ -142,7 +142,11 @@ Mergetesting 工程内文档：
 
 2026-06-30 起，`tools/` 实作按 `ops/`, `probes/`, `evaluation/`, `setup/`, `maintenance/`, `legacy/` 分组；根层 `tools/*.py` 保留为兼容 wrapper。
 
-### 4.2 `robot/firmware/tools/`
+### 4.2 `scripts/`
+
+2026-06-30 起，`scripts/` 实作按 `setup/`, `start/`, `debug/` 分组；根层 `scripts/*.sh` 和 `scripts/*.py` 保留为兼容 wrapper。
+
+### 4.3 `robot/firmware/tools/`
 
 | 文件 | 用途 |
 |------|------|

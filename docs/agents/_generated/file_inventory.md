@@ -15,33 +15,20 @@ d64c61e Document agent core data boundaries
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                      |  1 +
- docs/agents/04_base_station_agent_registry.md   |  2 +
- docs/agents/10_repo_map.md                      |  2 +
- docs/agents/13_code_structure_inventory.md      | 19 ++++----
- docs/agents/_generated/file_inventory.md        | 31 ++++++++++--
- tools/README.md                                 | 64 ++++++++++++-------------
- tools/evaluation/eval_vlm_images.py             |  2 +-
- tools/evaluation/evaluate_xiaoan_care_clips.py  |  6 +--
- tools/evaluation/evaluate_xiaoan_care_policy.py |  4 +-
- tools/legacy/query_work_activity_summary.py     |  2 +-
- tools/legacy/run_reminder_scheduler.py          |  2 +-
- tools/legacy/send_frontend_message.py           |  2 +-
- tools/legacy/test_emotion_trigger.py            |  2 +-
- tools/legacy/test_openclaw_tool_calls.py        |  4 +-
- tools/maintenance/check_runtime_env.py          |  2 +-
- tools/maintenance/generate_agent_registry.py    |  4 +-
- tools/ops/run_e2e_emotion_smoke.py              |  4 +-
- tools/ops/run_integration_loop.py               |  2 +-
- tools/ops/run_ws_video_runtime.py               |  2 +-
- tools/probes/probe_camera.py                    |  2 +-
- tools/probes/probe_cv_gate.py                   |  2 +-
- tools/probes/probe_openface_routeA_live.py      |  2 +-
- tools/probes/probe_qwen_vl_openvino.py          |  2 +-
- tools/probes/send_test_video_frame.py           |  2 +-
- tools/setup/setup_audio_models.py               |  2 +-
- tools/setup/setup_models.py                     |  2 +-
- 26 files changed, 100 insertions(+), 71 deletions(-)
+docs/agents/00_snapshot.md                 |  1 +
+ docs/agents/10_repo_map.md                 |  8 ++++++--
+ docs/agents/13_code_structure_inventory.md | 13 +++++++++++--
+ scripts/README.md                          | 26 ++++++++++++++++----------
+ scripts/debug/debug_camera_cv_vlm_e2e.py   |  2 +-
+ scripts/debug/try_vlm_once.py              |  2 +-
+ scripts/setup/check_env.sh                 |  2 +-
+ scripts/setup/init_db.sh                   |  2 +-
+ scripts/start/run_mock_robot.sh            |  2 +-
+ scripts/start/start_agent.sh               |  2 +-
+ scripts/start/start_all.sh                 |  2 +-
+ scripts/start/start_base_station.sh        |  2 +-
+ scripts/start/start_local_api.sh           |  2 +-
+ 13 files changed, 43 insertions(+), 23 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

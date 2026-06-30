@@ -96,6 +96,15 @@ Checks:
 - Confirm the file is PCM WAV; the Step 42 loader does not handle compressed formats.
 - Use `--vad-backend fake --vad-pattern speech` to verify the ASR route without real VAD.
 - Use `--vad-pattern silence` to verify the expected `asr.no_speech` path.
+- For the current fixed-window microphone demo, first export/listen to the latest
+  `/audio` PCM capture before changing ASR settings:
+
+```powershell
+python -m base_station.perception.audio_diagnostics runtime\latest_audio.pcm --wav-out runtime\manual_samples\mic_20cm.wav --report-out runtime\manual_samples\mic_20cm_stats.json
+python -m base_station.monitor.asr_runtime --source audio_file --audio-path runtime\manual_samples\mic_20cm.wav --asr-backend sensevoice --asr-model-path base_station\models\sensevoice-small --trim-speech --no-agent --verbose
+```
+
+- Treat unclear WAV audio, clipping, high DC offset, or low RMS as an I2S/gain/wiring/acoustics issue before debugging SenseVoice.
 - Do not commit `runtime/manual_samples` audio files.
 
 ## SenseVoice Or Silero Backend Fails
@@ -107,7 +116,10 @@ Symptom:
 Current status:
 
 - Step 42 provides software contracts and fake/file-first smoke.
-- Real SenseVoice and Silero model setup is a separate confirmed step.
+- Step 43.1 uses `tools/setup_audio_models.py --only sensevoice_small` to prepare
+  `FunAudioLLM/SenseVoiceSmall` under `base_station/models/sensevoice-small`.
+- Step 43.2 uses the `silero-vad` pip package route; no separate Silero model
+  file is required for that audio-file smoke.
 - The runtime never downloads ASR/VAD models automatically.
 
 ## PlatformIO Env Fails After Dependency Changes

@@ -15,12 +15,10 @@ a64a63a Add shared I2S audio diagnostics
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/04_base_station_agent_registry.md |  7 +++++--
- docs/agents/13_code_structure_inventory.md    |  5 +++--
- docs/agents/_generated/file_inventory.md      | 12 +++++-------
- docs/architecture.md                          |  7 +++++--
- docs/protocol.md                              | 10 +++++-----
- 5 files changed, 23 insertions(+), 18 deletions(-)
+docs/agents/13_code_structure_inventory.md |  3 ++-
+ docs/current_status.md                     |  2 +-
+ docs/runbooks/troubleshooting.md           | 14 +++++++++++++-
+ 3 files changed, 16 insertions(+), 3 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

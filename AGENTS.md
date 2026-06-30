@@ -134,6 +134,6 @@ git diff --check
 
 ## Documentation Rules
 
-- Update `README.md`, `docs/project_status_*.md`, `docs/hardware_setup.md`, and `hardware/wiring/*` when changing env names, wiring, commands, or hardware assumptions.
+- Update `README.md`, `docs/project_status_*.md`, `docs/setup/hardware_setup.md`, and `hardware/wiring/*` when changing env names, wiring, commands, or hardware assumptions.
 - Prefer dated status snapshots for handoff documents.
 - Keep model download notes as placement/setup guidance unless the actual DK-2500 model source has been verified.

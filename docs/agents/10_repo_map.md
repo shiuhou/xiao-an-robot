@@ -13,7 +13,7 @@
 | `base_station/` | WS 服务、perception、monitor、Local API | [04_*](./04_base_station_agent_registry.md) |
 | `docs/` | 架构、协议、部署、状态、agents 体系 | [docs README](../README.md) + 本文 |
 | `frontend/` | Electron/Vite 早期 UI | [frontend/README.md](../../frontend/README.md) |
-| `hardware/` | BOM、接线、机械 | [hardware_setup.md](../hardware_setup.md) |
+| `hardware/` | BOM、接线、机械 | [hardware_setup.md](../setup/hardware_setup.md) |
 | `robot/firmware/` | ESP32 本体单项 bring-up | [02_firmware_registry](./02_firmware_registry.md) |
 | `robot/mergetesting/` | **DK-2500 联调固件** | [03_mergetesting_registry](./03_mergetesting_registry.md) |
 | `scripts/` | 启动/环境脚本（非 Python tools） | 按需读目录 |
@@ -90,8 +90,8 @@
 |------|--------|
 | [dk2500_deployment.md](../setup/dk2500_deployment.md) | DK-2500 部署；**配合** `status/2026-06-26.md` |
 | [device_setup.md](../setup/device_setup.md) | 新机器 OpenFace/VLM |
-| [hardware_setup.md](../hardware_setup.md) | 硬件接线总览 |
-| [local_api.md](../local_api.md) | Local HTTP API |
+| [hardware_setup.md](../setup/hardware_setup.md) | 硬件接线总览 |
+| [local_api.md](../setup/local_api.md) | Local HTTP API |
 | [model_download.md](../setup/model_download.md) | 模型下载 |
 | [troubleshooting.md](../runbooks/troubleshooting.md) | 排障 |
 | [openface_au_mapping.md](../perception/openface_au_mapping.md) | AU 8 维映射 |

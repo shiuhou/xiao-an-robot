@@ -80,7 +80,7 @@ python tools/generate_agent_registry.py
 | `docs/README.md` / `docs/current_status.md` | 文档入口和当前真相 |
 | `docs/setup/dk2500_deployment.md` | DK-2500 部署（配合最新 status） |
 | `docs/setup/device_setup.md` | 新机器 OpenFace/VLM |
-| `docs/local_api.md` | Local HTTP API |
+| `docs/setup/local_api.md` | Local HTTP API |
 | `docs/runbooks/troubleshooting.md` / `docs/setup/model_download.md` | 排障与模型 |
 | `docs/perception/openface_au_mapping.md` | OpenFace AU 映射 |
 | `docs/setup/frontend_setup.md` | 前端 MVP |
@@ -100,7 +100,7 @@ python tools/generate_agent_registry.py
 - Codex Skill：`/.agents/skills/xiao-an-session/SKILL.md`
 - 飞书协作：`/.agents/skills/team-lark/SKILL.md`
 - Cursor（按需）：`/.cursor/rules/agent-session.mdc`
-- 人类可读总览：`docs/architecture/system_architecture.md`, `docs/hardware_setup.md`
+- 人类可读总览：`docs/architecture/system_architecture.md`, `docs/setup/hardware_setup.md`
 - Agent 规则：`AGENTS.md`（仓库根）
 - 联调对接表：`robot/mergetesting/CAPABILITIES.md`
 - 代码边界：`robot/firmware` 验证单项功能，`robot/mergetesting` 负责 base-station 联调；不要把联调入口放回 firmware。

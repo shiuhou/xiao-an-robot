@@ -75,7 +75,7 @@ Use `config.example.yaml` as the shareable template.
 ## Related Docs
 
 - [../docs/current_status.md](../docs/current_status.md)
-- [../docs/base_station_dashboard.md](../docs/base_station_dashboard.md)
+- [../docs/runbooks/base_station_dashboard.md](../docs/runbooks/base_station_dashboard.md)
 - [../docs/agents/04_base_station_agent_registry.md](../docs/agents/04_base_station_agent_registry.md)
 - [../docs/setup/dk2500_deployment.md](../docs/setup/dk2500_deployment.md)
 - [../docs/runbooks/main_demo_care_loop.md](../docs/runbooks/main_demo_care_loop.md)

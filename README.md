@@ -103,7 +103,7 @@ Important entry points:
 | Mergetesting env roles | `robot/mergetesting/platformio.ini`, [docs/agents/03_mergetesting_registry.md](docs/agents/03_mergetesting_registry.md) |
 | Test matrix | [docs/agents/05_test_matrix.md](docs/agents/05_test_matrix.md) |
 | Message contract | [docs/protocol/protocol.md](docs/protocol/protocol.md), `shared/protocol/*` |
-| Wiring assumptions | [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md), [docs/hardware_setup.md](docs/hardware_setup.md) |
+| Wiring assumptions | [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md), [docs/setup/hardware_setup.md](docs/setup/hardware_setup.md) |
 | OpenClaw boundary | [docs/openclaw/openclaw_ownership_boundary.md](docs/openclaw/openclaw_ownership_boundary.md) |
 
 ## Development Boundaries
@@ -114,7 +114,7 @@ Important entry points:
 | DK-2500/base-station integration | `robot/mergetesting` |
 | Proven module reused by integration | validate in `robot/firmware`, then copy/sync minimal module into `robot/mergetesting` |
 | Protocol changes | `docs/protocol/protocol.md`, `shared/protocol/*`, firmware `protocol.h` |
-| Wiring/env command changes | `docs/hardware_setup.md`, `hardware/wiring/*`, `docs/agents/*` |
+| Wiring/env command changes | `docs/setup/hardware_setup.md`, `hardware/wiring/*`, `docs/agents/*` |
 
 Validate firmware with specific envs, not broad `pio run`.
 

@@ -58,8 +58,8 @@
 | `motor_ctrl.cpp/h` | firmware | ✅ | non-blocking motion；bench/manual 可用 timeout/duration 跑开环 |
 | `cam_stream.cpp/h` | firmware + WS | ✅ | 1fps → meta + binary/base64 |
 | `camera_ov2640_config.h` | 引脚常量 | ✅ | GOOUUU S3-CAM v1.5 |
-| `speaker.cpp/h` | `speaker_amp_test.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
-| `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
+| `speaker.cpp/h` | `max98357a_tone_check_main.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
+| `mic_stream.cpp/h` | `inmp441_rms_check_main.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
 | `debug_log.h` | 新建 | ✅ | LOGI/LOGE 宏 |
 
 ## `MergetestingApp` loop 顺序

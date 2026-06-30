@@ -15,16 +15,15 @@ d64c61e Document agent core data boundaries
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                    |  1 +
- docs/agents/04_base_station_agent_registry.md |  8 ++++----
- docs/agents/13_code_structure_inventory.md    |  5 +++--
- docs/agents/README.md                         |  2 ++
- tools/README.md                               | 10 ++++++----
- tools/test_agent_brain.py                     |  6 +++---
- tools/test_emotion_policy.py                  |  6 +++---
- tools/test_emotion_trigger.py                 |  6 +++---
- tools/test_openclaw_tool_calls.py             |  6 +++---
- 9 files changed, 28 insertions(+), 22 deletions(-)
+docs/agents/02_firmware_registry.md                | 20 ++++++-------
+ docs/agents/03_mergetesting_registry.md            |  4 +--
+ docs/agents/13_code_structure_inventory.md         | 10 +++----
+ docs/agents/14_naming_inventory.md                 |  6 ++--
+ robot/firmware/README.md                           |  2 +-
+ robot/firmware/platformio.ini                      | 34 +++++++++++-----------
+ robot/firmware/tools/face240_preview.html          |  2 +-
+ .../tools/test_face240_roboeyes_framebuffer.py     |  4 +--
+ 8 files changed, 42 insertions(+), 40 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)
@@ -35,17 +34,20 @@ docs/agents/00_snapshot.md                    |  1 +
 | `board_pins.h` | robot\firmware\src\board_pins.h | 2425 |
 | `cam_stream.cpp` | robot\firmware\src\cam_stream.cpp | 4245 |
 | `cam_stream.h` | robot\firmware\src\cam_stream.h | 594 |
+| `camera_motor_centering_demo_main.cpp` | robot\firmware\src\camera_motor_centering_demo_main.cpp | 10535 |
 | `camtesting_program.cpp` | robot\firmware\src\camtesting_program.cpp | 7588 |
 | `config.local.example.h` | robot\firmware\src\config.local.example.h | 312 |
 | `config.local.h` | robot\firmware\src\config.local.h | 283 |
 | `debug_log.h` | robot\firmware\src\debug_log.h | 294 |
 | `display.cpp` | robot\firmware\src\display.cpp | 8744 |
 | `display.h` | robot\firmware\src\display.h | 833 |
-| `face240_roboeyes_test.cpp` | robot\firmware\src\face240_roboeyes_test.cpp | 30023 |
-| `face240_wire_test.cpp` | robot\firmware\src\face240_wire_test.cpp | 4260 |
+| `display128_tft_smoke_main.cpp` | robot\firmware\src\display128_tft_smoke_main.cpp | 12763 |
+| `face240_roboeyes_demo_main.cpp` | robot\firmware\src\face240_roboeyes_demo_main.cpp | 30023 |
+| `face240_wire_check_main.cpp` | robot\firmware\src\face240_wire_check_main.cpp | 4260 |
 | `feature_flags.h` | robot\firmware\src\feature_flags.h | 678 |
-| `keep_face_center_test.cpp` | robot\firmware\src\keep_face_center_test.cpp | 10535 |
+| `inmp441_rms_check_main.cpp` | robot\firmware\src\inmp441_rms_check_main.cpp | 5970 |
 | `main.cpp` | robot\firmware\src\main.cpp | 6658 |
+| `max98357a_tone_check_main.cpp` | robot\firmware\src\max98357a_tone_check_main.cpp | 1347 |
 | `mic_stream.cpp` | robot\firmware\src\mic_stream.cpp | 2693 |
 | `mic_stream.h` | robot\firmware\src\mic_stream.h | 393 |
 | `motor_bench_once_main.cpp` | robot\firmware\src\motor_bench_once_main.cpp | 1983 |
@@ -62,16 +64,13 @@ docs/agents/00_snapshot.md                    |  1 +
 | `speaker.cpp` | robot\firmware\src\peripherals\speaker.cpp | 4972 |
 | `speaker.h` | robot\firmware\src\peripherals\speaker.h | 183 |
 | `protocol.h` | robot\firmware\src\protocol.h | 3825 |
-| `red_circle_tracker_test.cpp` | robot\firmware\src\red_circle_tracker_test.cpp | 18748 |
+| `red_circle_tracker_main.cpp` | robot\firmware\src\red_circle_tracker_main.cpp | 18748 |
 | `robot_face_9expr_merged_optimized.cpp` | robot\firmware\src\robot_face_9expr_merged_optimized.cpp | 28002 |
 | `serial_qr_servo_main.cpp` | robot\firmware\src\serial_qr_servo_main.cpp | 7535 |
-| `serial_red_tracker_test.cpp` | robot\firmware\src\serial_red_tracker_test.cpp | 3882 |
+| `serial_red_tracker_main.cpp` | robot\firmware\src\serial_red_tracker_main.cpp | 3882 |
 | `servo_ctrl.cpp` | robot\firmware\src\servo_ctrl.cpp | 507 |
 | `servo_ctrl.h` | robot\firmware\src\servo_ctrl.h | 371 |
-| `speaker_amp_test.cpp` | robot\firmware\src\speaker_amp_test.cpp | 1347 |
 | `tft_espi_probe.cpp` | robot\firmware\src\tft_espi_probe.cpp | 3464 |
-| `tft_test.cpp` | robot\firmware\src\tft_test.cpp | 12763 |
-| `voice_recognition_test.cpp` | robot\firmware\src\voice_recognition_test.cpp | 5970 |
 | `ws_client.cpp` | robot\firmware\src\ws_client.cpp | 16436 |
 | `ws_client.h` | robot\firmware\src\ws_client.h | 3248 |
 

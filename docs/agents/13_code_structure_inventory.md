@@ -31,13 +31,13 @@ These are still wired by dedicated PlatformIO envs and should not move without u
 | `ota_bootstrap_main.cpp` | `ota_bootstrap`, `ota_bootstrap_wifi` | OTA recovery bridge |
 | `camtesting_program.cpp` | `camtesting` | camera AP stream |
 | `serial_qr_servo_main.cpp` | `serialqrservo` | serial JPEG + PC QR servo |
-| `tft_test.cpp` | `display_test` | 128x160 TFT smoke |
-| `face240_wire_test.cpp` | `face240_wiretest`, `face240_integrated`, legacy aliases | ST7789 wiring / color smoke |
-| `face240_roboeyes_test.cpp` | `face240_roboeyes`, `face240` | 2.4 inch RoboEyes demo |
+| `display128_tft_smoke_main.cpp` | `display_test` | 128x160 TFT smoke |
+| `face240_wire_check_main.cpp` | `face240_wiretest`, `face240_integrated`, legacy aliases | ST7789 wiring / color smoke |
+| `face240_roboeyes_demo_main.cpp` | `face240_roboeyes`, `face240` | 2.4 inch RoboEyes demo |
 | `robot_face_9expr_merged_optimized.cpp` | `face240_9expr_merged` | product-like nine-expression face path |
 | `tft_espi_probe.cpp` | `tftprobe_hybrid_rawinit` | ST7789 diagnostic |
-| `voice_recognition_test.cpp` | `voice_recognition_test` | INMP441 electrical/RMS check |
-| `speaker_amp_test.cpp` | `speaker_amp_test` | MAX98357A tone check |
+| `inmp441_rms_check_main.cpp` | `voice_recognition_test` | INMP441 electrical/RMS check |
+| `max98357a_tone_check_main.cpp` | `speaker_amp_test` | MAX98357A tone check |
 
 ### Archive Candidates
 
@@ -131,8 +131,9 @@ Physical `scripts/` moves are complete. Implementations live under:
 | C16 | Add agent core/data local boundary READMEs | Done 2026-06-30 | ignored DB status check; tracked Markdown link check; Agent tests; `git diff --check` |
 | C17 | Add base-station API/dashboard local READMEs | Done 2026-06-30 | tracked Markdown link check; API/dashboard tests; `git diff --check` |
 | C18 | Physically group `scripts/` with root command wrappers | Done 2026-06-30 | `bash -n`; Python wrapper help/compile smoke; generated inventory; `git diff --check` |
-| N1 | Rename legacy manual smoke implementations away from `test_*` names while keeping root compatibility wrappers | In progress 2026-06-30 | OpenClaw manual-tool unit tests; wrapper smoke; generated inventory; `git diff --check` |
+| N1 | Rename legacy manual smoke implementations away from `test_*` names while keeping root compatibility wrappers | Done 2026-06-30 | OpenClaw manual-tool unit tests; wrapper smoke; generated inventory; `git diff --check` |
+| N2 | Rename active firmware bring-up entrypoint files away from `_test.cpp` names while keeping env names stable | Done 2026-06-30 | Face240 helper tests; selected PlatformIO env builds; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C4 and C6-C18 are complete. N1 is the active naming cleanup batch. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.
+C1-C4, C6-C18, N1, and N2 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.

@@ -17,7 +17,7 @@ Truth priority remains: live source / `platformio.ini` > `AGENTS.md` > `docs/cur
 
 ## Batch N1 - Tools Manual Smoke Names
 
-Status: in progress 2026-06-30.
+Status: done 2026-06-30.
 
 These files were named like automated tests but are manual smoke helpers. The implementation files should use `manual_*_smoke.py`; root-level `tools/test_*.py` wrappers remain for compatibility.
 
@@ -38,7 +38,7 @@ git diff --check
 
 ## Batch N2 - Firmware Bring-up Entrypoint Names
 
-Status: planned, not started.
+Status: done 2026-06-30.
 
 Several firmware entrypoints use `_test.cpp` even though they are PlatformIO hardware bring-up programs. Renaming these has higher risk because `platformio.ini`, docs, generated inventory, and sometimes hardware checklists must move together.
 
@@ -50,6 +50,8 @@ Several firmware entrypoints use `_test.cpp` even though they are PlatformIO har
 | `robot/firmware/src/face240_wire_test.cpp` | `face240_wire_check_main.cpp` | Current role is ST7789 wiring/color check |
 | `robot/firmware/src/face240_roboeyes_test.cpp` | `face240_roboeyes_demo_main.cpp` | Current role is RoboEyes demo path |
 | `robot/firmware/src/keep_face_center_test.cpp` | `camera_motor_centering_demo_main.cpp` | Current role is minimal camera-to-motor validation demo |
+| `robot/firmware/src/red_circle_tracker_test.cpp` | `red_circle_tracker_main.cpp` | Current role is red-circle camera tracker entrypoint |
+| `robot/firmware/src/serial_red_tracker_test.cpp` | `serial_red_tracker_main.cpp` | Current role is serial red-target tracker entrypoint |
 
 Do not rename envs in the same first pass unless the old env names are kept as aliases.
 

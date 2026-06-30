@@ -43,7 +43,7 @@ These modules may be copied or synced into `robot/mergetesting` after validation
 | `peripherals/face240_display.cpp/h` | 2.4 inch face display module |
 | `peripherals/speaker.cpp/h` | MAX98357A local sound module |
 | `cam_stream.cpp/h` and camera config | OV2640 bring-up source |
-| `mic_stream.cpp/h` / `voice_recognition_test.cpp` | INMP441 bring-up source |
+| `mic_stream.cpp/h` / `inmp441_rms_check_main.cpp` | INMP441 bring-up source |
 
 ### Legacy: Do Not Use For New Demo Burns
 

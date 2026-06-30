@@ -5,19 +5,19 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+15d30f6 Document perception monitor boundaries
 5aafbbd Move setup and runbook docs into sections
 5052d75 Group architecture and protocol docs
 181b59d Render face240 boot expression immediately
 4f63cc8 Add continuous ASR demo helper
-2e86637 Add dock dashboard server
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-base_station/README.md                     | 4 ++--
- docs/agents/13_code_structure_inventory.md | 3 ++-
- 2 files changed, 4 insertions(+), 3 deletions(-)
+docs/agents/13_code_structure_inventory.md | 3 ++-
+ hardware/README.md                         | 1 +
+ 2 files changed, 3 insertions(+), 1 deletion(-)
 ```
 
 ## robot/firmware/src (43 files)

@@ -19,6 +19,8 @@ Use these for normal local operation and demo smoke:
 | `run_ws_video_runtime.py` | Runtime check for WS video path. |
 | `inject_emotion.py` | Inject emotion samples into runtime. |
 | `query_emotion_summary.py` | Query local emotion DB summaries. |
+| `simulate_emotion_stream.py` | Generate local emotion events for monitor/Agent checks. |
+| `run_e2e_emotion_smoke.py` | End-to-end emotion smoke runner. |
 
 ### Probes
 
@@ -32,6 +34,17 @@ Use these for manual diagnostics:
 | `probe_qwen_vl_openvino.py` | Qwen-VL/OpenVINO probe. |
 | `send_test_video_frame.py` | Inject a test JPEG frame. |
 | `serial_camera_viewer.py` / `.ps1` | Serial camera viewer. |
+
+### Evaluation
+
+| Tool | Purpose |
+| --- | --- |
+| `eval_visual_gate_segments.py` | Evaluate visual-gate segments. |
+| `eval_vlm_images.py` | Evaluate VLM image outputs. |
+| `evaluate_route_a_events.py` | Evaluate Route A event traces. |
+| `evaluate_xiaoan_care_clips.py` | Evaluate care-demo clips. |
+| `evaluate_xiaoan_care_policy.py` | Evaluate care-policy behavior. |
+| `prepare_xiaoan_care_report_assets.py` | Prepare report assets for care-demo review. |
 
 ### Setup
 

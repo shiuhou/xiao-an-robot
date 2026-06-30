@@ -15,9 +15,9 @@
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/13_code_structure_inventory.md | 3 ++-
- hardware/README.md                         | 1 +
- 2 files changed, 3 insertions(+), 1 deletion(-)
+docs/agents/13_code_structure_inventory.md |  3 ++-
+ tools/README.md                            | 13 +++++++++++++
+ 2 files changed, 15 insertions(+), 1 deletion(-)
 ```
 
 ## robot/firmware/src (43 files)

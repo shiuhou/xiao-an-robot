@@ -5,29 +5,19 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+5aafbbd Move setup and runbook docs into sections
 5052d75 Group architecture and protocol docs
 181b59d Render face240 boot expression immediately
 4f63cc8 Add continuous ASR demo helper
 2e86637 Add dock dashboard server
-366b8d3 Add ASR speech window trimming
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-AGENTS.md                                  | 2 +-
- README.md                                  | 4 ++--
- base_station/README.md                     | 2 +-
- docs/README.md                             | 3 +++
- docs/agents/00_snapshot.md                 | 2 +-
- docs/agents/10_repo_map.md                 | 6 +++---
+base_station/README.md                     | 4 ++--
  docs/agents/13_code_structure_inventory.md | 3 ++-
- docs/agents/README.md                      | 4 ++--
- docs/setup/hardware_setup.md               | 8 ++++----
- docs/setup/local_api.md                    | 4 ++--
- docs/status/2026-06-29.md                  | 2 +-
- hardware/wiring/esp32_pinout.md            | 2 +-
- 12 files changed, 23 insertions(+), 19 deletions(-)
+ 2 files changed, 4 insertions(+), 3 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

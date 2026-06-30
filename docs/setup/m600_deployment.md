@@ -78,7 +78,7 @@ Before modifying anything, read these files and folders first:
 README.md
 AGENTS.md
 docs/status/2026-06-22.md
-docs/protocol.md
+docs/protocol/protocol.md
 base_station/
 agent/
 shared/
@@ -95,7 +95,7 @@ Do not assume this is an empty repo. The repo already appears to contain:
 * `shared/` for protocol constants, schemas, examples
 * `tests/mocks/mock_robot.py` for fake robot `/control` testing
 * `robot/firmware/` for ESP32-S3 firmware and isolated PlatformIO hardware tests
-* `docs/protocol.md` as the WebSocket contract between ESP32 and base station
+* `docs/protocol/protocol.md` as the WebSocket contract between ESP32 and base station
 
 ---
 

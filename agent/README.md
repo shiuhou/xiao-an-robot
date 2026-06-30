@@ -45,7 +45,7 @@ python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 - Robot execution belongs to `robot/mergetesting` and `base_station/ws_server`.
 - Local event storage is diagnostic/compatibility data, not long-term user memory.
 - Screen/work-activity style features are legacy compatibility unless a current status doc says otherwise.
-- Protocol changes must be synchronized with [../docs/protocol.md](../docs/protocol.md), [../shared/protocol/](../shared/protocol/), base-station protocol helpers, and firmware protocol headers.
+- Protocol changes must be synchronized with [../docs/protocol/protocol.md](../docs/protocol/protocol.md), [../shared/protocol/](../shared/protocol/), base-station protocol helpers, and firmware protocol headers.
 
 ## Related Docs
 

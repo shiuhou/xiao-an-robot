@@ -15,7 +15,7 @@
 | 查歷史狀態 | [docs/status/](docs/status/) |
 | 改 DK-2500 聯調 firmware | [robot/mergetesting/README.md](robot/mergetesting/README.md) + [docs/agents/03_mergetesting_registry.md](docs/agents/03_mergetesting_registry.md) |
 | 改 robot-body bring-up firmware | [docs/agents/02_firmware_registry.md](docs/agents/02_firmware_registry.md) + `robot/firmware/platformio.ini` |
-| 改 protocol | [docs/protocol.md](docs/protocol.md) + `shared/protocol/*` + firmware `protocol.h` |
+| 改 protocol | [docs/protocol/protocol.md](docs/protocol/protocol.md) + `shared/protocol/*` + firmware `protocol.h` |
 
 ## Main Demo Path
 
@@ -102,7 +102,7 @@ Important entry points:
 | Firmware env roles | `robot/firmware/platformio.ini`, [docs/agents/02_firmware_registry.md](docs/agents/02_firmware_registry.md) |
 | Mergetesting env roles | `robot/mergetesting/platformio.ini`, [docs/agents/03_mergetesting_registry.md](docs/agents/03_mergetesting_registry.md) |
 | Test matrix | [docs/agents/05_test_matrix.md](docs/agents/05_test_matrix.md) |
-| Message contract | [docs/protocol.md](docs/protocol.md), `shared/protocol/*` |
+| Message contract | [docs/protocol/protocol.md](docs/protocol/protocol.md), `shared/protocol/*` |
 | Wiring assumptions | [hardware/wiring/esp32_pinout.md](hardware/wiring/esp32_pinout.md), [docs/hardware_setup.md](docs/hardware_setup.md) |
 | OpenClaw boundary | [docs/openclaw/openclaw_ownership_boundary.md](docs/openclaw/openclaw_ownership_boundary.md) |
 
@@ -113,7 +113,7 @@ Important entry points:
 | Single robot-body hardware bring-up | `robot/firmware` with a dedicated PlatformIO env |
 | DK-2500/base-station integration | `robot/mergetesting` |
 | Proven module reused by integration | validate in `robot/firmware`, then copy/sync minimal module into `robot/mergetesting` |
-| Protocol changes | `docs/protocol.md`, `shared/protocol/*`, firmware `protocol.h` |
+| Protocol changes | `docs/protocol/protocol.md`, `shared/protocol/*`, firmware `protocol.h` |
 | Wiring/env command changes | `docs/hardware_setup.md`, `hardware/wiring/*`, `docs/agents/*` |
 
 Validate firmware with specific envs, not broad `pio run`.

@@ -22,7 +22,7 @@
 | 改 ESP32 固件 | [02_firmware_registry](./02_firmware_registry.md) + [03_mergetesting](./03_mergetesting_registry.md) |
 | 改基站 / Agent | [04_base_station_agent](./04_base_station_agent_registry.md) |
 | 跑测试 / CI | [05_test_matrix](./05_test_matrix.md) |
-| 联调 / Demo | [06_integration_phases](./06_integration_phases.md) + `docs/protocol.md` |
+| 联调 / Demo | [06_integration_phases](./06_integration_phases.md) + `docs/protocol/protocol.md` |
 | Agent loop 排队 | [08_priority_queue](./08_priority_queue.yaml) |
 | 明天上机检查 | [09_hardware_bringup_checklist](./09_hardware_bringup_checklist.md) |
 | 架构整理 / 分层重构 | `docs/superpowers/specs/2026-06-25-layered-firmware-architecture-design.md` |
@@ -35,7 +35,7 @@
 
 | 层级 | 路径 | 粒度 | 谁维护 |
 |------|------|------|--------|
-| **契约** | `docs/protocol.md`, `shared/protocol/*` | 消息格式 | 三人共识后改 |
+| **契约** | `docs/protocol/protocol.md`, `shared/protocol/*` | 消息格式 | 三人共识后改 |
 | **当前状态 / 快照** | `docs/current_status.md`, `docs/status/YYYY-MM-DD.md`, `docs/agents/00_snapshot.md` | 当前进度/阻塞 | 每次联调前后 |
 | **注册表** | `docs/agents/02_*` ~ `04_*` | **文件 + 关键函数** | 改代码时同步 |
 | **源码** | `robot/firmware/src/*`, `robot/mergetesting/src/*` | 逐行真相 | Git |
@@ -100,7 +100,7 @@ python tools/generate_agent_registry.py
 - Codex Skill：`/.agents/skills/xiao-an-session/SKILL.md`
 - 飞书协作：`/.agents/skills/team-lark/SKILL.md`
 - Cursor（按需）：`/.cursor/rules/agent-session.mdc`
-- 人类可读总览：`docs/architecture.md`, `docs/hardware_setup.md`
+- 人类可读总览：`docs/architecture/system_architecture.md`, `docs/hardware_setup.md`
 - Agent 规则：`AGENTS.md`（仓库根）
 - 联调对接表：`robot/mergetesting/CAPABILITIES.md`
 - 代码边界：`robot/firmware` 验证单项功能，`robot/mergetesting` 负责 base-station 联调；不要把联调入口放回 firmware。

@@ -15,7 +15,7 @@
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 协议 `docs/protocol.md` v0.1 | 🟡 | 草案；mergetesting 扩展了 `command.ack`, `video.frame_meta` |
+| 协议 `docs/protocol/protocol.md` v0.1 | 🟡 | 草案；mergetesting 扩展了 `command.ack`, `video.frame_meta` |
 | 基站 WS 四通道 | ✅ | `base_station/ws_server/server.py` |
 | Agent → 机器人转发 | ✅ | `/agent` + `tools/send_robot_command.py` |
 | 主固件机器人本体调试 | ✅ | `robot/firmware/src/main.cpp`；不作为 DK-2500 联调默认入口 |
@@ -104,4 +104,4 @@ Phase 4 闭环（video → OpenVINO → OpenClaw → 三命令）见 `06_integra
 | `robot/mergetesting` | 联调专用 | 可激进；从 firmware 取用已验证模块，不回迁成 firmware 联调入口 |
 | `base_station` | 郑斯悦+张子尧 | 改 protocol 要同步 `shared/` |
 | `agent` | 张子尧 | Gateway/Brain 与 WS 耦合 |
-| `docs/protocol.md` | 三人 PR | 破坏性变更升 major |
+| `docs/protocol/protocol.md` | 三人 PR | 破坏性变更升 major |

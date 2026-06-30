@@ -71,8 +71,8 @@
 
 | 文件 | 作用 |
 |------|------|
-| [protocol.md](../protocol.md) | WS 消息契约 v0.1 |
-| [architecture.md](../architecture.md) | 四模块架构（2026-06-27 已对齐 mergetesting 传画） |
+| [protocol.md](../protocol/protocol.md) | WS 消息契约 v0.1 |
+| [architecture.md](../architecture/system_architecture.md) | 四模块架构（2026-06-27 已对齐 mergetesting 传画） |
 
 ### 2.4 状态快照（dated）
 
@@ -226,7 +226,7 @@ Mergetesting 工程内文档：
 ### 已对齐
 
 - `.gitignore`：跟踪 `.agents/skills/**`；忽略 `**/.cache/`
-- `docs/architecture.md`：mergetesting 已传画/PCM
+- `docs/architecture/system_architecture.md`：mergetesting 已传画/PCM
 - `03_mergetesting_registry.md`：补 6 个 control/ping/OTA env
 - `02_firmware_registry.md`：补 `peripherals/`
 - `04_*`：补全 `tools/` 清单

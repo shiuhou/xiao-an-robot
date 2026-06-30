@@ -1,6 +1,6 @@
 """Common WebSocket message type constants.
 
-The string values should match docs/protocol.md and
+The string values should match docs/protocol/protocol.md and
 robot/firmware/src/protocol.h.
 """
 

@@ -43,7 +43,7 @@ Expected robot behavior:
 
 `ws_server/` is the main transport boundary. Protocol changes must stay aligned with:
 
-- [../docs/protocol.md](../docs/protocol.md)
+- [../docs/protocol/protocol.md](../docs/protocol/protocol.md)
 - [../shared/protocol/](../shared/protocol/)
 - `robot/mergetesting/src/protocol.h`
 - `base_station/ws_server/protocol.py`

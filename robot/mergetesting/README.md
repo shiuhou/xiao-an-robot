@@ -172,5 +172,5 @@ mock:帮我定一个二十分鐘的鬧鐘
 ## 与主固件关系
 
 - 本目录为 **联调专用**，不修改 `robot/firmware/src/main.cpp`
-- 协议对齐 `docs/protocol.md`，并扩展 `command.ack`、`video.frame_meta`、`asr.transcript.mock`
+- 协议对齐 `docs/protocol/protocol.md`，并扩展 `command.ack`、`video.frame_meta`、`asr.transcript.mock`
 - 入站 JSON 同时支持 **envelope**（`payload` 子对象）与 **flat**（字段在根）

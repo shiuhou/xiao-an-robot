@@ -15,10 +15,35 @@ a64a63a Add shared I2S audio diagnostics
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/13_code_structure_inventory.md |  3 ++-
- docs/current_status.md                     |  2 +-
- docs/runbooks/troubleshooting.md           | 14 +++++++++++++-
- 3 files changed, 16 insertions(+), 3 deletions(-)
+README.md                                          |  6 ++--
+ agent/README.md                                    |  2 +-
+ base_station/README.md                             |  2 +-
+ base_station/ws_server/protocol.py                 |  2 +-
+ docs/README.md                                     |  6 ++--
+ docs/agents/00_snapshot.md                         |  4 +--
+ docs/agents/01_session_protocol.md                 |  8 ++---
+ docs/agents/04_base_station_agent_registry.md      |  2 +-
+ docs/agents/07_maintenance.md                      |  2 +-
+ docs/agents/10_repo_map.md                         |  6 ++--
+ docs/agents/13_code_structure_inventory.md         |  3 +-
+ docs/agents/README.md                              |  6 ++--
+ docs/agents/_generated/file_inventory.md           | 38 +++++++++++++++++-----
+ docs/architecture/system_architecture.md           |  2 +-
+ docs/setup/m600_deployment.md                      |  4 +--
+ docs/status/2026-06-28.md                          |  2 +-
+ ...6-06-25-layered-firmware-architecture-design.md |  2 +-
+ frontend/README.md                                 |  2 +-
+ hardware/bom/bom.md                                |  2 +-
+ robot/firmware/src/motor_ctrl.cpp                  |  2 +-
+ robot/firmware/src/protocol.h                      |  2 +-
+ robot/mergetesting/EXTRACTION_MAP.md               |  2 +-
+ robot/mergetesting/README.md                       |  2 +-
+ robot/mergetesting/src/motor_ctrl.cpp              |  2 +-
+ robot/mergetesting/src/protocol.h                  |  2 +-
+ shared/README.md                                   |  2 +-
+ shared/protocol/errors.py                          |  2 +-
+ shared/protocol/message_types.py                   |  2 +-
+ 28 files changed, 72 insertions(+), 47 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)
@@ -44,7 +69,7 @@ docs/agents/13_code_structure_inventory.md |  3 ++-
 | `mic_stream.h` | robot\firmware\src\mic_stream.h | 393 |
 | `motor_bench_once_main.cpp` | robot\firmware\src\motor_bench_once_main.cpp | 1983 |
 | `motor_cam_wifi_manual_main.cpp` | robot\firmware\src\motor_cam_wifi_manual_main.cpp | 22382 |
-| `motor_ctrl.cpp` | robot\firmware\src\motor_ctrl.cpp | 12873 |
+| `motor_ctrl.cpp` | robot\firmware\src\motor_ctrl.cpp | 12882 |
 | `motor_ctrl.h` | robot\firmware\src\motor_ctrl.h | 3197 |
 | `motor_manual_main.cpp` | robot\firmware\src\motor_manual_main.cpp | 9408 |
 | `motor_wifi_manual_main.cpp` | robot\firmware\src\motor_wifi_manual_main.cpp | 7576 |
@@ -55,7 +80,7 @@ docs/agents/13_code_structure_inventory.md |  3 ++-
 | `face240_display.h` | robot\firmware\src\peripherals\face240_display.h | 151 |
 | `speaker.cpp` | robot\firmware\src\peripherals\speaker.cpp | 4972 |
 | `speaker.h` | robot\firmware\src\peripherals\speaker.h | 183 |
-| `protocol.h` | robot\firmware\src\protocol.h | 3816 |
+| `protocol.h` | robot\firmware\src\protocol.h | 3825 |
 | `red_circle_tracker_test.cpp` | robot\firmware\src\red_circle_tracker_test.cpp | 18748 |
 | `robot_face_9expr_merged_optimized.cpp` | robot\firmware\src\robot_face_9expr_merged_optimized.cpp | 28002 |
 | `serial_qr_servo_main.cpp` | robot\firmware\src\serial_qr_servo_main.cpp | 7535 |
@@ -96,9 +121,9 @@ docs/agents/13_code_structure_inventory.md |  3 ++-
 | `main.cpp` | robot\mergetesting\src\main.cpp | 453 |
 | `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 3159 |
 | `mic_stream.h` | robot\mergetesting\src\mic_stream.h | 342 |
-| `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13526 |
+| `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13535 |
 | `motor_ctrl.h` | robot\mergetesting\src\motor_ctrl.h | 1197 |
-| `protocol.h` | robot\mergetesting\src\protocol.h | 3927 |
+| `protocol.h` | robot\mergetesting\src\protocol.h | 3936 |
 | `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8002 |
 | `command_router.h` | robot\mergetesting\src\services\command_router.h | 1174 |
 | `motion_service.cpp` | robot\mergetesting\src\services\motion_service.cpp | 8283 |

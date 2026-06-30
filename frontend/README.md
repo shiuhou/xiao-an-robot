@@ -60,4 +60,4 @@ The renderer build is written to `frontend/dist/`. Run `npm start` after a
 successful build to open the packaged renderer in Electron.
 
 For the complete startup, acceptance, and demo flow, see
-[`docs/frontend_mvp.md`](../docs/frontend_mvp.md).
+[`docs/setup/frontend_setup.md`](../docs/setup/frontend_setup.md).

@@ -189,7 +189,7 @@ transport 不應該直接操作 motor/display。它應該把 command 交給 serv
 
 ### protocol 層
 
-protocol 層負責 firmware 和 `docs/protocol.md`、`shared/protocol` 對齊：
+protocol 層負責 firmware 和 `docs/protocol/protocol.md`、`shared/protocol` 對齊：
 
 - `robot_protocol.h`
 - `command_types.h`

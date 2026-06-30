@@ -9,7 +9,7 @@ Current status: `/control`, `/video`, and `/audio` are implemented through
 for the `/audio` stream, while autonomous ASR policy, real spoken TTS, and the
 final product loop are still being brought up.
 
-Canonical ownership boundary: [openclaw/openclaw_ownership_boundary.md](openclaw/openclaw_ownership_boundary.md).
+Canonical ownership boundary: [openclaw/openclaw_ownership_boundary.md](../openclaw/openclaw_ownership_boundary.md).
 
 ## Module Responsibilities
 

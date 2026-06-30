@@ -98,7 +98,7 @@
 | `errors.py` | ErrorCode |
 | `schema.json` | JSON Schema |
 
-**改协议必须同步：** `docs/protocol.md` + `protocol.h` + `protocol.py` + 示例 JSON。
+**改协议必须同步：** `docs/protocol/protocol.md` + `protocol.h` + `protocol.py` + 示例 JSON。
 
 ---
 

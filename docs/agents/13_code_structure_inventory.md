@@ -112,7 +112,8 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | Done 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
 | C7 | Refresh protocol/base-station/architecture registry after fixed-window ASR and dashboard work | Done 2026-06-30 | `rg` ASR/dashboard stale-reference scan; targeted docs diff; ASR unit tests; `git diff --check` |
 | C8 | Normalize fixed-window ASR runbook/model path docs | Done 2026-06-30 | `rg` SenseVoice path scan; ASR/audio-model unit tests; `git diff --check` |
+| C9 | Move root architecture/protocol docs into docs subdirectories | Done 2026-06-30 | `git mv`; stale-link `rg` scan; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. C8 is complete for the SenseVoice path/runbook cleanup. The next safe cleanup batch should remain documentation-first unless hardware validation creates a clear code move.
+C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. C8 is complete for the SenseVoice path/runbook cleanup. C9 is complete for the first root-doc physical grouping (`architecture/`, `protocol/`). The next safe cleanup batch should remain documentation-first unless hardware validation creates a clear code move.

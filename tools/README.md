@@ -68,10 +68,12 @@ These are useful for older paths or manual inspection, but are not the main demo
 - `legacy/query_work_activity_summary.py`
 - `legacy/run_reminder_scheduler.py`
 - `legacy/send_frontend_message.py`
-- `legacy/test_agent_brain.py`
-- `legacy/test_emotion_policy.py`
-- `legacy/test_emotion_trigger.py`
-- `legacy/test_openclaw_tool_calls.py`
+- `legacy/manual_agent_brain_smoke.py`
+- `legacy/manual_emotion_policy_smoke.py`
+- `legacy/manual_emotion_trigger_smoke.py`
+- `legacy/manual_openclaw_tool_call_smoke.py`
+
+Root-level `tools/test_agent_brain.py`, `tools/test_emotion_policy.py`, `tools/test_emotion_trigger.py`, and `tools/test_openclaw_tool_calls.py` remain compatibility wrappers for older commands/imports.
 
 Move true tests into `tests/` over time; keep probe/manual scripts named as probes when they are not automated tests.
 

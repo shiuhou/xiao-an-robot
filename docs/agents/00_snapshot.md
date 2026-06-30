@@ -78,6 +78,7 @@
 | **Wiring stale-reference sweep 2026-06-30** | `hardware/wiring/esp32_pinout.md`, `docs/current_status.md`, `docs/agents/13_code_structure_inventory.md` | 修正 wiring canonical page：当前 shared-clock candidate 是 INMP441 39/40/41 + MAX98357A 39/40/47；GPIO35/36/37 标为当前 Octal PSRAM MAX98357A 避免项；inventory 下一批次改为 C6 stale wiring/status sweep |
 | **Tools physical grouping 2026-06-30** | `tools/ops/`, `tools/probes/`, `tools/evaluation/`, `tools/setup/`, `tools/maintenance/`, `tools/legacy/` | 工具实作已按职责实体现分组；根层 `tools/*.py` 保留兼容 wrapper，旧命令和 `tools.*` imports 继续可用 |
 | **Scripts physical grouping 2026-06-30** | `scripts/setup/`, `scripts/start/`, `scripts/debug/` | 启动、setup、debug 脚本已按职责实体现分组；根层 `scripts/*.sh` / `scripts/*.py` 保留 wrapper，旧命令继续可用 |
+| **Code naming cleanup inventory 2026-06-30** | `docs/agents/14_naming_inventory.md`, `tools/legacy/manual_*_smoke.py` | 命名整改控制表已建立；legacy manual smoke 实作不再使用 `test_*` 文件名，根层 `tools/test_*.py` 保留兼容 wrapper |
 
 ## 硬件阻塞（剩余）
 

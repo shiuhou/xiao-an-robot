@@ -99,7 +99,7 @@ Physical `tools/` moves are complete. Implementations live under ownership subdi
 | Evaluation | `tools/evaluation/eval_*`, `tools/evaluation/evaluate_*`, `tools/evaluation/prepare_xiaoan_care_report_assets.py` |
 | Maintenance | `tools/maintenance/check_runtime_env.py`, `tools/maintenance/generate_agent_registry.py`, `tools/maintenance/summarize_route_a_trace.py` |
 | Setup | `tools/setup/setup_models.py`, `tools/setup/setup_audio_models.py` |
-| Legacy / manual smoke | `tools/legacy/test_agent_brain.py`, `tools/legacy/test_emotion_policy.py`, `tools/legacy/test_emotion_trigger.py`, `tools/legacy/test_openclaw_tool_calls.py`, old local compatibility helpers |
+| Legacy / manual smoke | `tools/legacy/manual_agent_brain_smoke.py`, `tools/legacy/manual_emotion_policy_smoke.py`, `tools/legacy/manual_emotion_trigger_smoke.py`, `tools/legacy/manual_openclaw_tool_call_smoke.py`, old local compatibility helpers |
 
 Physical `scripts/` moves are complete. Implementations live under:
 
@@ -131,7 +131,8 @@ Physical `scripts/` moves are complete. Implementations live under:
 | C16 | Add agent core/data local boundary READMEs | Done 2026-06-30 | ignored DB status check; tracked Markdown link check; Agent tests; `git diff --check` |
 | C17 | Add base-station API/dashboard local READMEs | Done 2026-06-30 | tracked Markdown link check; API/dashboard tests; `git diff --check` |
 | C18 | Physically group `scripts/` with root command wrappers | Done 2026-06-30 | `bash -n`; Python wrapper help/compile smoke; generated inventory; `git diff --check` |
+| N1 | Rename legacy manual smoke implementations away from `test_*` names while keeping root compatibility wrappers | In progress 2026-06-30 | OpenClaw manual-tool unit tests; wrapper smoke; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C4 and C6-C18 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.
+C1-C4 and C6-C18 are complete. N1 is the active naming cleanup batch. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.

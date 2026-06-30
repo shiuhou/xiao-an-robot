@@ -15,20 +15,16 @@ d64c61e Document agent core data boundaries
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                 |  1 +
- docs/agents/10_repo_map.md                 |  8 ++++++--
- docs/agents/13_code_structure_inventory.md | 13 +++++++++++--
- scripts/README.md                          | 26 ++++++++++++++++----------
- scripts/debug/debug_camera_cv_vlm_e2e.py   |  2 +-
- scripts/debug/try_vlm_once.py              |  2 +-
- scripts/setup/check_env.sh                 |  2 +-
- scripts/setup/init_db.sh                   |  2 +-
- scripts/start/run_mock_robot.sh            |  2 +-
- scripts/start/start_agent.sh               |  2 +-
- scripts/start/start_all.sh                 |  2 +-
- scripts/start/start_base_station.sh        |  2 +-
- scripts/start/start_local_api.sh           |  2 +-
- 13 files changed, 43 insertions(+), 23 deletions(-)
+docs/agents/00_snapshot.md                    |  1 +
+ docs/agents/04_base_station_agent_registry.md |  8 ++++----
+ docs/agents/13_code_structure_inventory.md    |  5 +++--
+ docs/agents/README.md                         |  2 ++
+ tools/README.md                               | 10 ++++++----
+ tools/test_agent_brain.py                     |  6 +++---
+ tools/test_emotion_policy.py                  |  6 +++---
+ tools/test_emotion_trigger.py                 |  6 +++---
+ tools/test_openclaw_tool_calls.py             |  6 +++---
+ 9 files changed, 28 insertions(+), 22 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)
@@ -87,40 +83,40 @@ docs/agents/00_snapshot.md                 |  1 +
 
 | 文件 | 路径 | 字节 |
 | --- | --- | --- |
-| `mergetesting_app.cpp` | robot\mergetesting\src\app\mergetesting_app.cpp | 7531 |
+| `mergetesting_app.cpp` | robot\mergetesting\src\app\mergetesting_app.cpp | 7548 |
 | `mergetesting_app.h` | robot\mergetesting\src\app\mergetesting_app.h | 820 |
-| `audio_shared_i2s_diag_main.cpp` | robot\mergetesting\src\audio_shared_i2s_diag_main.cpp | 16558 |
+| `audio_shared_i2s_diag_main.cpp` | robot\mergetesting\src\audio_shared_i2s_diag_main.cpp | 17083 |
 | `cam_stream.cpp` | robot\mergetesting\src\cam_stream.cpp | 2726 |
 | `cam_stream.h` | robot\mergetesting\src\cam_stream.h | 477 |
 | `camera_ov2640_config.h` | robot\mergetesting\src\camera_ov2640_config.h | 2793 |
-| `config.h` | robot\mergetesting\src\config.h | 3185 |
+| `config.h` | robot\mergetesting\src\config.h | 3195 |
 | `config.local.example.h` | robot\mergetesting\src\config.local.example.h | 662 |
 | `config.local.h` | robot\mergetesting\src\config.local.h | 307 |
 | `debug_log.h` | robot\mergetesting\src\debug_log.h | 339 |
 | `display.cpp` | robot\mergetesting\src\display.cpp | 7633 |
 | `display.h` | robot\mergetesting\src\display.h | 465 |
 | `embedded_tts_phrase.h` | robot\mergetesting\src\embedded_tts_phrase.h | 328557 |
-| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 30857 |
+| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 30865 |
 | `face240_display.h` | robot\mergetesting\src\face240_display.h | 252 |
-| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1172 |
+| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1182 |
 | `main.cpp` | robot\mergetesting\src\main.cpp | 453 |
-| `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 3159 |
+| `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 3193 |
 | `mic_stream.h` | robot\mergetesting\src\mic_stream.h | 342 |
 | `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13535 |
 | `motor_ctrl.h` | robot\mergetesting\src\motor_ctrl.h | 1197 |
-| `protocol.h` | robot\mergetesting\src\protocol.h | 3936 |
-| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8002 |
-| `command_router.h` | robot\mergetesting\src\services\command_router.h | 1174 |
+| `protocol.h` | robot\mergetesting\src\protocol.h | 3944 |
+| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8118 |
+| `command_router.h` | robot\mergetesting\src\services\command_router.h | 1209 |
 | `motion_service.cpp` | robot\mergetesting\src\services\motion_service.cpp | 8283 |
 | `motion_service.h` | robot\mergetesting\src\services\motion_service.h | 1177 |
 | `robot_state.cpp` | robot\mergetesting\src\services\robot_state.cpp | 1824 |
 | `robot_state.h` | robot\mergetesting\src\services\robot_state.h | 1099 |
-| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 1017 |
-| `status_service.h` | robot\mergetesting\src\services\status_service.h | 713 |
-| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 19470 |
-| `speaker.h` | robot\mergetesting\src\speaker.h | 522 |
-| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 14642 |
-| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2585 |
+| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 1028 |
+| `status_service.h` | robot\mergetesting\src\services\status_service.h | 716 |
+| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 19978 |
+| `speaker.h` | robot\mergetesting\src\speaker.h | 538 |
+| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 14740 |
+| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2592 |
 
 ## PlatformIO envs — mergetesting (40)
 
@@ -143,8 +139,8 @@ docs/agents/00_snapshot.md                 |  1 +
 | tests\integration\test_local_api_flow.py | 8256 |
 | tests\integration\test_project_memory_flow.py | 12014 |
 | tests\integration\test_robot_motion_skill.py | 8055 |
-| tests\integration\test_ws_command_forwarding.py | 11371 |
-| tests\integration\test_ws_control_channel.py | 5541 |
+| tests\integration\test_ws_command_forwarding.py | 11467 |
+| tests\integration\test_ws_control_channel.py | 5567 |
 | tests\unit\test_action_executor.py | 52416 |
 | tests\unit\test_agent_brain.py | 4330 |
 | tests\unit\test_agent_brain_asr_event.py | 22461 |
@@ -154,16 +150,16 @@ docs/agents/00_snapshot.md                 |  1 +
 | tests\unit\test_api_router.py | 4187 |
 | tests\unit\test_asr.py | 8025 |
 | tests\unit\test_asr_emotion_trigger.py | 4109 |
-| tests\unit\test_asr_runtime.py | 15560 |
-| tests\unit\test_audio_diagnostics.py | 2850 |
-| tests\unit\test_audio_segments.py | 2761 |
+| tests\unit\test_asr_runtime.py | 15627 |
+| tests\unit\test_audio_diagnostics.py | 2926 |
+| tests\unit\test_audio_segments.py | 2836 |
 | tests\unit\test_check_runtime_env.py | 3872 |
 | tests\unit\test_companion_request_skill.py | 2558 |
 | tests\unit\test_context_builder.py | 13891 |
 | tests\unit\test_context_policy.py | 8069 |
-| tests\unit\test_continuous_asr_demo.py | 2394 |
+| tests\unit\test_continuous_asr_demo.py | 2464 |
 | tests\unit\test_daily_summary_builder.py | 7136 |
-| tests\unit\test_dashboard_server.py | 7067 |
+| tests\unit\test_dashboard_server.py | 7244 |
 | tests\unit\test_emotion_context_builder.py | 8283 |
 | tests\unit\test_emotion_db.py | 9198 |
 | tests\unit\test_emotion_event_loop.py | 6065 |
@@ -195,7 +191,7 @@ docs/agents/00_snapshot.md                 |  1 +
 | tests\unit\test_memory_tasks.py | 6750 |
 | tests\unit\test_memory_tool_runs.py | 4593 |
 | tests\unit\test_memory_work_activity.py | 5146 |
-| tests\unit\test_mergetesting_layering.py | 49383 |
+| tests\unit\test_mergetesting_layering.py | 49848 |
 | tests\unit\test_openclaw_adapter.py | 5922 |
 | tests\unit\test_openclaw_adapter_factory.py | 5717 |
 | tests\unit\test_openclaw_tool_call_runtime.py | 26079 |
@@ -224,16 +220,16 @@ docs/agents/00_snapshot.md                 |  1 +
 | tests\unit\test_simulate_emotion_stream.py | 2469 |
 | tests\unit\test_static_image_source.py | 2901 |
 | tests\unit\test_summarize_route_a_trace.py | 10688 |
-| tests\unit\test_tts_stream.py | 1220 |
+| tests\unit\test_tts_stream.py | 1257 |
 | tests\unit\test_vad.py | 9010 |
 | tests\unit\test_valence_mapping.py | 2110 |
 | tests\unit\test_vlm_face_analyzer.py | 7791 |
 | tests\unit\test_vlm_trigger_gate.py | 6321 |
 | tests\unit\test_work_activity.py | 2228 |
 | tests\unit\test_work_activity_runtime.py | 2478 |
-| tests\unit\test_ws_audio_channel.py | 4017 |
+| tests\unit\test_ws_audio_channel.py | 4026 |
 | tests\unit\test_ws_server_sessions.py | 6253 |
 | tests\unit\test_ws_server_video_source.py | 6100 |
-| tests\unit\test_ws_tts_stream.py | 2268 |
+| tests\unit\test_ws_tts_stream.py | 2333 |
 | tests\unit\test_ws_video_source.py | 2199 |
 | tests\unit\test_xiaoan_tool_manifest.py | 1643 |

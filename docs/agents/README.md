@@ -30,6 +30,8 @@
 | 整合 Agent / 整库索引 | [10_repo_map](./10_repo_map.md) |
 | OpenClaw ↔ 实机联调 | [11_openclaw_robot_integration](./11_openclaw_robot_integration.md) |
 | **实机 emotion care Codex prompt** | [12_codex_prompt_real_emotion_care_demo](./12_codex_prompt_real_emotion_care_demo.md) |
+| 代码结构整理 inventory | [13_code_structure_inventory](./13_code_structure_inventory.md) |
+| 代码命名整改 inventory | [14_naming_inventory](./14_naming_inventory.md) |
 
 ## 文档层级（不要混用）
 

@@ -122,10 +122,10 @@
 | `probe_camera.py` | 相机源探测 | 🧪 |
 | `simulate_emotion_stream.py` | 模拟情绪事件流 | 🧪 |
 | `inject_emotion.py` | 注入情绪到 runtime | 🧪 |
-| `test_agent_brain.py` | Agent brain 冒烟 | 🧪 |
-| `test_emotion_trigger.py` | 情绪触发测试 | 🧪 |
-| `test_emotion_policy.py` | 情绪策略单测入口 | 🧪 |
-| `test_openclaw_tool_calls.py` | OpenClaw tool call 测试 | 🧪 |
+| `manual_agent_brain_smoke.py` | Agent brain manual smoke；root `test_agent_brain.py` 是兼容 wrapper | 🧪 |
+| `manual_emotion_trigger_smoke.py` | 情绪触发 manual smoke；root `test_emotion_trigger.py` 是兼容 wrapper | 🧪 |
+| `manual_emotion_policy_smoke.py` | 情绪策略 manual smoke；root `test_emotion_policy.py` 是兼容 wrapper | 🧪 |
+| `manual_openclaw_tool_call_smoke.py` | OpenClaw tool call manual smoke；root `test_openclaw_tool_calls.py` 是兼容 wrapper | 🧪 |
 | `query_emotion_summary.py` | 查情绪 DB 摘要 | 🟡 |
 | `query_work_activity_summary.py` | 工作活动摘要 | 🟡 |
 | `run_reminder_scheduler.py` | 提醒调度 | 🟡 |

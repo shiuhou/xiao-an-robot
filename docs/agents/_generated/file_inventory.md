@@ -5,17 +5,17 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+d64c61e Document agent core data boundaries
 734d581 Document agent skill boundaries
 15d30f6 Document perception monitor boundaries
 5aafbbd Move setup and runbook docs into sections
 5052d75 Group architecture and protocol docs
-181b59d Render face240 boot expression immediately
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-agent/README.md                            | 4 ++--
+base_station/README.md                     | 4 ++--
  docs/agents/13_code_structure_inventory.md | 3 ++-
  2 files changed, 4 insertions(+), 3 deletions(-)
 ```

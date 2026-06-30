@@ -11,8 +11,8 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 | `ws_server/` | Main robot transport: `/control`, `/video`, `/audio`, `/agent`. |
 | `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. See `perception/README.md` before moving files. |
 | `monitor/` | Emotion runtime, event loop, ASR runtime helpers, context builder, SQLite local event store. See `monitor/README.md` for deprecated surfaces. |
-| `api/` | Local debug API for frontend/runtime inspection; not the main product API. |
-| `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. |
+| `api/` | Local debug API for frontend/runtime inspection; not the main product API. See `api/README.md`. |
+| `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. See `dashboard/README.md`. |
 | `models/` | Local model placement area; large models should not be committed. |
 | `config.example.yaml` | Safe template for runtime config. |
 

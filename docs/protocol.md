@@ -1,17 +1,17 @@
 # WebSocket protocol v0.1
 
 > **Status**: current DK2500/OpenClaw integration protocol for the Xiao-An robot.
-> `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28/29 hardware or hardware/software verification records.
-> **Last verified**: 2026-06-29.
-> **Evidence**: `docs/status/2026-06-26.md`, `docs/status/2026-06-27.md`, `docs/status/2026-06-28.md`, `docs/status/2026-06-29.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
+> `/control`, `/video`, and `/audio` are implemented in `robot/mergetesting` and have 2026-06-26/27/28/29/30 hardware or hardware/software verification records.
+> **Last verified**: 2026-06-30.
+> **Evidence**: `docs/status/2026-06-26.md`, `docs/status/2026-06-27.md`, `docs/status/2026-06-28.md`, `docs/status/2026-06-29.md`, `docs/status/2026-06-30.md`, `docs/agents/03_mergetesting_registry.md`, and `docs/agents/08_priority_queue_results.json`.
 
-## Current Implementation Status (2026-06-29)
+## Current Implementation Status (2026-06-30)
 
 | Channel / area | Current status | Evidence and notes |
 | --- | --- | --- |
 | `/control` | PASS_H | Robot command path is live through base-station/OpenClaw. Supports `device.hello`, heartbeat/status, `display.expression`, `motion.execute`, `audio.play_local`, `audio.play_tts`, `command.ack`, `audio.playback_done`, `motion.completed`, and `error.report`. |
 | `/video` | PASS_H/P | OV2640 robot camera frames reach base station as JPEG over `/video`; server updates `runtime/latest.jpg`; OpenClaw can inspect the latest image and return feedback. |
-| `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. This is channel verification, not a claim of finished ASR quality. |
+| `/audio` | PASS_H/P | INMP441 PCM reaches the base-station/OpenClaw side over `/audio`; runtime PCM artifacts are produced. Fixed-window and continuous ASR demo helpers now exist (`audio_segments.py`, `asr_runtime --trim-speech`, `continuous_asr_demo`), but the full autonomous ASR policy loop is not finished. |
 | `mergetesting_full_face240` | PASS_H | Full face240 firmware has passed local hardware smoke for `/control`, motor, face display, speaker, `/video`, and `/audio`. |
 | OpenClaw handoff | PASS_H_OPENCLAW_BASE_IO | Base/OpenClaw has used live `/control`, `/video`, and `/audio`; next gate is a reproducible smoke script and consistent OpenClaw-side `motion.completed` observation. |
 

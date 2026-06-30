@@ -16,7 +16,7 @@
 |------|------|------|
 | `handle_control` | /control | hello 注册 session；welcome；heartbeat |
 | `handle_video` | /video | 解析 8B 头；写 `runtime/latest.jpg` |
-| `handle_audio` | /audio | 收 PCM（TODO 接 VAD/ASR） |
+| `handle_audio` | /audio | 收 PCM，更新 `runtime/latest_audio.pcm` / audio stats；ASR demo 由 `audio_diagnostics.py`、`audio_segments.py`、`asr_runtime.py`、`continuous_asr_demo.py` 串接 |
 | `handle_agent` | /agent | `agent.command` → 转发机器人 |
 | `send_to_robot` | — | 按 device_id 下发 JSON |
 
@@ -44,6 +44,8 @@
 | `opencv_camera.py` | ✅ | OpenCV 相机源 |
 | `fake_camera.py` / `fake_face_emotion.py` | 🧪 | mock |
 | `asr.py` / `vad.py` | 🟡 | ASR/VAD 接口 |
+| `audio_diagnostics.py` | ✅ | `/audio` WAV/PCM diagnostics, RMS/peak/DC/clipping checks before ASR tuning |
+| `audio_segments.py` | ✅ | Fixed-window WAV speech trimming helper for `asr_runtime --trim-speech` |
 | `qwen_vl_*` / `openvino_qwen_*` | 🟡 | VLM 路径 staged |
 | `openface_ov_runtime/` | 🟡 | bundled vendored OpenFace/OpenVINO runtime；import path fragile，普通整理不要移动 |
 | `tts.py` | 🟡 | TTS 占位 |
@@ -55,7 +57,8 @@
 | `emotion_runtime.py` | ✅ | 情绪运行时 |
 | `emotion_event_loop.py` | ✅ | 事件循环 |
 | `emotion_db.py` | ✅ | SQLite 情绪记录 |
-| `asr_runtime.py` | 🟡 | ASR 运行时 |
+| `asr_runtime.py` | 🟡 | ASR 运行时；支持 audio-file path、SenseVoice backend、`--trim-speech` |
+| `continuous_asr_demo.py` | 🟡 | Rolling `runtime/latest_audio.pcm` fixed-window utterance demo; not the final autonomous ASR loop |
 | `emotion_context_builder.py` | ✅ | 上下文构建 |
 | `screen_watcher.py` | ⚪ | deprecated；屏幕监控已退出 MVP |
 

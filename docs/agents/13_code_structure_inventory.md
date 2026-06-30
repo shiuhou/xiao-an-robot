@@ -109,8 +109,9 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C3 | Add deprecation headers to screen monitoring files | Already satisfied | Existing docstrings checked 2026-06-29 |
 | C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
 | C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Labeled 2026-06-29; moving remains medium/high risk | OpenFace/OpenVINO tests and live route smoke |
-| C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | In progress 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
+| C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | Done 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
+| C7 | Refresh protocol/base-station/architecture registry after fixed-window ASR and dashboard work | Done 2026-06-30 | `rg` ASR/dashboard stale-reference scan; targeted docs diff; ASR unit tests; `git diff --check` |
 
 ## Current Decision
 
-C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is the current safe cleanup batch: update wiring/status docs that still describe GPIO35/36/37 or pre-dashboard repo shape as current truth.
+C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is complete for the shared-clock wiring/status sweep. C7 is complete for the protocol/base-station/architecture stale text after fixed-window ASR and dashboard work. The next safe cleanup batch should remain documentation-first unless hardware validation creates a clear code move.

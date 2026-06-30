@@ -4,7 +4,10 @@ Xiao An is split into local robot runtime modules plus OpenClaw `xiaoan-runtime`
 ownership so hardware, sensing, safety, and user-facing reasoning can move
 independently.
 
-Current status: the architecture is staged. The `/control` route and local simulation paths are the most mature parts; `/video`, `/audio`, real ASR/VAD/TTS, and full hardware integration are still being brought up.
+Current status: `/control`, `/video`, and `/audio` are implemented through
+`robot/mergetesting` and the base station. Fixed-window ASR demo helpers exist
+for the `/audio` stream, while autonomous ASR policy, real spoken TTS, and the
+final product loop are still being brought up.
 
 Canonical ownership boundary: [openclaw/openclaw_ownership_boundary.md](openclaw/openclaw_ownership_boundary.md).
 
@@ -34,7 +37,7 @@ event logs.
 Implementation status:
 
 - `/control` exists and is the first hardware integration target.
-- `/video` and `/audio` routes exist on the base station. **Live streaming is implemented in `robot/mergetesting`** split envs (`mergetesting_cam_only`, `mergetesting_mic_only`); see `docs/status/2026-06-26.md` and `docs/agents/03_mergetesting_registry.md`.
+- `/video` and `/audio` routes exist on the base station. **Live streaming is implemented in `robot/mergetesting`** split envs (`mergetesting_cam_only`, `mergetesting_mic_only`) and the current calibrated fixed-window ASR demo uses `mergetesting_mic_only_shift18_asr` plus `base_station.monitor.asr_runtime --trim-speech`; see `docs/status/2026-06-26.md`, `docs/status/2026-06-30.md`, and `docs/agents/03_mergetesting_registry.md`.
 - `robot/firmware` keeps isolated PlatformIO envs for single-subsystem bring-up; DK-2500 integration firmware is **`robot/mergetesting`**, not `robot/firmware/src/main.cpp`.
 
 ## OpenVINO Perception

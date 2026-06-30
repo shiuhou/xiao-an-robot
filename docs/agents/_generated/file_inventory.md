@@ -5,22 +5,22 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
+181b59d Render face240 boot expression immediately
 4f63cc8 Add continuous ASR demo helper
 2e86637 Add dock dashboard server
 366b8d3 Add ASR speech window trimming
 a64a63a Add shared I2S audio diagnostics
-6a1ec24 Label OpenFace OV runtime as vendored
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                 | 2 +-
- docs/agents/03_mergetesting_registry.md    | 2 +-
- docs/agents/05_test_matrix.md              | 2 +-
- robot/mergetesting/src/face240_display.cpp | 6 +++---
- tests/unit/test_mergetesting_layering.py   | 9 +++++++++
- 5 files changed, 15 insertions(+), 6 deletions(-)
+docs/agents/04_base_station_agent_registry.md |  7 +++++--
+ docs/agents/13_code_structure_inventory.md    |  5 +++--
+ docs/agents/_generated/file_inventory.md      | 12 +++++-------
+ docs/architecture.md                          |  7 +++++--
+ docs/protocol.md                              | 10 +++++-----
+ 5 files changed, 23 insertions(+), 18 deletions(-)
 ```
 
 ## robot/firmware/src (43 files)

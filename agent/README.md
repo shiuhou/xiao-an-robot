@@ -9,7 +9,7 @@ OpenClaw `xiaoan-runtime` is the user-facing long-term owner: profile, memory, r
 | Path | Role |
 | --- | --- |
 | `core/` | `XiaoAnBrain`, `RobotGateway`, action execution, OpenClaw adapters, local tool compatibility. |
-| `skills/` | Robot motion, emotion monitor, companion request, breathing, calendar/habit/report compatibility skills. |
+| `skills/` | Robot motion, emotion monitor, companion request, and legacy compatibility skills. See `skills/README.md` before adding new local skill behavior. |
 | `data/` | SQLite schema and migrations for local event/compatibility storage. |
 
 ## Current Role

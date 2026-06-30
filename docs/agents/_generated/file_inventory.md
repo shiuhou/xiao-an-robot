@@ -15,12 +15,9 @@ aed67be Move M600 deployment note into docs setup
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/00_snapshot.md                 |  1 +
- docs/agents/13_code_structure_inventory.md | 12 ++++++++----
- docs/current_status.md                     | 17 ++++++++++++++++-
- docs/status/2026-06-30.md                  | 23 +++++++++++++++++++++++
- hardware/wiring/esp32_pinout.md            | 24 ++++++++++++++++--------
- 5 files changed, 64 insertions(+), 13 deletions(-)
+docs/agents/05_test_matrix.md |  1 +
+ docs/status/2026-06-30.md     | 32 ++++++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+)
 ```
 
 ## robot/firmware/src (43 files)
@@ -87,7 +84,7 @@ docs/agents/00_snapshot.md                 |  1 +
 | `camera_ov2640_config.h` | robot\mergetesting\src\camera_ov2640_config.h | 2793 |
 | `config.h` | robot\mergetesting\src\config.h | 3185 |
 | `config.local.example.h` | robot\mergetesting\src\config.local.example.h | 662 |
-| `config.local.h` | robot\mergetesting\src\config.local.h | 310 |
+| `config.local.h` | robot\mergetesting\src\config.local.h | 307 |
 | `debug_log.h` | robot\mergetesting\src\debug_log.h | 339 |
 | `display.cpp` | robot\mergetesting\src\display.cpp | 7633 |
 | `display.h` | robot\mergetesting\src\display.h | 465 |
@@ -118,7 +115,7 @@ docs/agents/00_snapshot.md                 |  1 +
 
 `mergetesting`, `mergetesting_display_only`, `mergetesting_display_only_ota`, `mergetesting_care_demo_face240`, `mergetesting_care_demo_face240_ota`, `mergetesting_control_base`, `mergetesting_control_ping`, `mergetesting_control_ping_ota`, `mergetesting_motor_only`, `mergetesting_motor_only_ota`, `mergetesting_speaker_only`, `mergetesting_speaker_only_ota`, `mergetesting_speaker_phrase_only`, `mergetesting_speaker_phrase_only_ota`, `mergetesting_speaker_altpins_only`, `mergetesting_speaker_altpins_only_ota`, `mergetesting_speaker_altpins_phrase_only`, `mergetesting_speaker_altpins_phrase_only_ota`, `mergetesting_speaker_shared_clock_only`, `mergetesting_speaker_shared_clock_only_ota`, `mergetesting_speaker_shared_clock_phrase_only`, `mergetesting_speaker_shared_clock_phrase_only_ota`, `mergetesting_audio_shared_i2s_diag`, `mergetesting_speaker_drain_only`, `mergetesting_speaker_drain_only_ota`, `mergetesting_control_only`, `mergetesting_control_only_ota`, `mergetesting_face240_only`, `mergetesting_face240_only_ota`, `mergetesting_cam_only`, `mergetesting_cam_only_ota`, `mergetesting_mic_only`, `mergetesting_mic_only_ota`, `mergetesting_mic_only_shift16`, `mergetesting_mic_only_shift16_asr`, `mergetesting_mic_only_shift18_asr`, `mergetesting_mic_only_right_shift16`, `mergetesting_full_face240`, `mergetesting_full_face240_ota`, `mergetesting_base64_video`
 
-## tests/**/test_*.py (106 files)
+## tests/**/test_*.py (107 files)
 
 | 路径 | 字节 |
 | --- | --- |
@@ -153,6 +150,7 @@ docs/agents/00_snapshot.md                 |  1 +
 | tests\unit\test_companion_request_skill.py | 2558 |
 | tests\unit\test_context_builder.py | 13891 |
 | tests\unit\test_context_policy.py | 8069 |
+| tests\unit\test_continuous_asr_demo.py | 2394 |
 | tests\unit\test_daily_summary_builder.py | 7136 |
 | tests\unit\test_dashboard_server.py | 7067 |
 | tests\unit\test_emotion_context_builder.py | 8283 |

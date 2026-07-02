@@ -23,6 +23,7 @@ python tools/check_runtime_env.py
 | Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
 | Audio speech trimming | `tests/unit/test_audio_segments.py`, `tests/unit/test_asr_runtime.py` | fixed-window WAV energy trim before ASR; `--trim-speech` metadata | P |
 | Fixed-window ASR demo | `tests/unit/test_fixed_window_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
+| Base-station mic demo | manual demo target | DK-2500 mic -> WAV/audio_file -> ASR -> OpenClaw/Agent context -> `/control` robot command | — |
 | Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 right-panel constraints | P |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
@@ -108,7 +109,7 @@ pio run -e mergetesting
 | 1 | `/control` | 5min heartbeat；断线后 capped exponential reconnect；重连后重新 `device.hello` | H: 2026-06-26 |
 | 2 | 命令 | 每条 `command.ack`；motion 带 action_id；stop 打断前一动作并回 `motion.completed: interrupted`；未知命令/JSON 不崩 | H: 2026-06-26 |
 | 3 | `/video` | `runtime/latest.jpg` 更新 | H: 2026-06-26 |
-| 3b | `/audio` | `audio.chunk_meta` + PCM；heartbeat 不被饿死 | H: 2026-06-26 |
-| 4 | 关怀闭环 | fatigue → OpenClaw → 三命令 | — |
+| 3b | `/audio` fallback | robot `audio.chunk_meta` + PCM；heartbeat 不被饿死；作为诊断/备选链路 | H: 2026-06-26 |
+| 4 | 基站 mic 关怀闭环 | DK-2500 mic -> ASR -> OpenClaw/Agent -> `/control` -> ack/completed | — |
 
 **Agent 更新规则：** 跑过测试后在本表改 P/H/F 并注明日期。

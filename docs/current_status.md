@@ -1,18 +1,22 @@
 # Current Status
 
-Last updated: 2026-06-30
-Branch: `20260628_merged`
+Last updated: 2026-07-02
+Branch: `0702base_mic`
 
 ## Main Demo Path
 
 `robot/mergetesting` is the main DK-2500/base-station integration firmware.
 
 ```text
-OpenClaw / Agent
+DK-2500 base-station microphone / camera
+-> base_station ASR / vision context
+-> OpenClaw / Agent
 -> base_station WebSocket /agent and /control
 -> robot/mergetesting
 -> face expression + motion + local sound
 ```
+
+For the nine-day demo sprint, the primary voice input is the DK-2500/base-station microphone. The robot `/audio` path remains a fallback and diagnostics path for PCM capture, not the primary public-demo microphone.
 
 `robot/firmware` remains the robot-body bring-up and reusable-module lab. Do not add new DK-2500 `/control`, `/video`, or `/audio` integration entrypoints there.
 
@@ -23,8 +27,9 @@ OpenClaw / Agent
 | Firmware target | `mergetesting_full_face240` |
 | `/control` | Hardware path verified for expression, motion, local sound, ack, and completion waits |
 | `/video` | Robot camera reaches base station as `runtime/latest.jpg`; OpenClaw can inspect the live frame |
-| `/audio` | Robot microphone PCM reaches the base-station side as `runtime/latest_audio.pcm`; `runtime/audio_stats.json` now includes RMS/peak/DC/clipping for the latest window |
-| Fixed-window ASR | `mergetesting_mic_only_shift18_asr` plus `base_station.monitor.asr_runtime --trim-speech` is the current calibrated demo path |
+| Base-station mic | **Primary demo input target**: DK-2500 mic captures user speech, ASR turns it into `asr.transcript`, context is sent to OpenClaw/Agent, then robot commands are sent through `/control` |
+| `/audio` robot mic | Fallback/diagnostic path: robot microphone PCM reaches the base-station side as `runtime/latest_audio.pcm`; `runtime/audio_stats.json` includes RMS/peak/DC/clipping |
+| Fixed-window ASR | Current reusable ASR path is file-first: WAV/audio_file -> `base_station.monitor.asr_runtime --trim-speech`; robot `/audio` can still feed this path for diagnostics |
 | Display | 2.4 inch face240 path is the current full-demo face path |
 | Motor | DRV8833 motion works with practical demo speed around `0.56` |
 | Speaker | Reliable demo sound is `audio.play_local care_01` |
@@ -44,7 +49,6 @@ Evidence:
 - screen monitoring
 - work activity tracking
 - local reminder/task/memory APIs
-- full autonomous ASR policy loop
 - real spoken TTS playback
 - legacy firmware-side DK-2500 integration snapshots
 
@@ -54,8 +58,9 @@ Evidence:
 2. Keep `audio.play_local care_01` as the reliable audible proof until real spoken TTS is implemented and verified.
 3. Investigate speaker PCM spoken playback with USB serial/backtrace before using it in a demo.
 4. Calibrate physical route timing on charged battery before chaining autonomous movement.
-5. Current fixed-window ASR demo path: use `mergetesting_mic_only_shift18_asr`, export the latest `/audio` WAV, then run `base_station.monitor.asr_runtime --trim-speech` before SenseVoice. Keep checking RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
-6. Keep generated runtime files, logs, DBs, model binaries, `.pio/`, and local configs out of Git.
+5. Build the base-station mic demo path: base mic WAV capture -> ASR -> context -> OpenClaw/Agent -> `/control` commands -> ack/completed evidence.
+6. Keep robot `/audio` available as a fallback/diagnostic source: use `mergetesting_mic_only_shift18_asr`, export the latest `/audio` WAV, then run `base_station.monitor.asr_runtime --trim-speech` before SenseVoice. Keep checking RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
+7. Keep generated runtime files, logs, DBs, model binaries, `.pio/`, and local configs out of Git.
 
 ## Commands
 
@@ -63,6 +68,12 @@ Base station:
 
 ```powershell
 python -m base_station.ws_server.server
+```
+
+Base-station mic demo target:
+
+```text
+DK-2500 mic -> WAV/audio_file -> ASR -> asr.transcript -> OpenClaw/Agent context -> /control robot commands
 ```
 
 Robot full-demo firmware:
@@ -82,13 +93,13 @@ python tools\send_robot_command.py --device-id xiaoan_robot_01 motion left --ben
 python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 ```
 
-Raw mic WAV/stat check:
+Robot `/audio` fallback WAV/stat check:
 
 ```powershell
 python -m base_station.perception.audio_diagnostics runtime\latest_audio.pcm --wav-out runtime\manual_samples\mic_20cm.wav --report-out runtime\manual_samples\mic_20cm_stats.json
 ```
 
-Trimmed fixed-window ASR:
+Trimmed fixed-window ASR from an audio file:
 
 ```powershell
 python -m base_station.monitor.asr_runtime --source audio_file --audio-path runtime\manual_samples\mic_20cm.wav --asr-backend sensevoice --asr-model-path base_station\models\sensevoice-small --trim-speech --no-agent --verbose

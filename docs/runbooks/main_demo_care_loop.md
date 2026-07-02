@@ -7,16 +7,24 @@ This runbook captures the current reproducible demo path. Use it with [current_s
 The main demo path is:
 
 ```text
-robot camera/audio -> base station/OpenClaw perception -> action decision
-  -> /control command -> robot movement/expression/sound
+DK-2500 base-station microphone or camera
+  -> base-station ASR / vision observation
+  -> OpenClaw / Agent context and decision
+  -> /control command
+  -> robot movement/expression/sound
   -> matching ack/completed/log evidence
 ```
+
+For the nine-day demo sprint, the DK-2500/base-station microphone is the primary
+voice input. Robot `/audio` remains available as a fallback and diagnostics path,
+but the public demo should not depend on the robot microphone.
 
 ## Preconditions
 
 - Robot is flashed with `mergetesting_full_face240`.
 - `robot/mergetesting/src/config.local.h` is locally configured for the active WiFi and base-station IP. Do not commit this file.
 - DK-2500/base station is reachable from the robot.
+- DK-2500/base-station microphone capture is available to the ASR runner, or a clearly labeled base-mic WAV sample is available for the same flow.
 - Runtime files such as `runtime/latest.jpg` and `runtime/latest_audio.pcm` are treated as local artifacts, not Git inputs.
 
 ## Start Base Station
@@ -30,7 +38,33 @@ Expected behavior:
 - Robot connects to `/control`.
 - Server logs `device.hello` and heartbeat/status messages.
 - `/video` updates `runtime/latest.jpg` when camera is enabled.
-- `/audio` updates PCM/runtime audio artifacts when microphone is enabled.
+- `/audio` updates PCM/runtime audio artifacts when the robot microphone fallback is enabled.
+
+## Base Mic Demo Target
+
+The base-station teammate should wire the primary spoken-input flow as:
+
+```text
+base-station mic capture
+-> WAV/audio_file ASR
+-> asr.transcript
+-> OpenClaw / XiaoAnBrain context
+-> robot action plan
+-> /agent or /control command forwarding
+-> command.ack and motion.completed evidence
+```
+
+Minimum user story:
+
+```text
+User says "小安，我有点累"
+-> ASR text contains a tired/care cue
+-> OpenClaw/Agent chooses a care action
+-> robot shows caring/happy face
+-> robot moves forward briefly
+-> robot turns toward the user
+-> robot plays audio.play_local care_01
+```
 
 ## Flash Robot
 
@@ -69,7 +103,7 @@ Expected behavior:
 
 Use this behavior as the next autonomous target:
 
-1. Observe latest camera frame or receive a tired/care trigger.
+1. Receive a base-station mic ASR transcript, or observe latest camera frame.
 2. Set expression to `caring` or `happy`.
 3. Move forward with `speed=0.56`, `duration_ms=2000`.
 4. Wait for matching `motion.completed`.
@@ -86,3 +120,4 @@ Stop the demo and inspect logs if:
 - A motion command lacks matching `motion.completed`.
 - The robot reconnects during motion.
 - `runtime/latest.jpg` or audio artifacts stop updating while channels are expected to be active.
+- The base-station mic ASR path fails and no labeled fallback text/audio sample is available.

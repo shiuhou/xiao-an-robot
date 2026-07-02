@@ -81,6 +81,7 @@
 | **Code naming cleanup inventory 2026-06-30** | `docs/agents/14_naming_inventory.md`, `tools/legacy/manual_*_smoke.py` | 命名整改控制表已建立；legacy manual smoke 实作不再使用 `test_*` 文件名，根层 `tools/test_*.py` 保留兼容 wrapper |
 | **Firmware entrypoint naming 2026-06-30** | `robot/firmware/src/*_main.cpp`, `robot/firmware/platformio.ini`, `docs/agents/02_firmware_registry.md` | active bring-up entrypoint 文件名已从 `_test.cpp` 改为用途明确的 `_main.cpp`/`_smoke_main.cpp`/`_check_main.cpp`；PlatformIO env 名保持不变 |
 | **Fixed-window ASR module naming 2026-06-30** | `base_station/monitor/fixed_window_asr_demo.py`, `base_station/monitor/continuous_asr_demo.py`, `tests/unit/test_fixed_window_asr_demo.py` | ASR demo 主 module 改为 fixed-window 命名；旧 `continuous_asr_demo.py` 保留 compatibility wrapper |
+| **证据包整理 2026-07-01** | `report_evidence/` | 按“时间戳 / 环境 / 输入 / 处理 / 输出 / 结论 / 代码路径”格式整理 `/control`、`/video`、`/audio`、OpenClaw、主动关怀、私人助理、DK-2500 角色和问题修复证据；只使用现有 runtime/docs 证据，未新增实机运行 |
 
 ## 硬件阻塞（剩余）
 

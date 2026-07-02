@@ -882,6 +882,15 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("-DMERGETEST_MIC_SHIFT_BITS=18", shift18_asr_body)
         self.assertIn("-DMERGETEST_MIC_SEND_INTERVAL_MS=20", shift18_asr_body)
 
+        self.assertIn("[env:mergetesting_mic_only_shift18_asr_ota]", platformio)
+        shift18_asr_ota_body = platformio.split("[env:mergetesting_mic_only_shift18_asr_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only_shift18_asr", shift18_asr_ota_body)
+        self.assertIn("upload_protocol = espota", shift18_asr_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", shift18_asr_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", shift18_asr_ota_body)
+
         self.assertIn("[env:mergetesting_mic_only_right_shift16]", platformio)
         right_shift16_body = platformio.split("[env:mergetesting_mic_only_right_shift16]", 1)[1].split(
             "[env:", 1

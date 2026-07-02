@@ -22,7 +22,7 @@ python tools/check_runtime_env.py
 | WS audio channel | `tests/unit/test_ws_audio_channel.py` | INMP441 pins, chunk_meta, PCM persistence, latest-window RMS/peak/DC/clipping stats | P |
 | Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
 | Audio speech trimming | `tests/unit/test_audio_segments.py`, `tests/unit/test_asr_runtime.py` | fixed-window WAV energy trim before ASR; `--trim-speech` metadata | P |
-| Continuous ASR demo | `tests/unit/test_continuous_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
+| Fixed-window ASR demo | `tests/unit/test_fixed_window_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
 | Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 glance layout constraints | P: 2026-06-30 `python3 -m unittest tests.unit.test_dashboard_server`; Chromium 1024x600 screenshot checked |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
@@ -67,7 +67,7 @@ pio run -e mergetesting
 |-----|------|--------|
 | `mergetesting_display_only` | P: 2026-06-26 Phase 1-2 hardening | H: `/control` hello/heartbeat/commands, 2026-06-26 |
 | `mergetesting_display_only_ota` | P: 2026-06-26 | H: espota upload path verified during split-env loop, 2026-06-26 |
-| `mergetesting_face240_only` | P: 2026-06-26 | H: expression caring/idle, no watchdog reset, 2026-06-26 |
+| `mergetesting_face240_only` | P: 2026-06-30 boot frame static test | H: expression caring/idle, no watchdog reset, 2026-06-26; USB upload on COM19 and reboot log `face=1` happy, 2026-06-30 |
 | `mergetesting_cam_only` | P: 2026-06-26 app/services split | H: QVGA JPEG + `video.frame_meta`, 2026-06-26 |
 | `mergetesting_cam_only_ota` | P: 2026-06-26 | H: espota upload, `/video`, `runtime/latest.jpg` valid JPEG, 2026-06-26 |
 | `mergetesting_mic_only` | P: 2026-06-26 | H: PCM `/audio`, heartbeat not starved, 2026-06-26 |

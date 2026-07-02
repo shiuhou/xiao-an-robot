@@ -11,7 +11,7 @@
 | `robot/firmware` | Bring-up lab plus reusable module pool; many isolated entrypoints still live in `src/` | Medium | Move confirmed historical snapshots into `archive/`; keep active bring-up entrypoints where `platformio.ini` expects them |
 | `base_station` | Runtime is clear; dashboard is now a separate `base_station/dashboard` surface; OpenFace vendor/runtime code is deep under `perception/` | Medium | Keep runtime paths stable; document vendored/runtime surfaces before any physical moves |
 | `agent` | Local compatibility layer plus OpenClaw adapters | Medium | Do not delete legacy compatibility; label deprecated surfaces clearly |
-| `tools` / `scripts` | Tools are documented but still flat | Medium | Defer physical moves; tests import `tools.*` modules directly |
+| `tools` / `scripts` | Tools and scripts are physically grouped with root compatibility wrappers | Low | Keep root wrappers stable; put new implementations in ownership subdirectories |
 | `tests` | Broad but organized by unit/integration/mocks | Low | Keep import paths stable while source moves happen |
 
 ## Firmware Line
@@ -31,13 +31,13 @@ These are still wired by dedicated PlatformIO envs and should not move without u
 | `ota_bootstrap_main.cpp` | `ota_bootstrap`, `ota_bootstrap_wifi` | OTA recovery bridge |
 | `camtesting_program.cpp` | `camtesting` | camera AP stream |
 | `serial_qr_servo_main.cpp` | `serialqrservo` | serial JPEG + PC QR servo |
-| `tft_test.cpp` | `display_test` | 128x160 TFT smoke |
-| `face240_wire_test.cpp` | `face240_wiretest`, `face240_integrated`, legacy aliases | ST7789 wiring / color smoke |
-| `face240_roboeyes_test.cpp` | `face240_roboeyes`, `face240` | 2.4 inch RoboEyes demo |
+| `display128_tft_smoke_main.cpp` | `display_test` | 128x160 TFT smoke |
+| `face240_wire_check_main.cpp` | `face240_wiretest`, `face240_integrated`, legacy aliases | ST7789 wiring / color smoke |
+| `face240_roboeyes_demo_main.cpp` | `face240_roboeyes`, `face240` | 2.4 inch RoboEyes demo |
 | `robot_face_9expr_merged_optimized.cpp` | `face240_9expr_merged` | product-like nine-expression face path |
 | `tft_espi_probe.cpp` | `tftprobe_hybrid_rawinit` | ST7789 diagnostic |
-| `voice_recognition_test.cpp` | `voice_recognition_test` | INMP441 electrical/RMS check |
-| `speaker_amp_test.cpp` | `speaker_amp_test` | MAX98357A tone check |
+| `inmp441_rms_check_main.cpp` | `voice_recognition_test` | INMP441 electrical/RMS check |
+| `max98357a_tone_check_main.cpp` | `speaker_amp_test` | MAX98357A tone check |
 
 ### Archive Candidates
 
@@ -90,15 +90,24 @@ Do not move these modules while the speaker pin map is still under active hardwa
 
 ## Tools And Scripts
 
-Physical `tools/` moves are deferred because many tests import `tools.*` directly. The next safe step is to add thin subdirectory wrappers or keep flat files and rely on `tools/README.md` grouping.
+Physical `tools/` moves are complete. Implementations live under ownership subdirectories and root-level `tools/*.py` wrappers preserve existing commands and `tools.*` imports.
 
 | Group | Current files |
 |-------|---------------|
-| Ops | `send_robot_command.py`, `run_integration_loop.py`, `run_reminder_scheduler.py` |
-| Probes | `probe_camera.py`, `probe_cv_gate.py`, `probe_openface_routeA_live.py`, `probe_qwen_vl_openvino.py`, `serial_camera_viewer.py` |
-| Evaluation | `eval_*`, `evaluate_*`, `summarize_route_a_trace.py`, `prepare_xiaoan_care_report_assets.py` |
-| Maintenance | `check_runtime_env.py`, `generate_agent_registry.py`, `setup_models.py`, `setup_audio_models.py` |
-| Manual smoke scripts | `test_agent_brain.py`, `test_emotion_policy.py`, `test_emotion_trigger.py`, `test_openclaw_tool_calls.py` |
+| Ops | `tools/ops/send_robot_command.py`, `tools/ops/run_integration_loop.py`, `tools/ops/run_ws_video_runtime.py`, emotion stream/query/inject/smoke helpers |
+| Probes | `tools/probes/probe_camera.py`, `tools/probes/probe_cv_gate.py`, `tools/probes/probe_openface_routeA_live.py`, `tools/probes/probe_qwen_vl_openvino.py`, serial/test-frame helpers |
+| Evaluation | `tools/evaluation/eval_*`, `tools/evaluation/evaluate_*`, `tools/evaluation/prepare_xiaoan_care_report_assets.py` |
+| Maintenance | `tools/maintenance/check_runtime_env.py`, `tools/maintenance/generate_agent_registry.py`, `tools/maintenance/summarize_route_a_trace.py` |
+| Setup | `tools/setup/setup_models.py`, `tools/setup/setup_audio_models.py` |
+| Legacy / manual smoke | `tools/legacy/manual_agent_brain_smoke.py`, `tools/legacy/manual_emotion_policy_smoke.py`, `tools/legacy/manual_emotion_trigger_smoke.py`, `tools/legacy/manual_openclaw_tool_call_smoke.py`, old local compatibility helpers |
+
+Physical `scripts/` moves are complete. Implementations live under:
+
+| Group | Current files |
+|-------|---------------|
+| Setup | `scripts/setup/check_env.sh`, `scripts/setup/init_db.sh`, `scripts/setup/setup_intel_board.sh` |
+| Start | `scripts/start/start_base_station.sh`, `scripts/start/start_agent.sh`, `scripts/start/start_local_api.sh`, `scripts/start/start_all.sh`, `scripts/start/run_mock_robot.sh` |
+| Debug | `scripts/debug/debug_camera_cv_vlm_e2e.py`, `scripts/debug/try_vlm_once.py` |
 
 ## Recommended Cleanup Batches
 
@@ -107,10 +116,25 @@ Physical `tools/` moves are deferred because many tests import `tools.*` directl
 | C1 | Move `robot/firmware/src/integrated_main.cpp` to `robot/firmware/src/archive/` and update docs/env | Done 2026-06-29 | `python -m unittest tests.unit.test_firmware_ota_bootstrap tests.unit.test_mergetesting_layering -v`; optional legacy env build |
 | C2 | Move `robot/mergetesting/m600.md` to `docs/setup/m600_deployment.md` if still current | Done 2026-06-29 | Link/rg check |
 | C3 | Add deprecation headers to screen monitoring files | Already satisfied | Existing docstrings checked 2026-06-29 |
-| C4 | Decide whether tools stay flat or get wrapper packages | Medium | Full Python tests touching `tools.*` imports |
+| C4 | Physically group `tools/` with root compatibility wrappers | Done 2026-06-30 | Full Python tests touching `tools.*` imports; wrapper import smoke; `git diff --check` |
 | C5 | Audit `base_station/perception/openface_ov_runtime/` vendored import paths | Labeled 2026-06-29; moving remains medium/high risk | OpenFace/OpenVINO tests and live route smoke |
-| C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | In progress 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
+| C6 | Sweep stale wiring/status references after shared-clock audio and dashboard work | Done 2026-06-30 | `rg` stale-reference scan; targeted docs diff; `git diff --check` |
+| C7 | Refresh protocol/base-station/architecture registry after fixed-window ASR and dashboard work | Done 2026-06-30 | `rg` ASR/dashboard stale-reference scan; targeted docs diff; ASR unit tests; `git diff --check` |
+| C8 | Normalize fixed-window ASR runbook/model path docs | Done 2026-06-30 | `rg` SenseVoice path scan; ASR/audio-model unit tests; `git diff --check` |
+| C9 | Move root architecture/protocol docs into docs subdirectories | Done 2026-06-30 | `git mv`; stale-link `rg` scan; generated inventory; `git diff --check` |
+| C10 | Move remaining root setup/runbook docs into docs subdirectories | Done 2026-06-30 | `git mv`; stale-link `rg` scan; tracked Markdown link check; `git diff --check` |
+| C11 | Add base-station perception/monitor local README boundaries | Done 2026-06-30 | tracked Markdown link check; perception/ASR unit tests; `git diff --check` |
+| C12 | Add current hardware harness entry point | Done 2026-06-30 | tracked Markdown link check; hardware docs stale-link scan; `git diff --check` |
+| C13 | Complete tools README grouping without moving imports | Done 2026-06-30 | `rg --files tools`; targeted tool unit tests; `git diff --check` |
+| C14 | Document tracked report assets in git hygiene audit | Done 2026-06-30 | tracked-file audit; Git LFS attr check; `git diff --check` |
+| C15 | Add agent skills local boundary README | Done 2026-06-30 | tracked Markdown link check; robot/Agent skill tests; `git diff --check` |
+| C16 | Add agent core/data local boundary READMEs | Done 2026-06-30 | ignored DB status check; tracked Markdown link check; Agent tests; `git diff --check` |
+| C17 | Add base-station API/dashboard local READMEs | Done 2026-06-30 | tracked Markdown link check; API/dashboard tests; `git diff --check` |
+| C18 | Physically group `scripts/` with root command wrappers | Done 2026-06-30 | `bash -n`; Python wrapper help/compile smoke; generated inventory; `git diff --check` |
+| N1 | Rename legacy manual smoke implementations away from `test_*` names while keeping root compatibility wrappers | Done 2026-06-30 | OpenClaw manual-tool unit tests; wrapper smoke; generated inventory; `git diff --check` |
+| N2 | Rename active firmware bring-up entrypoint files away from `_test.cpp` names while keeping env names stable | Done 2026-06-30 | Face240 helper tests; selected PlatformIO env builds; generated inventory; `git diff --check` |
+| N3 | Rename fixed-window ASR demo module away from `continuous_asr_demo.py` while keeping a compatibility wrapper | Done 2026-06-30 | Fixed-window ASR unit tests; module help smoke; generated inventory; `git diff --check` |
 
 ## Current Decision
 
-C1-C3 are complete. C4 stays deferred because tests import `tools.*` directly. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. C6 is the current safe cleanup batch: update wiring/status docs that still describe GPIO35/36/37 or pre-dashboard repo shape as current truth.
+C1-C4, C6-C18, and N1-N3 are complete. C5 stays label-only because `openface_ov_runtime/` has fragile vendored import paths. `tools/` and `scripts/` now have physical ownership grouping plus root compatibility wrappers. The next safe cleanup batch should avoid moving OpenFace vendored runtime until a live OpenFace/OpenVINO smoke window is available.

@@ -13,7 +13,7 @@
 | `speaker.cpp/h` | `speaker_amp_test.cpp` | ✅ 完整 | MAX98357A I2S，`care_01` 等音调 |
 | `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ 完整 | INMP441 I2S → `/audio` PCM chunk |
 | `ws_client.cpp/h` | `ws_client.cpp/h` + 联调扩展 | ✅ 增强 | 三通道 + command.ack + video meta |
-| `protocol.h` | `protocol.h` + `docs/protocol.md` | ✅ 扩展 | flat/envelope 双格式 |
+| `protocol.h` | `protocol.h` + `docs/protocol/protocol.md` | ✅ 扩展 | flat/envelope 双格式 |
 | `main.cpp` | `main.cpp` | ✅ 集成 | WiFi/WS/命令/串口本地测试 |
 
 ## 仅 bring-up、未并入主循环（参考 env）

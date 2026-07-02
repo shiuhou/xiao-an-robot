@@ -9,10 +9,10 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 | Path | Role |
 | --- | --- |
 | `ws_server/` | Main robot transport: `/control`, `/video`, `/audio`, `/agent`. |
-| `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. `openface_ov_runtime/` is bundled vendored runtime; do not move it during ordinary cleanup. |
-| `monitor/` | Emotion runtime, event loop, context builder, SQLite local event store. |
-| `api/` | Local debug API for frontend/runtime inspection; not the main product API. |
-| `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. |
+| `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. See `perception/README.md` before moving files. |
+| `monitor/` | Emotion runtime, event loop, ASR runtime helpers, context builder, SQLite local event store. See `monitor/README.md` for deprecated surfaces. |
+| `api/` | Local debug API for frontend/runtime inspection; not the main product API. See `api/README.md`. |
+| `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. See `dashboard/README.md`. |
 | `models/` | Local model placement area; large models should not be committed. |
 | `config.example.yaml` | Safe template for runtime config. |
 
@@ -43,7 +43,7 @@ Expected robot behavior:
 
 `ws_server/` is the main transport boundary. Protocol changes must stay aligned with:
 
-- [../docs/protocol.md](../docs/protocol.md)
+- [../docs/protocol/protocol.md](../docs/protocol/protocol.md)
 - [../shared/protocol/](../shared/protocol/)
 - `robot/mergetesting/src/protocol.h`
 - `base_station/ws_server/protocol.py`
@@ -75,7 +75,7 @@ Use `config.example.yaml` as the shareable template.
 ## Related Docs
 
 - [../docs/current_status.md](../docs/current_status.md)
-- [../docs/base_station_dashboard.md](../docs/base_station_dashboard.md)
+- [../docs/runbooks/base_station_dashboard.md](../docs/runbooks/base_station_dashboard.md)
 - [../docs/agents/04_base_station_agent_registry.md](../docs/agents/04_base_station_agent_registry.md)
 - [../docs/setup/dk2500_deployment.md](../docs/setup/dk2500_deployment.md)
 - [../docs/runbooks/main_demo_care_loop.md](../docs/runbooks/main_demo_care_loop.md)

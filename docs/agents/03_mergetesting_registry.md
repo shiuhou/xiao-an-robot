@@ -9,7 +9,7 @@
 | `mergetesting` | ST7735 | 开 | 关 | 默认合并 baseline | — |
 | `mergetesting_display_only` | ST7735 | 关 | 关 | Phase 1-2 `/control` | ✅ 2026-06-26 |
 | `mergetesting_display_only_ota` | ST7735 | 关 | 关 | Phase 1-2 OTA upload | ✅ 2026-06-26 |
-| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control` | ✅ 2026-06-26 |
+| `mergetesting_face240_only` | ST7789 九表情 | 关 | 关 | 2.4" 表情 + `/control`; boot default `face=1` happy | ✅ 2026-06-30 |
 | `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
 | **`mergetesting_care_demo_face240`** | ST7789 九表情 | **关** | **关** | **OpenClaw Step 33 实机 care demo**（control+face240+motor+speaker，无 `/video`/`/audio`） | ✅ H 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | ST7789 | 关 | 关 | 上述 care demo OTA | ✅ P |
@@ -58,8 +58,8 @@
 | `motor_ctrl.cpp/h` | firmware | ✅ | non-blocking motion；bench/manual 可用 timeout/duration 跑开环 |
 | `cam_stream.cpp/h` | firmware + WS | ✅ | 1fps → meta + binary/base64 |
 | `camera_ov2640_config.h` | 引脚常量 | ✅ | GOOUUU S3-CAM v1.5 |
-| `speaker.cpp/h` | `speaker_amp_test.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
-| `mic_stream.cpp/h` | `voice_recognition_test.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
+| `speaker.cpp/h` | `max98357a_tone_check_main.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
+| `mic_stream.cpp/h` | `inmp441_rms_check_main.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
 | `debug_log.h` | 新建 | ✅ | LOGI/LOGE 宏 |
 
 ## `MergetestingApp` loop 顺序

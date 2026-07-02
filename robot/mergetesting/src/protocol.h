@@ -1,5 +1,5 @@
 #pragma once
-// protocol.h — WebSocket 消息常量（对齐 docs/protocol.md v0.1 + 联调扩展）
+// protocol.h — WebSocket 消息常量（对齐 docs/protocol/protocol.md v0.1 + 联调扩展）
 
 #include <Arduino.h>
 #include <ArduinoJson.h>

@@ -21,7 +21,7 @@ Track hardware parts here. Avoid committing private purchase records, personal a
 
 ## Purchase / Selection Rules
 
-- Pick modules that match [hardware/wiring/esp32_pinout.md](wiring/esp32_pinout.md) and `robot/firmware/src/board_pins.h`.
+- Pick modules that match [hardware/wiring/esp32_pinout.md](../wiring/esp32_pinout.md) and `robot/firmware/src/board_pins.h`.
 - Confirm voltage/current ratings before combining rails.
 - Keep spare motor driver and ESP32-S3 boards for bring-up failures.
 - Record final dimensions before shell/dock print.

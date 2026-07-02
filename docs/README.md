@@ -5,9 +5,9 @@ This directory is organized by document purpose. Prefer current entry points ove
 ## Read Order
 
 1. [current_status.md](current_status.md) - current demo baseline, known working paths, and next checks.
-2. [architecture.md](architecture.md) - system architecture overview.
+2. [architecture/system_architecture.md](architecture/system_architecture.md) - system architecture overview.
 3. [runbooks/main_demo_care_loop.md](runbooks/main_demo_care_loop.md) - reproducible main demo flow.
-4. [protocol.md](protocol.md) - WebSocket message contracts.
+4. [protocol/protocol.md](protocol/protocol.md) - WebSocket message contracts.
 5. [agents/README.md](agents/README.md) - AI agent handoff, registries, and session protocol.
 
 ## Truth Priority
@@ -25,6 +25,8 @@ When documents disagree, use this order:
 
 | Path | Purpose |
 | --- | --- |
+| [architecture/](architecture/) | System architecture and repository ownership boundaries. |
+| [protocol/](protocol/) | WebSocket message contracts and channel-level protocol notes. |
 | [status/](status/) | Dated project snapshots and hardware evidence. |
 | [setup/](setup/) | DK-2500, device, model, frontend, and OpenClaw setup notes. |
 | [openclaw/](openclaw/) | OpenClaw ownership boundary, bridge, live checks, and tool manifest. |
@@ -57,5 +59,8 @@ For the latest full hardware/OpenClaw status, start from [current_status.md](cur
 | [../agent/README.md](../agent/README.md) | Local Agent compatibility layer and OpenClaw ownership boundary. |
 | [../tools/README.md](../tools/README.md) | Operation, probe, setup, maintenance, and legacy tool grouping. |
 | [../scripts/README.md](../scripts/README.md) | Setup/start/debug script grouping. |
+| [setup/hardware_setup.md](setup/hardware_setup.md) | Hardware wiring bring-up order and target-side checks. |
+| [setup/local_api.md](setup/local_api.md) | Local HTTP API routes for the debug console. |
+| [runbooks/base_station_dashboard.md](runbooks/base_station_dashboard.md) | 7-inch Dock dashboard operation and acceptance notes. |
 | [runbooks/git_hygiene.md](runbooks/git_hygiene.md) | Git cleanup audit commands and keep/untrack guidance. |
 | [setup/m600_deployment.md](setup/m600_deployment.md) | Morefine M600 base-station bring-up note. |

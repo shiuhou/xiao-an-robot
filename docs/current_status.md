@@ -91,7 +91,7 @@ python -m base_station.perception.audio_diagnostics runtime\latest_audio.pcm --w
 Trimmed fixed-window ASR:
 
 ```powershell
-python -m base_station.monitor.asr_runtime --source audio_file --audio-path runtime\manual_samples\mic_20cm.wav --asr-backend sensevoice --asr-model-path base_station\models\SenseVoiceSmall --trim-speech --no-agent --verbose
+python -m base_station.monitor.asr_runtime --source audio_file --audio-path runtime\manual_samples\mic_20cm.wav --asr-backend sensevoice --asr-model-path base_station\models\sensevoice-small --trim-speech --no-agent --verbose
 ```
 
 Dock dashboard:

@@ -300,7 +300,7 @@ bool MotorController::isDocked() {
 }
 
 // ── execute() ────────────────────────────────────────────────────────────────
-// Maps MotionAction protocol strings (from docs/protocol.md) to motion calls.
+// Maps MotionAction protocol strings (from docs/protocol/protocol.md) to motion calls.
 // param meaning depends on action:
 //   turn             → angle_deg
 //   move_out_of_dock → distance_cm (default 10 cm if 0)

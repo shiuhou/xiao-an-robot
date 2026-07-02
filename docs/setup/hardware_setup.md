@@ -41,7 +41,7 @@ For quick prototypes, start from an open 2WD N20 chassis model and edit mounting
 
 ## ESP32-S3 Wiring Summary
 
-Canonical pin table: [hardware/wiring/esp32_pinout.md](../hardware/wiring/esp32_pinout.md).
+Canonical pin table: [hardware/wiring/esp32_pinout.md](../../hardware/wiring/esp32_pinout.md).
 
 Integrated harness (2026-06-24): TFT SPI defaults to GPIO14/21/42/43/44 with LED/BL tied to 3V3 (`TFT_BL=-1`) via `robot/firmware/src/board_pins.h` and PlatformIO `tft_integrated_pins`. Legacy GPIO9–12 remains only on `face240_legacy` / `display_test_legacy`.
 
@@ -287,7 +287,7 @@ When using the CH340 adapter path (`COM22`), this diagnostic routes app logs to 
 
 ## DK-2500 Setup
 
-DK-2500 deployment notes are in [setup/dk2500_deployment.md](setup/dk2500_deployment.md).
+DK-2500 deployment notes are in [setup/dk2500_deployment.md](dk2500_deployment.md).
 
 Minimum local checks:
 
@@ -297,10 +297,10 @@ python tools\check_runtime_env.py --check-camera
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
-Target-side checks are listed in [hardware/dk2500/device_checklist.md](../hardware/dk2500/device_checklist.md) and [hardware/dk2500/peripheral_test.md](../hardware/dk2500/peripheral_test.md).
+Target-side checks are listed in [hardware/dk2500/device_checklist.md](../../hardware/dk2500/device_checklist.md) and [hardware/dk2500/peripheral_test.md](../../hardware/dk2500/peripheral_test.md).
 
 ## Power / Dock
 
-Use [hardware/wiring/power.md](../hardware/wiring/power.md) as the power checklist. The project direction is wireless charging dock alignment, not a TP4056 wired-charge-first design.
+Use [hardware/wiring/power.md](../../hardware/wiring/power.md) as the power checklist. The project direction is wireless charging dock alignment, not a TP4056 wired-charge-first design.
 
 Do not connect motors, speaker amp, display backlight, and camera all at once on first power-on. Bring rails up in stages and measure idle/moving current.

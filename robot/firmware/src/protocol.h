@@ -1,7 +1,7 @@
 #pragma once
 // protocol.h
 // Defines all WebSocket message type constants and payload structs
-// Matches docs/protocol.md v0.1
+// Matches docs/protocol/protocol.md v0.1
 // Author: Team Xiao An
 
 #include <Arduino.h>

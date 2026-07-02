@@ -61,17 +61,17 @@
 | `motor_cam_wifi_manual_main.cpp` | `motor_cam_wifi_manual` | ✅ | AP + MJPEG + 电机 + QR overlay |
 | `ota_bootstrap_main.cpp` | `ota_bootstrap` / `ota_bootstrap_wifi` | ✅ | WiFi STA + ArduinoOTA recovery bridge |
 | `camtesting_program.cpp` | `camtesting` | ✅ | 相机 AP 流 |
-| `keep_face_center_test.cpp` | `keepfacecenter` | 🟡 | 人脸居中 + 电机脉冲 |
+| `camera_motor_centering_demo_main.cpp` | `keepfacecenter` | 🟡 | 人脸居中 + 电机脉冲 |
 | `serial_qr_servo_main.cpp` | `serialqrservo` | 🟡 | 串口 JPEG + PC QR |
-| `serial_red_tracker_test.cpp` | `serialredtracker` | 🧪 | 串口红目标 |
-| `red_circle_tracker_test.cpp` | `redtracker` | 🧪 | 设备端红圆跟踪 |
-| `tft_test.cpp` | `display_test` | ✅ | 128×160 基础 |
-| `face240_roboeyes_test.cpp` | `face240_roboeyes`（`face240` 为其 alias） | ✅ | 2.4 寸 RoboEyes 风格 |
+| `serial_red_tracker_main.cpp` | `serialredtracker` | 🧪 | 串口红目标 |
+| `red_circle_tracker_main.cpp` | `redtracker` | 🧪 | 设备端红圆跟踪 |
+| `display128_tft_smoke_main.cpp` | `display_test` | ✅ | 128×160 基础 |
+| `face240_roboeyes_demo_main.cpp` | `face240_roboeyes`（`face240` 为其 alias） | ✅ | 2.4 寸 RoboEyes 风格 |
 | `robot_face_9expr_merged_optimized.cpp` | `face240_9expr_merged` | ✅ | **九表情 merged**（产品路径） |
-| `face240_wire_test.cpp` | `face240_wiretest` / `face240_integrated` | ✅ | 接线/颜色 |
+| `face240_wire_check_main.cpp` | `face240_wiretest` / `face240_integrated` | ✅ | 接线/颜色 |
 | `tft_espi_probe.cpp` | `tftprobe_hybrid_rawinit` | ✅ | ST7789 hybrid 探测 |
-| `voice_recognition_test.cpp` | `voice_recognition_test` | ✅ | INMP441 I2S RMS |
-| `speaker_amp_test.cpp` | `speaker_amp_test` | ✅ | MAX98357A 音调 |
+| `inmp441_rms_check_main.cpp` | `voice_recognition_test` | ✅ | INMP441 I2S RMS |
+| `max98357a_tone_check_main.cpp` | `speaker_amp_test` | ✅ | MAX98357A 音调 |
 | `archive/integrated_main.cpp` | `esp32-s3-integrated_legacy` | 🧪 | 位于 `src/archive/`；历史 firmware-side DK-2500 snapshot；新烧录走 `robot/mergetesting` |
 
 ### 已归档 / 实验目录（不参与主 env 编译）
@@ -101,8 +101,8 @@
 | `motor_ctrl.cpp` | 复制 + 联调脉冲 |
 | `display.cpp` | ST7735 分支 |
 | `robot_face_9expr_merged_optimized.cpp` | `face240_display.cpp` |
-| `voice_recognition_test.cpp` | `mic_stream.cpp` |
-| `speaker_amp_test.cpp` | `speaker.cpp` |
+| `inmp441_rms_check_main.cpp` | `mic_stream.cpp` |
+| `max98357a_tone_check_main.cpp` | `speaker.cpp` |
 | `cam_stream.cpp` | + WS 推流 |
 | `ws_client.cpp` | 三通道增强版 |
 

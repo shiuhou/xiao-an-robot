@@ -1,6 +1,6 @@
 """Common error code constants used by robot and base station messages.
 
-These values match docs/protocol.md and robot/firmware/src/protocol.h.
+These values match docs/protocol/protocol.md and robot/firmware/src/protocol.h.
 """
 
 MOTOR_STALL = "MOTOR_STALL"

@@ -789,6 +789,15 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertNotIn("void loop()", face_cpp)
         self.assertIn("if (TFT_BL >= 0)", face_cpp)
 
+    def test_face240_boot_frame_uses_default_expression(self) -> None:
+        face_cpp = (MERGETEST_SRC / "face240_display.cpp").read_text(encoding="utf-8")
+
+        self.assertIn("static FaceExpression expression = FACE_HAPPY;", face_cpp)
+        self.assertIn("copyPoseImmediate(poseForExpression(expression));", face_cpp)
+        self.assertIn("renderRoboEyesFrame(now);", face_cpp)
+        self.assertIn("pushRoboEyesFrame();", face_cpp)
+        self.assertNotIn("copyPoseImmediate(poseForExpression(FACE_CONTENT));", face_cpp)
+
     def test_audio_commands_ack_status_and_report_errors(self) -> None:
         router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
             encoding="utf-8"
@@ -872,6 +881,15 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("extends = env:mergetesting_mic_only", shift18_asr_body)
         self.assertIn("-DMERGETEST_MIC_SHIFT_BITS=18", shift18_asr_body)
         self.assertIn("-DMERGETEST_MIC_SEND_INTERVAL_MS=20", shift18_asr_body)
+
+        self.assertIn("[env:mergetesting_mic_only_shift18_asr_ota]", platformio)
+        shift18_asr_ota_body = platformio.split("[env:mergetesting_mic_only_shift18_asr_ota]", 1)[1].split(
+            "[env:", 1
+        )[0]
+        self.assertIn("extends = env:mergetesting_mic_only_shift18_asr", shift18_asr_ota_body)
+        self.assertIn("upload_protocol = espota", shift18_asr_ota_body)
+        self.assertIn("upload_port = xiao-an-esp32.local", shift18_asr_ota_body)
+        self.assertIn("--host_ip=192.168.137.1", shift18_asr_ota_body)
 
         self.assertIn("[env:mergetesting_mic_only_right_shift16]", platformio)
         right_shift16_body = platformio.split("[env:mergetesting_mic_only_right_shift16]", 1)[1].split(

@@ -5,19 +5,17 @@
 ## Git shortlog (last 5 commits, firmware)
 
 ```
-2e86637 Add dock dashboard server
-366b8d3 Add ASR speech window trimming
-a64a63a Add shared I2S audio diagnostics
-6a1ec24 Label OpenFace OV runtime as vendored
-aed67be Move M600 deployment note into docs setup
+7909df0 Rename firmware bring-up entrypoints
+be6ae7d Document base station API dashboard boundaries
+d64c61e Document agent core data boundaries
+734d581 Document agent skill boundaries
+15d30f6 Document perception monitor boundaries
 ```
 
 ## Git diff stat (uncommitted)
 
 ```
-docs/agents/05_test_matrix.md |  1 +
- docs/status/2026-06-30.md     | 32 ++++++++++++++++++++++++++++++++
- 2 files changed, 33 insertions(+)
+(no output)
 ```
 
 ## robot/firmware/src (43 files)
@@ -28,22 +26,25 @@ docs/agents/05_test_matrix.md |  1 +
 | `board_pins.h` | robot\firmware\src\board_pins.h | 2425 |
 | `cam_stream.cpp` | robot\firmware\src\cam_stream.cpp | 4245 |
 | `cam_stream.h` | robot\firmware\src\cam_stream.h | 594 |
+| `camera_motor_centering_demo_main.cpp` | robot\firmware\src\camera_motor_centering_demo_main.cpp | 10535 |
 | `camtesting_program.cpp` | robot\firmware\src\camtesting_program.cpp | 7588 |
 | `config.local.example.h` | robot\firmware\src\config.local.example.h | 312 |
 | `config.local.h` | robot\firmware\src\config.local.h | 283 |
 | `debug_log.h` | robot\firmware\src\debug_log.h | 294 |
 | `display.cpp` | robot\firmware\src\display.cpp | 8744 |
 | `display.h` | robot\firmware\src\display.h | 833 |
-| `face240_roboeyes_test.cpp` | robot\firmware\src\face240_roboeyes_test.cpp | 30023 |
-| `face240_wire_test.cpp` | robot\firmware\src\face240_wire_test.cpp | 4260 |
+| `display128_tft_smoke_main.cpp` | robot\firmware\src\display128_tft_smoke_main.cpp | 12763 |
+| `face240_roboeyes_demo_main.cpp` | robot\firmware\src\face240_roboeyes_demo_main.cpp | 30023 |
+| `face240_wire_check_main.cpp` | robot\firmware\src\face240_wire_check_main.cpp | 4260 |
 | `feature_flags.h` | robot\firmware\src\feature_flags.h | 678 |
-| `keep_face_center_test.cpp` | robot\firmware\src\keep_face_center_test.cpp | 10535 |
+| `inmp441_rms_check_main.cpp` | robot\firmware\src\inmp441_rms_check_main.cpp | 5970 |
 | `main.cpp` | robot\firmware\src\main.cpp | 6658 |
+| `max98357a_tone_check_main.cpp` | robot\firmware\src\max98357a_tone_check_main.cpp | 1347 |
 | `mic_stream.cpp` | robot\firmware\src\mic_stream.cpp | 2693 |
 | `mic_stream.h` | robot\firmware\src\mic_stream.h | 393 |
 | `motor_bench_once_main.cpp` | robot\firmware\src\motor_bench_once_main.cpp | 1983 |
 | `motor_cam_wifi_manual_main.cpp` | robot\firmware\src\motor_cam_wifi_manual_main.cpp | 22382 |
-| `motor_ctrl.cpp` | robot\firmware\src\motor_ctrl.cpp | 12873 |
+| `motor_ctrl.cpp` | robot\firmware\src\motor_ctrl.cpp | 12882 |
 | `motor_ctrl.h` | robot\firmware\src\motor_ctrl.h | 3197 |
 | `motor_manual_main.cpp` | robot\firmware\src\motor_manual_main.cpp | 9408 |
 | `motor_wifi_manual_main.cpp` | robot\firmware\src\motor_wifi_manual_main.cpp | 7576 |
@@ -54,17 +55,14 @@ docs/agents/05_test_matrix.md |  1 +
 | `face240_display.h` | robot\firmware\src\peripherals\face240_display.h | 151 |
 | `speaker.cpp` | robot\firmware\src\peripherals\speaker.cpp | 4972 |
 | `speaker.h` | robot\firmware\src\peripherals\speaker.h | 183 |
-| `protocol.h` | robot\firmware\src\protocol.h | 3816 |
-| `red_circle_tracker_test.cpp` | robot\firmware\src\red_circle_tracker_test.cpp | 18748 |
+| `protocol.h` | robot\firmware\src\protocol.h | 3825 |
+| `red_circle_tracker_main.cpp` | robot\firmware\src\red_circle_tracker_main.cpp | 18748 |
 | `robot_face_9expr_merged_optimized.cpp` | robot\firmware\src\robot_face_9expr_merged_optimized.cpp | 28002 |
 | `serial_qr_servo_main.cpp` | robot\firmware\src\serial_qr_servo_main.cpp | 7535 |
-| `serial_red_tracker_test.cpp` | robot\firmware\src\serial_red_tracker_test.cpp | 3882 |
+| `serial_red_tracker_main.cpp` | robot\firmware\src\serial_red_tracker_main.cpp | 3882 |
 | `servo_ctrl.cpp` | robot\firmware\src\servo_ctrl.cpp | 507 |
 | `servo_ctrl.h` | robot\firmware\src\servo_ctrl.h | 371 |
-| `speaker_amp_test.cpp` | robot\firmware\src\speaker_amp_test.cpp | 1347 |
 | `tft_espi_probe.cpp` | robot\firmware\src\tft_espi_probe.cpp | 3464 |
-| `tft_test.cpp` | robot\firmware\src\tft_test.cpp | 12763 |
-| `voice_recognition_test.cpp` | robot\firmware\src\voice_recognition_test.cpp | 5970 |
 | `ws_client.cpp` | robot\firmware\src\ws_client.cpp | 16436 |
 | `ws_client.h` | robot\firmware\src\ws_client.h | 3248 |
 
@@ -76,40 +74,40 @@ docs/agents/05_test_matrix.md |  1 +
 
 | 文件 | 路径 | 字节 |
 | --- | --- | --- |
-| `mergetesting_app.cpp` | robot\mergetesting\src\app\mergetesting_app.cpp | 7531 |
+| `mergetesting_app.cpp` | robot\mergetesting\src\app\mergetesting_app.cpp | 7548 |
 | `mergetesting_app.h` | robot\mergetesting\src\app\mergetesting_app.h | 820 |
-| `audio_shared_i2s_diag_main.cpp` | robot\mergetesting\src\audio_shared_i2s_diag_main.cpp | 16558 |
+| `audio_shared_i2s_diag_main.cpp` | robot\mergetesting\src\audio_shared_i2s_diag_main.cpp | 17083 |
 | `cam_stream.cpp` | robot\mergetesting\src\cam_stream.cpp | 2726 |
 | `cam_stream.h` | robot\mergetesting\src\cam_stream.h | 477 |
 | `camera_ov2640_config.h` | robot\mergetesting\src\camera_ov2640_config.h | 2793 |
-| `config.h` | robot\mergetesting\src\config.h | 3185 |
+| `config.h` | robot\mergetesting\src\config.h | 3195 |
 | `config.local.example.h` | robot\mergetesting\src\config.local.example.h | 662 |
 | `config.local.h` | robot\mergetesting\src\config.local.h | 307 |
 | `debug_log.h` | robot\mergetesting\src\debug_log.h | 339 |
 | `display.cpp` | robot\mergetesting\src\display.cpp | 7633 |
 | `display.h` | robot\mergetesting\src\display.h | 465 |
 | `embedded_tts_phrase.h` | robot\mergetesting\src\embedded_tts_phrase.h | 328557 |
-| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 30857 |
+| `face240_display.cpp` | robot\mergetesting\src\face240_display.cpp | 30865 |
 | `face240_display.h` | robot\mergetesting\src\face240_display.h | 252 |
-| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1172 |
+| `hardware_pins.h` | robot\mergetesting\src\hardware_pins.h | 1182 |
 | `main.cpp` | robot\mergetesting\src\main.cpp | 453 |
-| `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 3159 |
+| `mic_stream.cpp` | robot\mergetesting\src\mic_stream.cpp | 3193 |
 | `mic_stream.h` | robot\mergetesting\src\mic_stream.h | 342 |
-| `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13526 |
+| `motor_ctrl.cpp` | robot\mergetesting\src\motor_ctrl.cpp | 13535 |
 | `motor_ctrl.h` | robot\mergetesting\src\motor_ctrl.h | 1197 |
-| `protocol.h` | robot\mergetesting\src\protocol.h | 3927 |
-| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8002 |
-| `command_router.h` | robot\mergetesting\src\services\command_router.h | 1174 |
+| `protocol.h` | robot\mergetesting\src\protocol.h | 3944 |
+| `command_router.cpp` | robot\mergetesting\src\services\command_router.cpp | 8118 |
+| `command_router.h` | robot\mergetesting\src\services\command_router.h | 1209 |
 | `motion_service.cpp` | robot\mergetesting\src\services\motion_service.cpp | 8283 |
 | `motion_service.h` | robot\mergetesting\src\services\motion_service.h | 1177 |
 | `robot_state.cpp` | robot\mergetesting\src\services\robot_state.cpp | 1824 |
 | `robot_state.h` | robot\mergetesting\src\services\robot_state.h | 1099 |
-| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 1017 |
-| `status_service.h` | robot\mergetesting\src\services\status_service.h | 713 |
-| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 19470 |
-| `speaker.h` | robot\mergetesting\src\speaker.h | 522 |
-| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 14642 |
-| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2585 |
+| `status_service.cpp` | robot\mergetesting\src\services\status_service.cpp | 1028 |
+| `status_service.h` | robot\mergetesting\src\services\status_service.h | 716 |
+| `speaker.cpp` | robot\mergetesting\src\speaker.cpp | 19978 |
+| `speaker.h` | robot\mergetesting\src\speaker.h | 538 |
+| `ws_client.cpp` | robot\mergetesting\src\ws_client.cpp | 14740 |
+| `ws_client.h` | robot\mergetesting\src\ws_client.h | 2592 |
 
 ## PlatformIO envs — mergetesting (40)
 
@@ -132,8 +130,8 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\integration\test_local_api_flow.py | 8256 |
 | tests\integration\test_project_memory_flow.py | 12014 |
 | tests\integration\test_robot_motion_skill.py | 8055 |
-| tests\integration\test_ws_command_forwarding.py | 11371 |
-| tests\integration\test_ws_control_channel.py | 5541 |
+| tests\integration\test_ws_command_forwarding.py | 11467 |
+| tests\integration\test_ws_control_channel.py | 5567 |
 | tests\unit\test_action_executor.py | 52416 |
 | tests\unit\test_agent_brain.py | 4330 |
 | tests\unit\test_agent_brain_asr_event.py | 22461 |
@@ -143,16 +141,15 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\unit\test_api_router.py | 4187 |
 | tests\unit\test_asr.py | 8025 |
 | tests\unit\test_asr_emotion_trigger.py | 4109 |
-| tests\unit\test_asr_runtime.py | 15560 |
-| tests\unit\test_audio_diagnostics.py | 2850 |
-| tests\unit\test_audio_segments.py | 2761 |
+| tests\unit\test_asr_runtime.py | 15627 |
+| tests\unit\test_audio_diagnostics.py | 2926 |
+| tests\unit\test_audio_segments.py | 2836 |
 | tests\unit\test_check_runtime_env.py | 3872 |
 | tests\unit\test_companion_request_skill.py | 2558 |
 | tests\unit\test_context_builder.py | 13891 |
 | tests\unit\test_context_policy.py | 8069 |
-| tests\unit\test_continuous_asr_demo.py | 2394 |
 | tests\unit\test_daily_summary_builder.py | 7136 |
-| tests\unit\test_dashboard_server.py | 7067 |
+| tests\unit\test_dashboard_server.py | 7244 |
 | tests\unit\test_emotion_context_builder.py | 8283 |
 | tests\unit\test_emotion_db.py | 9198 |
 | tests\unit\test_emotion_event_loop.py | 6065 |
@@ -173,6 +170,7 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\unit\test_fatigue_face_metrics.py | 11011 |
 | tests\unit\test_fatigue_window_quality.py | 6009 |
 | tests\unit\test_firmware_ota_bootstrap.py | 1588 |
+| tests\unit\test_fixed_window_asr_demo.py | 2453 |
 | tests\unit\test_gateway_openclaw_adapter.py | 13762 |
 | tests\unit\test_http_openclaw_adapter.py | 4808 |
 | tests\unit\test_local_tools.py | 31928 |
@@ -184,7 +182,7 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\unit\test_memory_tasks.py | 6750 |
 | tests\unit\test_memory_tool_runs.py | 4593 |
 | tests\unit\test_memory_work_activity.py | 5146 |
-| tests\unit\test_mergetesting_layering.py | 48860 |
+| tests\unit\test_mergetesting_layering.py | 49848 |
 | tests\unit\test_openclaw_adapter.py | 5922 |
 | tests\unit\test_openclaw_adapter_factory.py | 5717 |
 | tests\unit\test_openclaw_tool_call_runtime.py | 26079 |
@@ -213,16 +211,16 @@ docs/agents/05_test_matrix.md |  1 +
 | tests\unit\test_simulate_emotion_stream.py | 2469 |
 | tests\unit\test_static_image_source.py | 2901 |
 | tests\unit\test_summarize_route_a_trace.py | 10688 |
-| tests\unit\test_tts_stream.py | 1220 |
+| tests\unit\test_tts_stream.py | 1257 |
 | tests\unit\test_vad.py | 9010 |
 | tests\unit\test_valence_mapping.py | 2110 |
 | tests\unit\test_vlm_face_analyzer.py | 7791 |
 | tests\unit\test_vlm_trigger_gate.py | 6321 |
 | tests\unit\test_work_activity.py | 2228 |
 | tests\unit\test_work_activity_runtime.py | 2478 |
-| tests\unit\test_ws_audio_channel.py | 4017 |
+| tests\unit\test_ws_audio_channel.py | 4026 |
 | tests\unit\test_ws_server_sessions.py | 6253 |
 | tests\unit\test_ws_server_video_source.py | 6100 |
-| tests\unit\test_ws_tts_stream.py | 2268 |
+| tests\unit\test_ws_tts_stream.py | 2333 |
 | tests\unit\test_ws_video_source.py | 2199 |
 | tests\unit\test_xiaoan_tool_manifest.py | 1643 |

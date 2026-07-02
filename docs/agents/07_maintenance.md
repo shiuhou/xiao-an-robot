@@ -8,7 +8,7 @@
 |------|-------------|
 | 新 PlatformIO env / 新 src 文件 | `02_firmware_registry.md`, `05_test_matrix.md` |
 | mergetesting 模块变更 | `03_mergetesting_registry.md`, `EXTRACTION_MAP.md` |
-| 协议字段变更 | `docs/protocol.md`, `shared/*`, **禁止只改一处** |
+| 协议字段变更 | `docs/protocol/protocol.md`, `shared/*`, **禁止只改一处** |
 | 联调前/后 | `00_snapshot.md`, 新建 `docs/project_status_YYYY-MM-DD.md` |
 | 整库整理 / 整合 Agent | `10_repo_map.md` §7, `_generated/file_inventory.md` |
 | 测试跑通/失败 | `05_test_matrix.md` 改 P/H/F + 日期 |

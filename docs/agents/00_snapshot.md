@@ -15,7 +15,7 @@
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 协议 `docs/protocol.md` v0.1 | 🟡 | 草案；mergetesting 扩展了 `command.ack`, `video.frame_meta` |
+| 协议 `docs/protocol/protocol.md` v0.1 | 🟡 | 草案；mergetesting 扩展了 `command.ack`, `video.frame_meta` |
 | 基站 WS 四通道 | ✅ | `base_station/ws_server/server.py` |
 | Agent → 机器人转发 | ✅ | `/agent` + `tools/send_robot_command.py` |
 | 主固件机器人本体调试 | ✅ | `robot/firmware/src/main.cpp`；不作为 DK-2500 联调默认入口 |
@@ -26,7 +26,7 @@
 | 电机 DRV8833 | ✅ H | isolated + mergetesting；LEDC 通道 4-7 修复后方向正确 |
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
-| 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过 |
+| 2.4" face240 九表情 | ✅ H | `mergetesting_face240_only` 实机 expression 通过；2026-06-30 开机默认直接渲染 `face=1` happy |
 | INMP441 麦克风 | ✅ H / 固定窗口 ASR 前端 | RMS 测试 + mergetesting WS PCM `/audio`; current ASR demo path uses `mergetesting_mic_only_shift18_asr` plus base-station `--trim-speech` before SenseVoice |
 | MAX98357A 喇叭 | ✅ H | 音调测试 + mergetesting lazy-I2S `/control` 本地音效 |
 | OTA bootstrap | ✅ H | `ota_bootstrap` USB 首刷 + `ota_bootstrap_wifi` 无线刷新 bootstrap |
@@ -74,9 +74,15 @@
 | **Git hygiene 盘点 2026-06-29** | `.gitignore`, `docs/runbooks/git_hygiene.md` | OpenFace IR 明确为 Git LFS 例外；`base_station/config.yaml` 已确认可公开并保留 tracked |
 | **代码结构 inventory 2026-06-29** | `docs/agents/13_code_structure_inventory.md`, `robot/firmware/src/archive/`, `docs/setup/m600_deployment.md` | 已建立结构整理批次清单；legacy `integrated_main.cpp` 移出 active src 根但保留 legacy env 编译；M600 部署笔记移入 `docs/setup/` |
 | **OpenFace runtime 标记 2026-06-29** | `base_station/perception/openface_ov_runtime/README.md`, `docs/agents/04_base_station_agent_registry.md` | `openface_ov_runtime/` 是 bundled vendored runtime，`ov_perceive.py` 依赖 runtime root / `Pytorch_Retinaface` / `STAR` 的 `sys.path` 插入；普通仓库整理不要移动 |
-| **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
+| **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/runbooks/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
 | **Wiring stale-reference sweep 2026-06-30** | `hardware/wiring/esp32_pinout.md`, `docs/current_status.md`, `docs/agents/13_code_structure_inventory.md` | 修正 wiring canonical page：当前 shared-clock candidate 是 INMP441 39/40/41 + MAX98357A 39/40/47；GPIO35/36/37 标为当前 Octal PSRAM MAX98357A 避免项；inventory 下一批次改为 C6 stale wiring/status sweep |
-| **Dock dashboard glance UI 2026-06-30** | `base_station/dashboard/static/dashboard.*`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 默认改为远距离可读 glance screen：大号当前状态、下一件事、系统健康 chips、最新 1 条触发、紧凑链路；1024x600 Chromium screenshot 已检查 |
+| **Dock dashboard glance UI 2026-06-30** | `base_station/dashboard/static/dashboard.*`, `docs/runbooks/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 默认改为远距离可读 glance screen：大号当前状态、下一件事、系统健康 chips、最新 1 条触发、紧凑链路；1024x600 Chromium screenshot 已检查 |
+| **Tools physical grouping 2026-06-30** | `tools/ops/`, `tools/probes/`, `tools/evaluation/`, `tools/setup/`, `tools/maintenance/`, `tools/legacy/` | 工具实作已按职责实体现分组；根层 `tools/*.py` 保留兼容 wrapper，旧命令和 `tools.*` imports 继续可用 |
+| **Scripts physical grouping 2026-06-30** | `scripts/setup/`, `scripts/start/`, `scripts/debug/` | 启动、setup、debug 脚本已按职责实体现分组；根层 `scripts/*.sh` / `scripts/*.py` 保留 wrapper，旧命令继续可用 |
+| **Code naming cleanup inventory 2026-06-30** | `docs/agents/14_naming_inventory.md`, `tools/legacy/manual_*_smoke.py` | 命名整改控制表已建立；legacy manual smoke 实作不再使用 `test_*` 文件名，根层 `tools/test_*.py` 保留兼容 wrapper |
+| **Firmware entrypoint naming 2026-06-30** | `robot/firmware/src/*_main.cpp`, `robot/firmware/platformio.ini`, `docs/agents/02_firmware_registry.md` | active bring-up entrypoint 文件名已从 `_test.cpp` 改为用途明确的 `_main.cpp`/`_smoke_main.cpp`/`_check_main.cpp`；PlatformIO env 名保持不变 |
+| **Fixed-window ASR module naming 2026-06-30** | `base_station/monitor/fixed_window_asr_demo.py`, `base_station/monitor/continuous_asr_demo.py`, `tests/unit/test_fixed_window_asr_demo.py` | ASR demo 主 module 改为 fixed-window 命名；旧 `continuous_asr_demo.py` 保留 compatibility wrapper |
+| **证据包整理 2026-07-01** | `report_evidence/` | 按“时间戳 / 环境 / 输入 / 处理 / 输出 / 结论 / 代码路径”格式整理 `/control`、`/video`、`/audio`、OpenClaw、主动关怀、私人助理、DK-2500 角色和问题修复证据；只使用现有 runtime/docs 证据，未新增实机运行 |
 
 ## 硬件阻塞（剩余）
 
@@ -105,4 +111,4 @@ Phase 4 闭环（video → OpenVINO → OpenClaw → 三命令）见 `06_integra
 | `robot/mergetesting` | 联调专用 | 可激进；从 firmware 取用已验证模块，不回迁成 firmware 联调入口 |
 | `base_station` | 郑斯悦+张子尧 | 改 protocol 要同步 `shared/` |
 | `agent` | 张子尧 | Gateway/Brain 与 WS 耦合 |
-| `docs/protocol.md` | 三人 PR | 破坏性变更升 major |
+| `docs/protocol/protocol.md` | 三人 PR | 破坏性变更升 major |

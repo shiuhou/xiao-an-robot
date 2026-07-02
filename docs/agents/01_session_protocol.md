@@ -54,7 +54,7 @@
 
 | 层级 | 路径 | 粒度 | 谁维护 | Agent 怎么用 |
 |------|------|------|--------|--------------|
-| **L0 契约** | `AGENTS.md`, `docs/protocol.md`, `shared/protocol/*` | 仓库边界、env 名、协议字段 | 人工共识 | 改边界/协议前必读 |
+| **L0 契约** | `AGENTS.md`, `docs/protocol/protocol.md`, `shared/protocol/*` | 仓库边界、env 名、协议字段 | 人工共识 | 改边界/协议前必读 |
 | **L1 路由+进度** | `docs/agents/README.md`, `00_snapshot.md`, 本文 | 当前目标、近期变更、开工收工 | **每个 Agent 收工更新 snapshot** | **每次开工必读** |
 | **L2 注册表** | `02_*` ~ `05_*`, `06_integration_phases`, `09_*` | 文件 + 函数 + 状态 + 验证命令 | 改代码时同步一行 | 按任务类型选读 |
 | **L3 源码** | `robot/firmware/src/*`, `robot/mergetesting/src/*`, `base_station/*` | 逐行真相 | Git | 动手前读相关文件，不要复制进 MD |
@@ -241,7 +241,7 @@ git status
 **Step 5 — 动手**
 
 - 只改任务范围内文件
-- 动 `shared/`、`docs/protocol.md` 前 **必须先停** 并告知用户
+- 动 `shared/`、`docs/protocol/protocol.md` 前 **必须先停** 并告知用户
 - 同一 `robot/firmware` workspace **不要并行** 多个 `pio run`（共享 `.pio/build`）
 
 ### 6.3 按任务类型的必读路由
@@ -250,7 +250,7 @@ git status
 |------|------|
 | 改 `robot/firmware` | `02_firmware_registry.md`, `05_test_matrix.md` |
 | 改 `robot/mergetesting` | `03_mergetesting_registry.md`, `06_integration_phases.md` |
-| 改 `base_station` / `agent` | `04_base_station_agent_registry.md`, `docs/protocol.md` |
+| 改 `base_station` / `agent` | `04_base_station_agent_registry.md`, `docs/protocol/protocol.md` |
 | 联调 / 烧录 | `09_hardware_bringup_checklist.md`, 最新 `project_status_*.md` |
 | 跑测试 / CI | `05_test_matrix.md` |
 | Agent loop | `08_priority_queue.yaml` |
@@ -331,7 +331,7 @@ git status
 | `robot/mergetesting` | DK-2500 联调；可激进；不回迁成 firmware 联调入口 |
 | `base_station` | 改 protocol 要同步 `shared/` |
 | `agent` | Gateway/Brain 与 WS 耦合 |
-| `docs/protocol.md` | 破坏性变更需共识；禁止只改一处 |
+| `docs/protocol/protocol.md` | 破坏性变更需共识；禁止只改一处 |
 
 ### 8.3 串行 vs 并行
 

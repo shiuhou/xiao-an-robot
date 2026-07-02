@@ -266,4 +266,4 @@ Unused    0, 19, 20, 45, 46, … (strapping / spare — leave unconnected for no
 - [motor_driver.md](motor_driver.md) — DRV8833 bench checklist
 - [../docs/xiao_an_power_wiring_diagram.svg](../../docs/xiao_an_power_wiring_diagram.svg) — power topology diagram
 - [../../robot/firmware/src/board_pins.h](../../robot/firmware/src/board_pins.h) — integrated pin constants for firmware
-- [../../docs/hardware_setup.md](../../docs/hardware_setup.md) — bench bring-up order
+- [../../docs/setup/hardware_setup.md](../../docs/setup/hardware_setup.md) — bench bring-up order

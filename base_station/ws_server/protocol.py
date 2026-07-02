@@ -2,7 +2,7 @@
 protocol.py
 -----------
 Python dataclass definitions for all WebSocket messages.
-Matches docs/protocol.md v0.1
+Matches docs/protocol/protocol.md v0.1
 
 Usage:
     from ws_server.protocol import MessageType, DeviceHello, SystemWelcome

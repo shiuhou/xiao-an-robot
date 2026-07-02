@@ -16,7 +16,7 @@
 |------|------|------|
 | `handle_control` | /control | hello 注册 session；welcome；heartbeat |
 | `handle_video` | /video | 解析 8B 头；写 `runtime/latest.jpg` |
-| `handle_audio` | /audio | 收 PCM（TODO 接 VAD/ASR） |
+| `handle_audio` | /audio | 收 PCM，更新 `runtime/latest_audio.pcm` / audio stats；ASR demo 由 `audio_diagnostics.py`、`audio_segments.py`、`asr_runtime.py`、`fixed_window_asr_demo.py` 串接 |
 | `handle_agent` | /agent | `agent.command` → 转发机器人 |
 | `send_to_robot` | — | 按 device_id 下发 JSON |
 
@@ -44,6 +44,8 @@
 | `opencv_camera.py` | ✅ | OpenCV 相机源 |
 | `fake_camera.py` / `fake_face_emotion.py` | 🧪 | mock |
 | `asr.py` / `vad.py` | 🟡 | ASR/VAD 接口 |
+| `audio_diagnostics.py` | ✅ | `/audio` WAV/PCM diagnostics, RMS/peak/DC/clipping checks before ASR tuning |
+| `audio_segments.py` | ✅ | Fixed-window WAV speech trimming helper for `asr_runtime --trim-speech` |
 | `qwen_vl_*` / `openvino_qwen_*` | 🟡 | VLM 路径 staged |
 | `openface_ov_runtime/` | 🟡 | bundled vendored OpenFace/OpenVINO runtime；import path fragile，普通整理不要移动 |
 | `tts.py` | 🟡 | TTS 占位 |
@@ -55,7 +57,8 @@
 | `emotion_runtime.py` | ✅ | 情绪运行时 |
 | `emotion_event_loop.py` | ✅ | 事件循环 |
 | `emotion_db.py` | ✅ | SQLite 情绪记录 |
-| `asr_runtime.py` | 🟡 | ASR 运行时 |
+| `asr_runtime.py` | 🟡 | ASR 运行时；支持 audio-file path、SenseVoice backend、`--trim-speech` |
+| `fixed_window_asr_demo.py` | 🟡 | Rolling `runtime/latest_audio.pcm` fixed-window utterance demo; `continuous_asr_demo.py` remains a compatibility wrapper |
 | `emotion_context_builder.py` | ✅ | 上下文构建 |
 | `screen_watcher.py` | ⚪ | deprecated；屏幕监控已退出 MVP |
 
@@ -95,11 +98,13 @@
 | `errors.py` | ErrorCode |
 | `schema.json` | JSON Schema |
 
-**改协议必须同步：** `docs/protocol.md` + `protocol.h` + `protocol.py` + 示例 JSON。
+**改协议必须同步：** `docs/protocol/protocol.md` + `protocol.h` + `protocol.py` + 示例 JSON。
 
 ---
 
 ## Tools — `tools/`
+
+> 2026-06-30: implementations are grouped under `tools/ops`, `tools/probes`, `tools/evaluation`, `tools/setup`, `tools/maintenance`, and `tools/legacy`; root-level `tools/*.py` files are compatibility wrappers.
 
 > 完整清单见 [10_repo_map.md](./10_repo_map.md) §Tools。改 CLI 时同步本表一行。
 
@@ -117,10 +122,10 @@
 | `probe_camera.py` | 相机源探测 | 🧪 |
 | `simulate_emotion_stream.py` | 模拟情绪事件流 | 🧪 |
 | `inject_emotion.py` | 注入情绪到 runtime | 🧪 |
-| `test_agent_brain.py` | Agent brain 冒烟 | 🧪 |
-| `test_emotion_trigger.py` | 情绪触发测试 | 🧪 |
-| `test_emotion_policy.py` | 情绪策略单测入口 | 🧪 |
-| `test_openclaw_tool_calls.py` | OpenClaw tool call 测试 | 🧪 |
+| `manual_agent_brain_smoke.py` | Agent brain manual smoke；root `test_agent_brain.py` 是兼容 wrapper | 🧪 |
+| `manual_emotion_trigger_smoke.py` | 情绪触发 manual smoke；root `test_emotion_trigger.py` 是兼容 wrapper | 🧪 |
+| `manual_emotion_policy_smoke.py` | 情绪策略 manual smoke；root `test_emotion_policy.py` 是兼容 wrapper | 🧪 |
+| `manual_openclaw_tool_call_smoke.py` | OpenClaw tool call manual smoke；root `test_openclaw_tool_calls.py` 是兼容 wrapper | 🧪 |
 | `query_emotion_summary.py` | 查情绪 DB 摘要 | 🟡 |
 | `query_work_activity_summary.py` | 工作活动摘要 | 🟡 |
 | `run_reminder_scheduler.py` | 提醒调度 | 🟡 |

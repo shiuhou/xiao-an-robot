@@ -13,10 +13,10 @@
 | `base_station/` | WS 服务、perception、monitor、Local API | [04_*](./04_base_station_agent_registry.md) |
 | `docs/` | 架构、协议、部署、状态、agents 体系 | [docs README](../README.md) + 本文 |
 | `frontend/` | Electron/Vite 早期 UI | [frontend/README.md](../../frontend/README.md) |
-| `hardware/` | BOM、接线、机械 | [hardware_setup.md](../hardware_setup.md) |
+| `hardware/` | BOM、接线、机械 | [hardware_setup.md](../setup/hardware_setup.md) |
 | `robot/firmware/` | ESP32 本体单项 bring-up | [02_firmware_registry](./02_firmware_registry.md) |
 | `robot/mergetesting/` | **DK-2500 联调固件** | [03_mergetesting_registry](./03_mergetesting_registry.md) |
-| `scripts/` | 启动/环境脚本（非 Python tools） | 按需读目录 |
+| `scripts/` | 启动/环境/debug 脚本（非 Python tools） | [scripts/README.md](../../scripts/README.md) |
 | `shared/` | 协议常量、schema、示例 JSON | 改协议必同步 |
 | `tests/` | unit + integration + mock_robot | [05_test_matrix](./05_test_matrix.md) |
 | `tools/` | 联调/探测 CLI（Python） | [04_* §Tools](./04_base_station_agent_registry.md) |
@@ -71,8 +71,8 @@
 
 | 文件 | 作用 |
 |------|------|
-| [protocol.md](../protocol.md) | WS 消息契约 v0.1 |
-| [architecture.md](../architecture.md) | 四模块架构（2026-06-27 已对齐 mergetesting 传画） |
+| [protocol.md](../protocol/protocol.md) | WS 消息契约 v0.1 |
+| [architecture.md](../architecture/system_architecture.md) | 四模块架构（2026-06-27 已对齐 mergetesting 传画） |
 
 ### 2.4 状态快照（dated）
 
@@ -90,8 +90,8 @@
 |------|--------|
 | [dk2500_deployment.md](../setup/dk2500_deployment.md) | DK-2500 部署；**配合** `status/2026-06-26.md` |
 | [device_setup.md](../setup/device_setup.md) | 新机器 OpenFace/VLM |
-| [hardware_setup.md](../hardware_setup.md) | 硬件接线总览 |
-| [local_api.md](../local_api.md) | Local HTTP API |
+| [hardware_setup.md](../setup/hardware_setup.md) | 硬件接线总览 |
+| [local_api.md](../setup/local_api.md) | Local HTTP API |
 | [model_download.md](../setup/model_download.md) | 模型下载 |
 | [troubleshooting.md](../runbooks/troubleshooting.md) | 排障 |
 | [openface_au_mapping.md](../perception/openface_au_mapping.md) | AU 8 维映射 |
@@ -140,7 +140,13 @@ Mergetesting 工程内文档：
 
 见 [04_base_station_agent_registry §Tools](./04_base_station_agent_registry.md)。
 
-### 4.2 `robot/firmware/tools/`
+2026-06-30 起，`tools/` 实作按 `ops/`, `probes/`, `evaluation/`, `setup/`, `maintenance/`, `legacy/` 分组；根层 `tools/*.py` 保留为兼容 wrapper。
+
+### 4.2 `scripts/`
+
+2026-06-30 起，`scripts/` 实作按 `setup/`, `start/`, `debug/` 分组；根层 `scripts/*.sh` 和 `scripts/*.py` 保留为兼容 wrapper。
+
+### 4.3 `robot/firmware/tools/`
 
 | 文件 | 用途 |
 |------|------|
@@ -226,7 +232,7 @@ Mergetesting 工程内文档：
 ### 已对齐
 
 - `.gitignore`：跟踪 `.agents/skills/**`；忽略 `**/.cache/`
-- `docs/architecture.md`：mergetesting 已传画/PCM
+- `docs/architecture/system_architecture.md`：mergetesting 已传画/PCM
 - `03_mergetesting_registry.md`：补 6 个 control/ping/OTA env
 - `02_firmware_registry.md`：补 `peripherals/`
 - `04_*`：补全 `tools/` 清单

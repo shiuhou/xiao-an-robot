@@ -6,6 +6,7 @@ This directory collects hardware setup notes for Xiao An. Keep notes practical, 
 
 | File | Purpose |
 | --- | --- |
+| [current_harness.md](current_harness.md) | Current integrated harness, main demo envs, avoid list, and first checks. |
 | [bom/bom.md](bom/bom.md) | Current parts list and selection status. |
 | [wiring/esp32_pinout.md](wiring/esp32_pinout.md) | ESP32-S3 pin map, power distribution, integrated vs legacy TFT wiring |
 | [wiring/motor_driver.md](wiring/motor_driver.md) | DRV8833 wiring and motor test checklist. |

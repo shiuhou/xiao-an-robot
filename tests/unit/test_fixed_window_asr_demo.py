@@ -1,4 +1,4 @@
-"""Unit tests for fixed-window continuous ASR demo helpers."""
+"""Unit tests for fixed-window ASR demo helpers."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from base_station.monitor.continuous_asr_demo import (
+from base_station.monitor.fixed_window_asr_demo import (
     TailEnergyReader,
     UtteranceDetector,
 )
 
 
-class ContinuousAsrDemoTest(unittest.TestCase):
+class FixedWindowAsrDemoTest(unittest.TestCase):
     def test_utterance_detector_emits_once_after_silence(self) -> None:
         detector = UtteranceDetector(
             trigger_rms_dbfs=-42.0,

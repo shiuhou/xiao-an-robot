@@ -84,6 +84,8 @@
 | **Fixed-window ASR module naming 2026-06-30** | `base_station/monitor/fixed_window_asr_demo.py`, `base_station/monitor/continuous_asr_demo.py`, `tests/unit/test_fixed_window_asr_demo.py` | ASR demo 主 module 改为 fixed-window 命名；旧 `continuous_asr_demo.py` 保留 compatibility wrapper |
 | **证据包整理 2026-07-01** | `report_evidence/` | 按“时间戳 / 环境 / 输入 / 处理 / 输出 / 结论 / 代码路径”格式整理 `/control`、`/video`、`/audio`、OpenClaw、主动关怀、私人助理、DK-2500 角色和问题修复证据；只使用现有 runtime/docs 证据，未新增实机运行 |
 | **Base-station mic 主线切换 2026-07-02** | `docs/current_status.md`, `docs/runbooks/main_demo_care_loop.md`, `base_station/README.md`, `base_station/monitor/README.md`, `docs/agents/04_base_station_agent_registry.md`, `docs/agents/05_test_matrix.md` | 9 天 demo 正式输入改为 DK-2500/base-station mic；robot `/audio` 保留为 fallback/diagnostics；目标闭环为 base mic -> ASR -> context -> OpenClaw/Agent -> `/control` -> ack/completed |
+| **Demo 1 USB mic 到 Agent screen 2026-07-02** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `docs/runbooks/demo1_usb_mic_to_agent_screen.md`, `tests/unit/test_demo1_usb_mic_to_agent_screen.py` | 最小闭环工具：DK-2500 USB mic fixed-window WAV -> 复用 `asr_runtime` -> `runtime/demo1_transcript.json` -> `http://localhost:8766`；mock fallback 明确标记 `source=mock` |
+| **Demo 1 mic 到自动动作计划 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `tools/demo/run_demo1_mic_to_robot.sh`, `runtime/demo1_openclaw_context.json`, `runtime/demo1_action_plan.json` | `--route-agent` 将 ASR/mock text 包装为 `asr.transcript` context，规则 fallback 对“累/困/小安/过来”生成 expression + motion + local `care_01` action plan，并通过 `/agent` 尝试转发到 `/control`；当前验证到 mock route + `/agent`->`/control` 集成测试，真实机器人 H 待联调 |
 
 ## 硬件阻塞（剩余）
 

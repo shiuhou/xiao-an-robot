@@ -25,11 +25,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from base_station.monitor.asr_runtime import run_once as run_asr_once
+from agent.core.gateway import RobotGateway
 
 
 DEFAULT_RUNTIME_DIR = REPO_ROOT / "runtime"
 DEFAULT_STATE_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.json"
 DEFAULT_TEXT_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.txt"
+DEFAULT_CONTEXT_PATH = DEFAULT_RUNTIME_DIR / "demo1_openclaw_context.json"
+DEFAULT_PLAN_PATH = DEFAULT_RUNTIME_DIR / "demo1_action_plan.json"
 DEFAULT_LOG_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.log.jsonl"
 DEFAULT_AUDIO_DIR = DEFAULT_RUNTIME_DIR / "demo1_audio"
 DEFAULT_SCREEN_URL = "http://127.0.0.1:8766"
@@ -78,6 +81,13 @@ def write_transcript_text(path: str | Path, transcript: str) -> Path:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(transcript.strip() + "\n", encoding="utf-8")
+    return target
+
+
+def write_json_artifact(path: str | Path, payload: dict[str, Any]) -> Path:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return target
 
 
@@ -362,6 +372,177 @@ async def transcribe_audio_file(args: argparse.Namespace, audio_path: Path) -> d
     )
 
 
+def build_openclaw_context(
+    *,
+    transcript: str,
+    source: str,
+    audio_device: str | None = None,
+    audio_path: str | None = None,
+    asr_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "event_type": "asr.transcript",
+        "source": source,
+        "timestamp": now_iso(),
+        "payload": {
+            "text": transcript,
+            "source": source,
+            "audio_device": audio_device,
+            "audio_path": audio_path,
+        },
+        "robot_capabilities": [
+            "display.expression",
+            "motion.execute",
+            "audio.play_local",
+        ],
+        "available_local_sounds": ["care_01"],
+        "asr_output": asr_output or {},
+    }
+
+
+def build_rule_action_plan(transcript: str) -> dict[str, Any]:
+    text = transcript.strip()
+    fatigue_keywords = ("累", "困", "疲劳", "疲勞", "低落", "烦", "煩", "陪陪")
+    approach_keywords = ("过来", "過來", "来一下", "過來一下", "小安")
+    should_care = any(keyword in text for keyword in fatigue_keywords)
+    should_approach = any(keyword in text for keyword in approach_keywords)
+
+    if not should_care and not should_approach:
+        return {
+            "route": "demo1_rule_noop",
+            "reason": "no_demo_keyword",
+            "handled": False,
+            "actions": [],
+        }
+
+    actions = [
+        {
+            "name": "display.expression",
+            "arguments": {
+                "expression": "caring" if should_care else "happy",
+                "duration_ms": 3000,
+            },
+        },
+        {
+            "name": "motion.execute",
+            "arguments": {
+                "action": "move_out_of_dock",
+                "params": {"speed": 0.56, "distance_cm": 10.0},
+                "timeout_ms": 1200,
+            },
+        },
+    ]
+    if should_care:
+        actions.append(
+            {
+                "name": "motion.execute",
+                "arguments": {
+                    "action": "turn",
+                    "params": {"speed": 0.52, "angle_deg": -20},
+                    "timeout_ms": 700,
+                },
+            }
+        )
+        actions.append(
+            {
+                "name": "audio.play_local",
+                "arguments": {
+                    "audio_id": "care_01",
+                    "sound": "care_01",
+                    "volume": 0.7,
+                },
+            }
+        )
+
+    return {
+        "route": "demo1_rule_care" if should_care else "demo1_rule_approach",
+        "reason": "fatigue_keyword" if should_care else "approach_keyword",
+        "handled": True,
+        "actions": actions,
+    }
+
+
+async def send_action_plan_to_agent(plan: dict[str, Any], gateway_url: str) -> dict[str, Any]:
+    gateway = RobotGateway(url=gateway_url)
+    results: list[dict[str, Any]] = []
+    for index, action in enumerate(plan.get("actions") or []):
+        name = str(action.get("name") or "")
+        arguments = action.get("arguments") if isinstance(action.get("arguments"), dict) else {}
+        result: dict[str, Any] = {
+            "index": index,
+            "name": name,
+            "arguments": arguments,
+            "ok": False,
+        }
+        try:
+            if name == "display.expression":
+                result["ack"] = await gateway.send_expression(
+                    str(arguments.get("expression") or "caring"),
+                    duration_ms=int(arguments.get("duration_ms") or 3000),
+                    loop=bool(arguments.get("loop", False)),
+                )
+            elif name == "motion.execute":
+                result["ack"] = await gateway.send_motion(
+                    str(arguments.get("action") or "move_out_of_dock"),
+                    params=arguments.get("params") if isinstance(arguments.get("params"), dict) else {},
+                    timeout_ms=int(arguments.get("timeout_ms") or 1200),
+                )
+            elif name == "audio.play_local":
+                result["ack"] = await gateway.send_local_audio(
+                    str(arguments.get("audio_id") or arguments.get("sound") or "care_01"),
+                )
+            else:
+                result["error"] = f"Unsupported demo action: {name}"
+        except Exception as exc:
+            result["error"] = str(exc)
+        else:
+            result["ok"] = True
+        results.append(result)
+
+    return {
+        "attempted": bool(plan.get("actions")),
+        "ok": bool(results) and all(item.get("ok") for item in results),
+        "gateway_url": gateway_url,
+        "results": results,
+    }
+
+
+async def route_transcript_if_requested(
+    args: argparse.Namespace,
+    *,
+    transcript: str,
+    transcript_source: str,
+    audio_device: str | None = None,
+    audio_path: str | None = None,
+    asr_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    context = build_openclaw_context(
+        transcript=transcript,
+        source=transcript_source,
+        audio_device=audio_device,
+        audio_path=audio_path,
+        asr_output=asr_output,
+    )
+    plan = build_rule_action_plan(transcript)
+    write_json_artifact(args.context_path, context)
+    write_json_artifact(args.plan_path, plan)
+
+    route_result: dict[str, Any] = {
+        "enabled": bool(args.route_agent),
+        "context_path": str(Path(args.context_path)),
+        "plan_path": str(Path(args.plan_path)),
+        "context": context,
+        "action_plan": plan,
+        "agent_send": None,
+    }
+    if args.route_agent:
+        route_result["agent_send"] = await send_action_plan_to_agent(
+            plan,
+            gateway_url=args.gateway_url,
+        )
+    return route_result
+
+
 def make_screen_html(state: dict[str, Any]) -> bytes:
     status = html.escape(str(state.get("status") or "idle"))
     transcript = html.escape(str(state.get("transcript") or "等待识别..."))
@@ -519,6 +700,8 @@ def recording_sample_rate(device: dict[str, Any], requested_sample_rate: int) ->
 async def run_demo(args: argparse.Namespace) -> int:
     state_path = Path(args.state_path)
     text_path = Path(args.text_path)
+    context_path = Path(args.context_path)
+    plan_path = Path(args.plan_path)
     log_path = Path(args.log_path)
     audio_dir = Path(args.audio_dir)
     server = None
@@ -531,7 +714,13 @@ async def run_demo(args: argparse.Namespace) -> int:
         state_path,
         log_path,
         status="idle",
-        details={"screen_url": args.screen_url, "text_path": str(text_path)},
+        details={
+            "screen_url": args.screen_url,
+            "text_path": str(text_path),
+            "context_path": str(context_path),
+            "plan_path": str(plan_path),
+            "route_agent": args.route_agent,
+        },
     )
     if not args.no_screen:
         server = start_screen_server(args.host, args.port, state_path)
@@ -540,6 +729,11 @@ async def run_demo(args: argparse.Namespace) -> int:
     try:
         if args.mock_text is not None:
             write_transcript_text(text_path, args.mock_text)
+            route_result = await route_transcript_if_requested(
+                args,
+                transcript=args.mock_text,
+                transcript_source="mock",
+            )
             state = update_state(
                 state_path,
                 log_path,
@@ -547,7 +741,11 @@ async def run_demo(args: argparse.Namespace) -> int:
                 transcript=args.mock_text,
                 source="mock",
                 asr_backend="mock",
-                details={"mock_reason": "explicit --mock-text fallback", "text_path": str(text_path)},
+                details={
+                    "mock_reason": "explicit --mock-text fallback",
+                    "text_path": str(text_path),
+                    "route_result": route_result,
+                },
             )
             print(json.dumps(state, ensure_ascii=False, indent=2))
             return 0
@@ -575,6 +773,7 @@ async def run_demo(args: argparse.Namespace) -> int:
                 "audio_backend": selected.get("backend"),
                 "audio_device_id": selected.get("device_id"),
                 "text_path": str(text_path),
+                "route_agent": args.route_agent,
             },
         )
         print(f"Recording {args.duration:.1f}s from [{device_index}] {device_name}")
@@ -602,6 +801,31 @@ async def run_demo(args: argparse.Namespace) -> int:
             raise RuntimeError(f"ASR returned no transcript: {json.dumps(output, ensure_ascii=False)}")
 
         write_transcript_text(text_path, transcript)
+        update_state(
+            state_path,
+            log_path,
+            status="routing" if args.route_agent else "planning",
+            transcript=transcript,
+            source="asr" if args.asr_backend == "sensevoice" else "mock",
+            audio_device=device_name,
+            audio_device_index=device_index,
+            audio_path=str(wav_path),
+            asr_backend=args.asr_backend,
+            details={
+                "text_path": str(text_path),
+                "context_path": str(context_path),
+                "plan_path": str(plan_path),
+                "route_agent": args.route_agent,
+            },
+        )
+        route_result = await route_transcript_if_requested(
+            args,
+            transcript=transcript,
+            transcript_source="asr" if args.asr_backend == "sensevoice" else "mock",
+            audio_device=device_name,
+            audio_path=str(wav_path),
+            asr_output=output,
+        )
         state = update_state(
             state_path,
             log_path,
@@ -612,7 +836,11 @@ async def run_demo(args: argparse.Namespace) -> int:
             audio_device_index=device_index,
             audio_path=str(wav_path),
             asr_backend=args.asr_backend,
-            details={"asr_output": output, "text_path": str(text_path)},
+            details={
+                "asr_output": output,
+                "text_path": str(text_path),
+                "route_result": route_result,
+            },
         )
         print(json.dumps(state, ensure_ascii=False, indent=2))
         return 0
@@ -660,8 +888,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--speech-trim-threshold", type=float, default=0.003)
     parser.add_argument("--speech-trim-padding-ms", type=int, default=250)
     parser.add_argument("--mock-text", default=None, help="Fallback transcript. Does not pretend to be real ASR.")
+    parser.add_argument("--route-agent", action="store_true", help="Build a context/action plan and send it through /agent.")
+    parser.add_argument("--gateway-url", default="ws://127.0.0.1:8765/agent", help="Base station /agent URL.")
     parser.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
     parser.add_argument("--text-path", default=str(DEFAULT_TEXT_PATH), help="Plain transcript text output path.")
+    parser.add_argument("--context-path", default=str(DEFAULT_CONTEXT_PATH), help="OpenClaw/context input artifact path.")
+    parser.add_argument("--plan-path", default=str(DEFAULT_PLAN_PATH), help="Demo action plan artifact path.")
     parser.add_argument("--log-path", default=str(DEFAULT_LOG_PATH))
     parser.add_argument("--audio-dir", default=str(DEFAULT_AUDIO_DIR))
     parser.add_argument("--host", default="127.0.0.1")

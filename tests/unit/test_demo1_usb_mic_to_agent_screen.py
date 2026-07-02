@@ -9,6 +9,8 @@ from pathlib import Path
 
 from tools.demo.demo1_usb_mic_to_agent_screen import (
     append_log,
+    build_openclaw_context,
+    build_rule_action_plan,
     build_state,
     choose_input_device,
     load_state,
@@ -123,6 +125,43 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
             write_transcript_text(text_path, "  麦克风识别结果  ")
 
             self.assertEqual(text_path.read_text(encoding="utf-8"), "麦克风识别结果\n")
+
+    def test_build_openclaw_context_wraps_asr_transcript(self) -> None:
+        context = build_openclaw_context(
+            transcript="我有点累",
+            source="asr",
+            audio_device="UACDemoV1.0 USB Audio",
+            audio_path="runtime/demo1_audio/sample.wav",
+            asr_output={"text": "我有点累"},
+        )
+
+        self.assertEqual(context["event_type"], "asr.transcript")
+        self.assertEqual(context["payload"]["text"], "我有点累")
+        self.assertIn("display.expression", context["robot_capabilities"])
+        self.assertEqual(context["available_local_sounds"], ["care_01"])
+
+    def test_build_rule_action_plan_for_fatigue_text(self) -> None:
+        plan = build_rule_action_plan("小安，我有点累")
+
+        self.assertTrue(plan["handled"])
+        self.assertEqual(plan["route"], "demo1_rule_care")
+        self.assertEqual(
+            [action["name"] for action in plan["actions"]],
+            [
+                "display.expression",
+                "motion.execute",
+                "motion.execute",
+                "audio.play_local",
+            ],
+        )
+        self.assertEqual(plan["actions"][-1]["arguments"]["sound"], "care_01")
+
+    def test_build_rule_action_plan_ignores_non_demo_text(self) -> None:
+        plan = build_rule_action_plan("今天天气怎么样")
+
+        self.assertFalse(plan["handled"])
+        self.assertEqual(plan["route"], "demo1_rule_noop")
+        self.assertEqual(plan["actions"], [])
 
 
 if __name__ == "__main__":

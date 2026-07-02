@@ -58,6 +58,24 @@ One-command text-file check that exits:
 tools/demo/run_demo1_mic_asr.sh --once --no-screen
 ```
 
+One-command automatic route check:
+
+```bash
+tools/demo/run_demo1_mic_to_robot.sh --once --no-screen
+```
+
+This writes the ASR text plus:
+
+```text
+runtime/demo1_openclaw_context.json
+runtime/demo1_action_plan.json
+```
+
+If the base-station WebSocket server and robot are online, `--route-agent`
+sends the planned commands through `/agent`, which forwards them to `/control`.
+If they are not online, the failure is recorded in `runtime/demo1_transcript.json`
+instead of being treated as a fake success.
+
 Equivalent expanded command:
 
 ```bash
@@ -133,6 +151,8 @@ The demo writes:
 ```text
 runtime/demo1_transcript.json
 runtime/demo1_transcript.txt
+runtime/demo1_openclaw_context.json
+runtime/demo1_action_plan.json
 runtime/demo1_transcript.log.jsonl
 runtime/demo1_audio/demo1_usb_mic_*.wav
 ```
@@ -169,5 +189,7 @@ runtime/demo1_audio/demo1_usb_mic_*.wav
 4. `runtime/demo1_transcript.json` contains status, transcript, timestamp,
    device, source, and error fields.
 5. `runtime/demo1_transcript.txt` contains the latest recognized text.
-6. `http://localhost:8766` clearly displays the latest transcript.
-7. `runtime/demo1_transcript.log.jsonl` proves the state chain.
+6. `runtime/demo1_openclaw_context.json` contains the context passed forward.
+7. `runtime/demo1_action_plan.json` contains the rule/OpenClaw fallback action plan.
+8. `http://localhost:8766` clearly displays the latest transcript.
+9. `runtime/demo1_transcript.log.jsonl` proves the state chain.

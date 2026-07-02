@@ -23,7 +23,7 @@ python tools/check_runtime_env.py
 | Audio diagnostics | `tests/unit/test_audio_diagnostics.py` | raw `pcm_s16le` stats and WAV export for mic bring-up | P |
 | Audio speech trimming | `tests/unit/test_audio_segments.py`, `tests/unit/test_asr_runtime.py` | fixed-window WAV energy trim before ASR; `--trim-speech` metadata | P |
 | Fixed-window ASR demo | `tests/unit/test_fixed_window_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
-| Base-station mic demo | manual demo target | DK-2500 mic -> WAV/audio_file -> ASR -> OpenClaw/Agent context -> `/control` robot command | — |
+| Base-station mic demo | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `tests/unit/test_demo1_usb_mic_to_agent_screen.py` | DK-2500 USB mic -> WAV/audio_file -> ASR transcript -> context/action plan -> optional `/agent` send; mock fallback writes `source=mock` | P: 2026-07-03 `tests.unit.test_demo1_usb_mic_to_agent_screen`, `tests.unit.test_agent_brain_asr_event`, mock `--route-agent`; real mic ASR previously verified on DK-2500 USB mic |
 | Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 glance layout constraints | P: 2026-06-30 `python3 -m unittest tests.unit.test_dashboard_server`; Chromium 1024x600 screenshot checked |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
@@ -110,6 +110,6 @@ pio run -e mergetesting
 | 2 | 命令 | 每条 `command.ack`；motion 带 action_id；stop 打断前一动作并回 `motion.completed: interrupted`；未知命令/JSON 不崩 | H: 2026-06-26 |
 | 3 | `/video` | `runtime/latest.jpg` 更新 | H: 2026-06-26 |
 | 3b | `/audio` fallback | robot `audio.chunk_meta` + PCM；heartbeat 不被饿死；作为诊断/备选链路 | H: 2026-06-26 |
-| 4 | 基站 mic 关怀闭环 | DK-2500 mic -> ASR -> OpenClaw/Agent -> `/control` -> ack/completed | — |
+| 4 | 基站 mic 关怀闭环 | DK-2500 mic -> ASR -> OpenClaw/Agent context -> rule/OpenClaw action plan -> `/control` -> ack/completed | P partial: 2026-07-03 mock text generates `demo1_rule_care` plan and `/agent` send attempts; `tests.integration.test_ws_command_forwarding` verifies `/agent` -> `/control` forwarding with mock robot. H ack/completed pending real robot联调 |
 
 **Agent 更新规则：** 跑过测试后在本表改 P/H/F 并注明日期。

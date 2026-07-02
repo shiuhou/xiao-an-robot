@@ -17,6 +17,7 @@ DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
 DEFAULT_RUNTIME_DIR = Path("runtime")
 TRIGGER_LIMIT = 3
 RECENT_SECONDS = 10
+DEMO1_TRANSCRIPT_FILE = "demo1_transcript.json"
 
 PIPELINE_DEFAULTS = {
     "current_state": "idle",
@@ -103,6 +104,27 @@ def _format_age(seconds: float | None) -> str | None:
 def _read_audio_stats(runtime_dir: Path) -> dict[str, Any] | None:
     data = _load_json_file(runtime_dir / "audio_stats.json", {})
     return data or None
+
+
+def _load_demo1_voice_state(runtime_dir: Path) -> dict[str, Any]:
+    data = _load_json_file(runtime_dir / DEMO1_TRANSCRIPT_FILE, {})
+    if not data:
+        return {
+            "status": "idle",
+            "transcript": "",
+            "source": None,
+            "timestamp": None,
+            "audio_device": None,
+            "error": None,
+        }
+    return {
+        "status": str(data.get("status") or "idle"),
+        "transcript": str(data.get("transcript") or ""),
+        "source": data.get("source"),
+        "timestamp": data.get("timestamp"),
+        "audio_device": data.get("audio_device"),
+        "error": data.get("error"),
+    }
 
 
 def _timestamp_age_seconds(value: Any) -> float | None:
@@ -266,6 +288,7 @@ def load_dashboard_state(
     state = _build_runtime_state(pipeline, runtime_path)
     state["pipeline"] = pipeline
     state["triggers"] = _normalize_triggers(raw)
+    state["voice"] = _load_demo1_voice_state(runtime_path)
     return state
 
 

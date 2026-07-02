@@ -63,6 +63,14 @@ const modeLabels = {
   unknown: "未知",
 };
 
+const voiceStatusLabels = {
+  idle: "語音待命",
+  listening: "正在聆聽",
+  transcribing: "語音識別中",
+  done: "聽到語音",
+  error: "語音異常",
+};
+
 function normalizeState(value, fallback = "unknown") {
   return String(value || fallback).toLowerCase();
 }
@@ -261,22 +269,41 @@ function renderState(state) {
   renderTriggers(state.triggers || []);
 
   const mode = normalizeState(state?.pipeline?.current_state, "idle");
+  const voice = state?.voice || {};
+  const voiceStatus = normalizeState(voice.status, "idle");
   systemMode.className = `mode-pill state-${mode}`;
   systemMode.textContent = modeLabels[mode] || mode;
 
-  const trigger = state?.pipeline?.current_trigger;
-  if (trigger) {
-    glanceTitle.textContent = mode === "executing" ? "正在執行" : "已觸發";
-    focusText.textContent = `${trigger} 正在經過 Base、Agent 與 Robot。`;
-  } else if (mode === "idle") {
-    glanceTitle.textContent = "待命中";
-    focusText.textContent = "等待日程、鬧鐘、語音、情緒或手動測試觸發。";
-  } else if (["failed", "timeout", "error"].includes(mode)) {
-    glanceTitle.textContent = "需要檢查";
-    focusText.textContent = "鏈路出現異常，請查看 Base、Robot、Agent 狀態。";
+  if (voiceStatus === "done" && voice.transcript) {
+    glanceTitle.textContent = voiceStatusLabels.done;
+    focusText.textContent = voice.transcript;
+    systemMode.className = "mode-pill state-completed";
+    systemMode.textContent = "語音完成";
+  } else if (voiceStatus === "listening" || voiceStatus === "transcribing") {
+    glanceTitle.textContent = voiceStatusLabels[voiceStatus];
+    focusText.textContent = voice.audio_device ? `輸入設備：${voice.audio_device}` : "等待麥克風輸入。";
+    systemMode.className = "mode-pill state-processing";
+    systemMode.textContent = voiceStatusLabels[voiceStatus];
+  } else if (voiceStatus === "error" && voice.error) {
+    glanceTitle.textContent = voiceStatusLabels.error;
+    focusText.textContent = voice.error;
+    systemMode.className = "mode-pill state-error";
+    systemMode.textContent = "語音異常";
   } else {
-    glanceTitle.textContent = modeLabels[mode] || "運行中";
-    focusText.textContent = "事件正在處理，請留意 Robot 動作或語音回應。";
+    const trigger = state?.pipeline?.current_trigger;
+    if (trigger) {
+      glanceTitle.textContent = mode === "executing" ? "正在執行" : "已觸發";
+      focusText.textContent = `${trigger} 正在經過 Base、Agent 與 Robot。`;
+    } else if (mode === "idle") {
+      glanceTitle.textContent = "待命中";
+      focusText.textContent = "等待日程、鬧鐘、語音、情緒或手動測試觸發。";
+    } else if (["failed", "timeout", "error"].includes(mode)) {
+      glanceTitle.textContent = "需要檢查";
+      focusText.textContent = "鏈路出現異常，請查看 Base、Robot、Agent 狀態。";
+    } else {
+      glanceTitle.textContent = modeLabels[mode] || "運行中";
+      focusText.textContent = "事件正在處理，請留意 Robot 動作或語音回應。";
+    }
   }
 }
 

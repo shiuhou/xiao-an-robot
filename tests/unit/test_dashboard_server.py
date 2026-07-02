@@ -94,6 +94,32 @@ class DashboardStateTest(unittest.TestCase):
         self.assertEqual(state["pipeline"]["agent"], "unknown")
         self.assertEqual(state["pipeline"]["action"], "waiting")
         self.assertEqual(state["triggers"], [])
+        self.assertEqual(state["voice"]["status"], "idle")
+        self.assertEqual(state["voice"]["transcript"], "")
+
+    def test_state_includes_demo1_voice_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "demo1_transcript.json").write_text(
+                json.dumps(
+                    {
+                        "status": "done",
+                        "transcript": "帮我记一下今晚八点修改报告第三章",
+                        "source": "asr",
+                        "timestamp": "2026-07-03T02:54:00",
+                        "audio_device": "UACDemoV1.0: USB Audio",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            state = load_dashboard_state(data_dir=data_dir, runtime_dir=data_dir)
+
+        self.assertEqual(state["voice"]["status"], "done")
+        self.assertEqual(state["voice"]["source"], "asr")
+        self.assertEqual(state["voice"]["transcript"], "帮我记一下今晚八点修改报告第三章")
+        self.assertEqual(state["voice"]["audio_device"], "UACDemoV1.0: USB Audio")
 
 
 class DashboardHttpTest(unittest.TestCase):
@@ -175,6 +201,8 @@ class DashboardStaticAssetTest(unittest.TestCase):
         self.assertIn("trigger-status", js)
         self.assertIn(".trigger-status", css)
         self.assertIn("triggers.slice(0, 1)", js)
+        self.assertIn("voiceStatusLabels", js)
+        self.assertIn("voice.transcript", js)
 
 
 if __name__ == "__main__":

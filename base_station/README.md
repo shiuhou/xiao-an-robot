@@ -2,15 +2,15 @@
 
 This directory contains the DK-2500-side runtime: WebSocket transport, perception, audio diagnostics, local event storage, and debug APIs.
 
-The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Agent logic. It should keep raw camera/audio local, turn runtime signals into structured events, and forward safe robot commands through WebSocket.
+The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Agent logic. For the current demo sprint, its microphone is the primary spoken-input source: base-station mic audio should become ASR text, ASR text should become OpenClaw/Agent context, and the resulting robot actions should be forwarded through WebSocket. It should keep raw camera/audio local, turn runtime signals into structured events, and forward safe robot commands through WebSocket.
 
 ## Main Surfaces
 
 | Path | Role |
 | --- | --- |
 | `ws_server/` | Main robot transport: `/control`, `/video`, `/audio`, `/agent`. |
-| `perception/` | Camera/audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, audio diagnostics. See `perception/README.md` before moving files. |
-| `monitor/` | Emotion runtime, event loop, ASR runtime helpers, context builder, SQLite local event store. See `monitor/README.md` for deprecated surfaces. |
+| `perception/` | Camera/base-mic audio sources, OpenFace/OpenVINO/Qwen paths, ASR/VAD/TTS interfaces, robot `/audio` diagnostics. See `perception/README.md` before moving files. |
+| `monitor/` | Emotion runtime, base-mic ASR event target, ASR runtime helpers, context builder, SQLite local event store. See `monitor/README.md` for deprecated surfaces. |
 | `api/` | Local debug API for frontend/runtime inspection; not the main product API. See `api/README.md`. |
 | `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. See `dashboard/README.md`. |
 | `models/` | Local model placement area; large models should not be committed. |
@@ -36,7 +36,8 @@ Expected robot behavior:
 
 - `/control` receives `device.hello`, heartbeat, status, command ack, and `motion.completed`.
 - `/video` receives robot JPEG frames and updates `runtime/latest.jpg`.
-- `/audio` receives robot PCM/audio chunks and writes local runtime artifacts.
+- Base-station mic capture is the primary voice-input target for ASR -> OpenClaw/Agent -> robot action demos.
+- `/audio` receives robot PCM/audio chunks and writes local runtime artifacts as a fallback/diagnostics path.
 - `/agent` accepts local Agent/tool commands and forwards them to the robot.
 
 ## Boundaries

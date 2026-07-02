@@ -76,6 +76,7 @@
 | **OpenFace runtime 标记 2026-06-29** | `base_station/perception/openface_ov_runtime/README.md`, `docs/agents/04_base_station_agent_registry.md` | `openface_ov_runtime/` 是 bundled vendored runtime，`ov_perceive.py` 依赖 runtime root / `Pytorch_Retinaface` / `STAR` 的 `sys.path` 插入；普通仓库整理不要移动 |
 | **Dock dashboard 触发链路栏 2026-06-29** | `base_station/dashboard/`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 右侧显示 Base/Robot/Agent/Camera/Audio、`Robot -> Base -> Agent -> Action`、最近 3 条触发；1024x600 headless 检查无 overflow |
 | **Wiring stale-reference sweep 2026-06-30** | `hardware/wiring/esp32_pinout.md`, `docs/current_status.md`, `docs/agents/13_code_structure_inventory.md` | 修正 wiring canonical page：当前 shared-clock candidate 是 INMP441 39/40/41 + MAX98357A 39/40/47；GPIO35/36/37 标为当前 Octal PSRAM MAX98357A 避免项；inventory 下一批次改为 C6 stale wiring/status sweep |
+| **Dock dashboard glance UI 2026-06-30** | `base_station/dashboard/static/dashboard.*`, `docs/base_station_dashboard.md`, `tests/unit/test_dashboard_server.py` | `/dashboard` 默认改为远距离可读 glance screen：大号当前状态、下一件事、系统健康 chips、最新 1 条触发、紧凑链路；1024x600 Chromium screenshot 已检查 |
 
 ## 硬件阻塞（剩余）
 

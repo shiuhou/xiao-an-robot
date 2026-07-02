@@ -147,30 +147,34 @@ class DashboardHttpTest(unittest.TestCase):
 
 
 class DashboardStaticAssetTest(unittest.TestCase):
-    def test_today_schedule_is_the_primary_left_panel(self) -> None:
+    def test_dashboard_defaults_to_glance_layout(self) -> None:
         html = (DEFAULT_STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
         css = (DEFAULT_STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
 
-        self.assertLess(
-            html.index('class="today-band"'),
-            html.index('class="focus-band"'),
-        )
+        self.assertIn('id="glanceTitle"', html)
+        self.assertIn('class="next-panel"', html)
         self.assertIn(
-            "grid-template-rows: 132px minmax(0, 1fr) 150px;",
+            "grid-template-areas:",
             css,
         )
+        self.assertIn("font-size: 112px;", css)
+        self.assertIn("font-size: 34px;", css)
+        self.assertIn("font-size: 21px;", css)
+        self.assertIn("minmax(182px, 2.0fr)", css)
+        self.assertIn("minmax(132px, 0.9fr)", css)
 
-    def test_static_assets_keep_signal_grid_and_trigger_status_visible(self) -> None:
+    def test_static_assets_keep_latest_trigger_and_pipeline_visible(self) -> None:
         css = (DEFAULT_STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
         js = (DEFAULT_STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
 
         self.assertIn(
-            "grid-template-rows: repeat(3, minmax(0, 1fr));",
+            "grid-template-columns: repeat(4, minmax(0, 1fr));",
             css,
         )
         self.assertIn("trigger-chain", js)
         self.assertIn("trigger-status", js)
         self.assertIn(".trigger-status", css)
+        self.assertIn("triggers.slice(0, 1)", js)
 
 
 if __name__ == "__main__":

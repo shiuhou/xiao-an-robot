@@ -27,7 +27,7 @@
 | 路径 | 状态 | 说明 |
 |------|------|------|
 | `dashboard_server.py` | P | 7-inch Dock dashboard stdlib HTTP server；`/dashboard`、`/api/dashboard/state`、`/api/dashboard/today` |
-| `static/dashboard.html/css/js` | P | 1024x600 kiosk UI；右侧显示系统健康、`Robot -> Base -> Agent -> Action` 链路、最近 3 条触发 |
+| `static/dashboard.html/css/js` | P | 1024x600 kiosk UI；默认改为远距离可读 glance screen：大号当前状态、下一件事、系统健康 chips、最新 1 条触发和紧凑链路 |
 | `data/triggers.json` | mock | pipeline/trigger mock；无真实 event store 时不得报错 |
 | `data/today.json` | mock | 左侧今日日程/待办/闹钟 mock |
 

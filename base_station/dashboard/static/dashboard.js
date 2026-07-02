@@ -7,9 +7,10 @@ const clock = document.getElementById("clock");
 const dateLine = document.getElementById("dateLine");
 const systemMode = document.getElementById("systemMode");
 const focusText = document.getElementById("focusText");
-const imageSignal = document.getElementById("imageSignal");
-const audioSignal = document.getElementById("audioSignal");
-const modeSignal = document.getElementById("modeSignal");
+const glanceTitle = document.getElementById("glanceTitle");
+const nextTime = document.getElementById("nextTime");
+const nextTitle = document.getElementById("nextTitle");
+const nextStatus = document.getElementById("nextStatus");
 
 const sourceLabels = {
   schedule: "日程",
@@ -34,18 +35,32 @@ const statusLabels = {
 };
 
 const pipelineLabels = {
-  ready: "READY",
-  idle: "IDLE",
-  running: "RUNNING",
-  waiting: "WAITING",
-  error: "ERROR",
-  unknown: "UNKNOWN",
-  processing: "RUNNING",
-  executing: "RUNNING",
-  completed: "READY",
-  acked: "READY",
-  failed: "ERROR",
-  timeout: "ERROR",
+  ready: "就緒",
+  idle: "待命",
+  running: "運行",
+  waiting: "等待",
+  error: "錯誤",
+  unknown: "未知",
+  processing: "處理",
+  executing: "執行",
+  completed: "完成",
+  acked: "確認",
+  failed: "失敗",
+  timeout: "超時",
+};
+
+const modeLabels = {
+  idle: "待命",
+  triggered: "觸發",
+  processing: "處理中",
+  running: "運行中",
+  executing: "執行中",
+  completed: "已完成",
+  acked: "已確認",
+  failed: "異常",
+  timeout: "超時",
+  error: "異常",
+  unknown: "未知",
 };
 
 function normalizeState(value, fallback = "unknown") {
@@ -74,13 +89,29 @@ function setText(node, value) {
 
 function healthLabel(state, connectedLabel, activeLabel) {
   const normalized = normalizeState(state);
-  if (normalized === "online") return "Online";
-  if (normalized === "connected") return connectedLabel || "Connected";
-  if (normalized === "active") return activeLabel || "Active";
-  if (normalized === "ready") return "Ready";
-  if (normalized === "idle") return "Idle";
-  if (normalized === "offline") return "Offline";
-  return "Unknown";
+  if (normalized === "online") return "在線";
+  if (normalized === "connected") return connectedLabel || "連上";
+  if (normalized === "active") return activeLabel || "活動";
+  if (normalized === "ready") return "就緒";
+  if (normalized === "idle") return "待命";
+  if (normalized === "offline") return "離線";
+  if (normalized === "running") return "運行";
+  if (normalized === "processing") return "處理";
+  if (normalized === "executing") return "執行";
+  return "未知";
+}
+
+function itemStatusLabel(item) {
+  const value = normalizeState(item?.status || (item?.enabled ? "enabled" : "pending"));
+  if (value === "done" || value === "completed") return "完成";
+  if (value === "enabled") return "已啟用";
+  if (value === "pending") return "待處理";
+  return value;
+}
+
+function isOpenItem(item) {
+  const value = normalizeState(item?.status || (item?.enabled ? "enabled" : "pending"));
+  return !["done", "completed", "cancelled", "disabled"].includes(value);
 }
 
 function renderHealth(state) {
@@ -91,11 +122,11 @@ function renderHealth(state) {
   const audio = normalizeState(state?.robot?.audio, "unknown");
 
   const rows = [
-    ["Base Station", healthLabel(base), base],
+    ["Base", healthLabel(base), base],
     ["Robot", healthLabel(robot), robot],
     ["Agent", healthLabel(agent), agent],
-    ["Camera", healthLabel(camera, null, "Active"), camera],
-    ["Audio", healthLabel(audio, null, "Active"), audio],
+    ["Camera", healthLabel(camera, null, "活動"), camera],
+    ["Audio", healthLabel(audio, null, "活動"), audio],
   ];
 
   healthGrid.replaceChildren();
@@ -145,7 +176,7 @@ function renderPipeline(pipeline) {
 
 function renderTriggers(triggers) {
   triggerList.replaceChildren();
-  const visible = Array.isArray(triggers) ? triggers.slice(0, 3) : [];
+  const visible = Array.isArray(triggers) ? triggers.slice(0, 1) : [];
   if (visible.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-triggers";
@@ -162,7 +193,7 @@ function renderTriggers(triggers) {
 
     const main = document.createElement("div");
     main.className = "trigger-line trigger-main";
-    main.textContent = `${item.time || "--:--"}  ${sourceLabels[source] || source}  ${item.title || "未命名觸發"}`;
+    main.textContent = `${item.time || "--:--"}  ${sourceLabels[source] || source}：${item.title || "未命名觸發"}`;
 
     const sub = document.createElement("div");
     sub.className = "trigger-line trigger-sub";
@@ -173,7 +204,7 @@ function renderTriggers(triggers) {
 
     const statusText = document.createElement("span");
     statusText.className = "trigger-status";
-    statusText.textContent = `狀態：${statusLabels[status] || status}`;
+    statusText.textContent = statusLabels[status] || status;
 
     sub.append(chain, statusText);
     node.append(main, sub);
@@ -187,13 +218,23 @@ function renderToday(data) {
     ...(Array.isArray(data?.todos) ? data.todos : []),
     ...(Array.isArray(data?.alarms) ? data.alarms : []),
   ]
-    .slice(0, 6)
     .sort((a, b) => String(a.time || "").localeCompare(String(b.time || "")));
+  const next = items.find(isOpenItem) || items[0];
+  const previewItems = items.filter((item) => item !== next).filter(isOpenItem).slice(0, 2);
 
   todayList.replaceChildren();
   todayCount.textContent = String(items.length);
+  if (next) {
+    setText(nextTime, next.time || "--:--");
+    setText(nextTitle, next.title || "未命名事項");
+    setText(nextStatus, itemStatusLabel(next));
+  } else {
+    setText(nextTime, "--:--");
+    setText(nextTitle, "今天暫無待處理事項");
+    setText(nextStatus, "待命");
+  }
 
-  for (const item of items) {
+  for (const item of previewItems) {
     const node = document.createElement("div");
     node.className = "today-item";
 
@@ -220,18 +261,22 @@ function renderState(state) {
   renderTriggers(state.triggers || []);
 
   const mode = normalizeState(state?.pipeline?.current_state, "idle");
-  systemMode.textContent = mode === "idle" ? "待命" : mode.toUpperCase();
-  setText(imageSignal, healthLabel(state?.robot?.camera));
-  setText(audioSignal, healthLabel(state?.robot?.audio));
-  setText(modeSignal, mode.toUpperCase());
+  systemMode.className = `mode-pill state-${mode}`;
+  systemMode.textContent = modeLabels[mode] || mode;
 
   const trigger = state?.pipeline?.current_trigger;
   if (trigger) {
-    focusText.textContent = `最近由 ${trigger} 觸發，鏈路狀態正在更新。`;
+    glanceTitle.textContent = mode === "executing" ? "正在執行" : "已觸發";
+    focusText.textContent = `${trigger} 正在經過 Base、Agent 與 Robot。`;
   } else if (mode === "idle") {
-    focusText.textContent = "小安正在待命，等待日程、鬧鐘、語音、情緒或手動測試觸發。";
+    glanceTitle.textContent = "待命中";
+    focusText.textContent = "等待日程、鬧鐘、語音、情緒或手動測試觸發。";
+  } else if (["failed", "timeout", "error"].includes(mode)) {
+    glanceTitle.textContent = "需要檢查";
+    focusText.textContent = "鏈路出現異常，請查看 Base、Robot、Agent 狀態。";
   } else {
-    focusText.textContent = "鏈路事件已觸發，正在經過 Base Station、Agent 與 Robot 執行節點。";
+    glanceTitle.textContent = modeLabels[mode] || "運行中";
+    focusText.textContent = "事件正在處理，請留意 Robot 動作或語音回應。";
   }
 }
 
@@ -261,6 +306,8 @@ async function refreshState() {
     });
     renderTriggers([]);
     systemMode.textContent = "離線";
+    systemMode.className = "mode-pill state-offline";
+    glanceTitle.textContent = "Dashboard 離線";
     focusText.textContent = "Dashboard API 暫時不可用。";
   }
 }

@@ -8,62 +8,46 @@
   </head>
   <body>
     <main class="dashboard-shell">
-      <section class="main-area" aria-label="Dock overview">
-        <section class="hero-band">
-          <div>
-            <div class="clock" id="clock">--:--</div>
-            <div class="date-line" id="dateLine">---- -- --</div>
-          </div>
-          <div class="mode-pill" id="systemMode">待命</div>
-        </section>
-
-        <section class="today-band">
-          <div class="band-header">
-            <h2>今日安排</h2>
-            <span id="todayCount">0</span>
-          </div>
-          <div class="today-list" id="todayList"></div>
-        </section>
-
-        <section class="focus-band">
-          <div class="focus-copy">
-            <div class="section-kicker">今日狀態</div>
-            <h1>小安 Dock</h1>
-            <p id="focusText">Base Station 已啟動，等待 Robot / Agent 鏈路事件。</p>
-          </div>
-          <div class="signal-grid" aria-label="Runtime signals">
-            <div>
-              <span>影像</span>
-              <strong id="imageSignal">Unknown</strong>
-            </div>
-            <div>
-              <span>音訊</span>
-              <strong id="audioSignal">Unknown</strong>
-            </div>
-            <div>
-              <span>模式</span>
-              <strong id="modeSignal">Idle</strong>
-            </div>
-          </div>
-        </section>
+      <section class="top-bar" aria-label="Time and mode">
+        <div>
+          <div class="clock" id="clock">--:--</div>
+          <div class="date-line" id="dateLine">---- -- --</div>
+        </div>
+        <div class="mode-pill" id="systemMode">待命</div>
       </section>
 
-      <aside class="side-area" aria-label="System and pipeline status">
-        <section class="side-panel health-panel">
-          <div class="side-title">系統健康狀態</div>
-          <div class="health-grid" id="healthGrid"></div>
-        </section>
+      <section class="glance-panel" aria-label="Dock glance status">
+        <div class="section-kicker">小安現在</div>
+        <h1 id="glanceTitle">待命中</h1>
+        <p id="focusText">等待日程、鬧鐘、語音、情緒或手動測試觸發。</p>
+      </section>
 
-        <section class="side-panel pipeline-panel">
-          <div class="side-title">鏈路狀態</div>
-          <div class="pipeline-flow" id="pipelineFlow"></div>
-        </section>
+      <section class="next-panel" aria-label="Next schedule item">
+        <div class="panel-title">下一件事</div>
+        <div class="next-item">
+          <span class="next-time" id="nextTime">--:--</span>
+          <span class="next-title" id="nextTitle">今天暫無待處理事項</span>
+          <span class="next-status" id="nextStatus">待命</span>
+        </div>
+        <div class="today-list" id="todayList" aria-label="Upcoming items"></div>
+        <span class="hidden-count" id="todayCount">0</span>
+      </section>
 
-        <section class="side-panel trigger-panel">
-          <div class="side-title">最近觸發</div>
+      <section class="health-panel" aria-label="System health">
+        <div class="panel-title">系統</div>
+        <div class="health-grid" id="healthGrid"></div>
+      </section>
+
+      <section class="activity-panel" aria-label="Latest trigger and pipeline">
+        <div class="latest-trigger">
+          <div class="panel-title">最近觸發</div>
           <div class="trigger-list" id="triggerList"></div>
-        </section>
-      </aside>
+        </div>
+        <div class="pipeline-panel">
+          <div class="panel-title">鏈路狀態</div>
+          <div class="pipeline-flow" id="pipelineFlow"></div>
+        </div>
+      </section>
     </main>
 
     <script src="/static/dashboard.js"></script>

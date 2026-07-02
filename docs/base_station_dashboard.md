@@ -93,15 +93,20 @@ Allowed trigger statuses:
 
 The dashboard is designed for `1024x600`:
 
-- Left 2/3: time, dock focus state, and today's schedule/todo/alarm items.
-- Right 1/3 top: Base Station, Robot, Agent, Camera, Audio health.
-- Right 1/3 middle: `Robot -> Base -> Agent -> Action` pipeline state.
-- Right 1/3 bottom: latest three trigger records.
+- Default view is a glance screen for normal seated distance, not a dense debug
+  console.
+- Top left: large clock and date.
+- Center left: one large current state such as `待命中`, `正在執行`, or `需要檢查`.
+- Middle left: the next schedule/todo/alarm item plus at most two compact
+  upcoming items.
+- Right side: large Base, Robot, Agent, Camera, Audio health chips.
+- Bottom: one latest trigger plus a compact `Robot -> Base -> Agent -> Action`
+  pipeline.
 
-Each trigger record renders as two lines:
+The latest trigger renders as two lines:
 
 1. time + source + title
-2. chain + status
+2. status
 
 If there are no trigger records, the page shows:
 

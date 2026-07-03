@@ -20,3 +20,5 @@ huggingface_hub==0.36.2     # also used by tools/setup_models.py
 openvino==2026.2.1
 Pillow                      # vlm_face_analyzer image handling
 torchvision                 # qwen_vl_utils.process_vision_info image/video helpers
+scikit-image                # bundled OpenFace STAR runtime imports skimage
+pandas                      # bundled OpenFace STAR runtime imports pandas

@@ -29,7 +29,8 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 | `/control` | Hardware path verified for expression, motion, local sound, ack, and completion waits |
 | `/video` | Robot camera reaches base station as `runtime/latest.jpg`; OpenClaw can inspect the live frame |
 | Base-station mic | **Primary demo input target**: DK-2500 mic captures user speech, ASR turns it into `asr.transcript`; Demo 1 uses `--route-openclaw` to send context to OpenClaw Gateway `ws://127.0.0.1:18789` / `xiaoan-runtime`; full hardware pass verified mic -> ASR -> OpenClaw -> `/agent` -> `/control` -> expression ack, motion ack, and `motion.completed`; `--openclaw-decision-only` remains available when robot `/agent` is intentionally out of the loop |
-| Visual chain | Stage 3 synthetic `/video` smoke passed through real OpenClaw and `mock_robot`; next step is fixed real camera image -> OpenFace OV -> Qwen VLM gate -> OpenClaw. See `docs/runbooks/demo1_visual_chain_handoff.md` |
+| Assistant capture | P software path: `tools/demo/demo_assistant_capture.py` builds `assistant_capture_context.v1` for casual notes/ideas/reminders/tasks/meetings, requires OpenClaw-owned `capture` result as success evidence, writes `runtime/assistant_capture_result.json`, and exposes it on the dashboard; robot expression/local sound/TTS feedback is optional and separate from capture success |
+| Visual chain | Stage 3 synthetic `/video` smoke passed through real OpenClaw and `mock_robot`; camera-free preflight now passes static image decode, mock image runtime, OpenFace OV readiness, and real `--run-openface` on `runtime/manual_samples/vision_real_camera_0703.jpg`; Qwen OpenVINO remains blocked by partial model download missing 3 large `.bin` files. See `docs/runbooks/demo1_visual_chain_handoff.md` |
 | `/audio` robot mic | Fallback/diagnostic path: robot microphone PCM reaches the base-station side as `runtime/latest_audio.pcm`; `runtime/audio_stats.json` includes RMS/peak/DC/clipping |
 | Fixed-window ASR | Current reusable ASR path is file-first: WAV/audio_file -> `base_station.monitor.asr_runtime --trim-speech`; robot `/audio` can still feed this path for diagnostics |
 | Display | 2.4 inch face240 path is the current full-demo face path |
@@ -58,7 +59,7 @@ Evidence:
 ## Known Open Items
 
 1. Add sequencing or suppression around `robot.say` / `audio.play_tts` before `audio.play_local`; the complete care run hit `AUDIO_UNSUPPORTED: speaker not ready`, while local sound passed in isolation.
-2. Continue visual verification from one fixed real camera image; run OpenFace OV and Qwen VLM locally before using mock or real robot execution as proof.
+2. Continue visual verification from one fixed real camera image; OpenFace OV fixed-image runtime now passes, but Qwen VLM still needs `openvino_language_model.bin`, `openvino_text_embeddings_model.bin`, and `openvino_vision_embeddings_merger_model.bin` before using Qwen/OpenClaw visual output as proof.
 3. Keep `audio.play_local care_01` as the reliable audible proof until real spoken TTS is implemented and verified.
 4. Calibrate physical route timing on charged battery before chaining longer autonomous movement.
 5. Keep the OpenClaw decision-only route for ASR/OpenClaw validation when the robot network is intentionally disconnected.
@@ -83,6 +84,12 @@ Demo 1 OpenClaw route:
 
 ```powershell
 tools\demo\run_demo1_mic_to_robot.sh --once --no-screen
+```
+
+Assistant capture OpenClaw decision-only route:
+
+```powershell
+python tools\demo\demo_assistant_capture.py --mock-text "帮我记一下，下星期有会议" --route-openclaw --openclaw-decision-only
 ```
 
 Robot full-demo firmware:
@@ -125,4 +132,11 @@ General verification:
 ```powershell
 python -m unittest discover -s tests -p "test_*.py"
 git diff --check
+```
+
+Visual-chain preflight:
+
+```powershell
+python tools\prepare_visual_chain_preflight.py --image-path runtime\manual_samples\vision_real_camera_0703.jpg --run-openface
+python tools\setup_models.py --only qwen_vl --check
 ```

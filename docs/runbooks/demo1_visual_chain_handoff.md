@@ -105,6 +105,73 @@ Connection failed: could not reach ws://127.0.0.1:8875/control
 
 then `run_ws_video_runtime.py --port 8875` is not running or has crashed.
 
+## Camera-Free Preflight
+
+Before waiting for a fresh robot `runtime/latest.jpg`, run the visual-chain
+preflight against any local PNG/JPG. This catches image decode, Python
+dependency, OpenFace model, Qwen model, and optional OpenClaw socket issues
+without needing the robot camera online:
+
+```bash
+.venv/bin/python tools/prepare_visual_chain_preflight.py \
+  --image-path runtime/manual_samples/vision_real_camera_0703.jpg
+```
+
+When the robot camera is online, use the exact same check with the live frame:
+
+```bash
+.venv/bin/python tools/prepare_visual_chain_preflight.py \
+  --image-path runtime/latest.jpg
+```
+
+The report is written to `runtime/visual_chain_preflight.json` and is not meant
+to be committed.
+
+Current expected failure modes are actionable:
+
+- Missing `torchvision` / `openvino`: install the vision requirements into the
+  active venv:
+
+```bash
+.venv/bin/python -m pip install -r base_station/requirements.txt \
+  -r base_station/requirements-vlm.txt
+```
+
+- Missing Qwen files: download and verify the OpenVINO Qwen model:
+
+```bash
+.venv/bin/python tools/setup_models.py --only qwen_vl
+.venv/bin/python tools/setup_models.py --only qwen_vl --check
+```
+
+- Missing OpenFace IR files, or files reported as `git-lfs pointer files` under
+  `base_station/models/openface_ov`: install Git LFS, run `git lfs pull`, and
+  re-run the preflight. If `git lfs version` says `git: 'lfs' is not a git
+  command`, install Git LFS on the machine first.
+
+After dependencies and model files are ready, run the heavier real-model checks
+before switching to a new camera frame:
+
+```bash
+.venv/bin/python tools/prepare_visual_chain_preflight.py \
+  --image-path runtime/manual_samples/vision_real_camera_0703.jpg \
+  --run-openface
+```
+
+```bash
+.venv/bin/python tools/prepare_visual_chain_preflight.py \
+  --image-path runtime/manual_samples/vision_real_camera_0703.jpg \
+  --run-qwen
+```
+
+If OpenClaw Gateway should already be up, include:
+
+```bash
+.venv/bin/python tools/prepare_visual_chain_preflight.py \
+  --image-path runtime/manual_samples/vision_real_camera_0703.jpg \
+  --check-openclaw
+```
+
 ## Next Correct Path
 
 The next work should use one real captured image, then run real local visual

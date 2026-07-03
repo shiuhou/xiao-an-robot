@@ -121,6 +121,42 @@ class DashboardStateTest(unittest.TestCase):
         self.assertEqual(state["voice"]["transcript"], "帮我记一下今晚八点修改报告第三章")
         self.assertEqual(state["voice"]["audio_device"], "UACDemoV1.0: USB Audio")
 
+    def test_state_includes_assistant_capture_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "assistant_capture_result.json").write_text(
+                json.dumps(
+                    {
+                        "status": "needs_clarification",
+                        "transcript": "帮我记一下，下星期有会议",
+                        "reply_text": "需要告诉我具体哪一天和几点。",
+                        "source_of_truth": "openclaw_xiaoan_runtime",
+                        "capture": {
+                            "status": "needs_clarification",
+                            "kind": "meeting",
+                            "title": "下星期有会议",
+                            "missing_fields": ["date", "time"],
+                            "source_of_truth": "openclaw_xiaoan_runtime",
+                        },
+                        "feedback": {
+                            "ok": True,
+                            "actions": [],
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            state = load_dashboard_state(data_dir=data_dir, runtime_dir=data_dir)
+
+        self.assertEqual(state["assistant_capture"]["status"], "needs_clarification")
+        self.assertEqual(state["assistant_capture"]["capture"]["kind"], "meeting")
+        self.assertEqual(
+            state["assistant_capture"]["source_of_truth"],
+            "openclaw_xiaoan_runtime",
+        )
+
 
 class DashboardHttpTest(unittest.TestCase):
     def test_dashboard_routes_return_html_and_json(self) -> None:
@@ -203,6 +239,8 @@ class DashboardStaticAssetTest(unittest.TestCase):
         self.assertIn("triggers.slice(0, 1)", js)
         self.assertIn("voiceStatusLabels", js)
         self.assertIn("voice.transcript", js)
+        self.assertIn("assistant_capture", js)
+        self.assertIn("captureStatusLabels", js)
 
 
 if __name__ == "__main__":

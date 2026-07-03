@@ -18,6 +18,7 @@ DEFAULT_RUNTIME_DIR = Path("runtime")
 TRIGGER_LIMIT = 3
 RECENT_SECONDS = 10
 DEMO1_TRANSCRIPT_FILE = "demo1_transcript.json"
+ASSISTANT_CAPTURE_FILE = "assistant_capture_result.json"
 
 PIPELINE_DEFAULTS = {
     "current_state": "idle",
@@ -124,6 +125,33 @@ def _load_demo1_voice_state(runtime_dir: Path) -> dict[str, Any]:
         "timestamp": data.get("timestamp"),
         "audio_device": data.get("audio_device"),
         "error": data.get("error"),
+    }
+
+
+def _load_assistant_capture_state(runtime_dir: Path) -> dict[str, Any]:
+    data = _load_json_file(runtime_dir / ASSISTANT_CAPTURE_FILE, {})
+    if not data:
+        return {
+            "status": "idle",
+            "transcript": "",
+            "reply_text": "",
+            "source_of_truth": "openclaw_xiaoan_runtime",
+            "error": None,
+            "capture": {},
+            "feedback": {},
+            "timestamp": None,
+        }
+    capture = data.get("capture") if isinstance(data.get("capture"), dict) else {}
+    feedback = data.get("feedback") if isinstance(data.get("feedback"), dict) else {}
+    return {
+        "status": str(data.get("status") or "idle"),
+        "transcript": str(data.get("transcript") or ""),
+        "reply_text": str(data.get("reply_text") or ""),
+        "source_of_truth": data.get("source_of_truth") or "openclaw_xiaoan_runtime",
+        "error": data.get("error"),
+        "capture": capture,
+        "feedback": feedback,
+        "timestamp": data.get("timestamp"),
     }
 
 
@@ -289,6 +317,7 @@ def load_dashboard_state(
     state["pipeline"] = pipeline
     state["triggers"] = _normalize_triggers(raw)
     state["voice"] = _load_demo1_voice_state(runtime_path)
+    state["assistant_capture"] = _load_assistant_capture_state(runtime_path)
     return state
 
 

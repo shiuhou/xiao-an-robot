@@ -71,6 +71,16 @@ const voiceStatusLabels = {
   error: "語音異常",
 };
 
+const captureStatusLabels = {
+  captured: "已記錄",
+  needs_clarification: "需要補充",
+  failed: "記錄失敗",
+  ignored: "未處理",
+  routing: "正在交給 OpenClaw",
+  listening: "正在聆聽",
+  error: "記錄異常",
+};
+
 function normalizeState(value, fallback = "unknown") {
   return String(value || fallback).toLowerCase();
 }
@@ -271,10 +281,19 @@ function renderState(state) {
   const mode = normalizeState(state?.pipeline?.current_state, "idle");
   const voice = state?.voice || {};
   const voiceStatus = normalizeState(voice.status, "idle");
+  const capture = state?.assistant_capture || {};
+  const captureStatus = normalizeState(capture.status, "idle");
   systemMode.className = `mode-pill state-${mode}`;
   systemMode.textContent = modeLabels[mode] || mode;
 
-  if (voiceStatus === "done" && voice.transcript) {
+  if (["captured", "needs_clarification", "failed", "error", "routing", "listening"].includes(captureStatus)) {
+    glanceTitle.textContent = captureStatusLabels[captureStatus] || "語音記錄";
+    const captureData = capture.capture || {};
+    const summary = captureData.title || captureData.content || captureData.summary || capture.reply_text || capture.transcript;
+    focusText.textContent = capture.error || summary || "等待 OpenClaw 返回記錄結果。";
+    systemMode.className = `mode-pill state-${captureStatus === "captured" ? "completed" : captureStatus === "needs_clarification" ? "processing" : captureStatus}`;
+    systemMode.textContent = captureStatusLabels[captureStatus] || "語音記錄";
+  } else if (voiceStatus === "done" && voice.transcript) {
     glanceTitle.textContent = voiceStatusLabels.done;
     focusText.textContent = voice.transcript;
     systemMode.className = "mode-pill state-completed";

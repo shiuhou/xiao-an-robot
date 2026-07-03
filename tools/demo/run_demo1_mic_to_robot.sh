@@ -17,5 +17,8 @@ exec "${PYTHON}" tools/demo/demo1_usb_mic_to_agent_screen.py \
   --duration "${DEMO1_DURATION:-8}" \
   --asr-backend sensevoice \
   --asr-model-path "${DEMO1_ASR_MODEL_PATH:-base_station/models/sensevoice-small}" \
-  --route-agent \
+  --route-openclaw \
+  --openclaw-gateway-url "${DEMO1_OPENCLAW_GATEWAY_URL:-ws://127.0.0.1:18789}" \
+  --openclaw-agent "${DEMO1_OPENCLAW_AGENT:-xiaoan-runtime}" \
+  --openclaw-timeout-sec "${DEMO1_OPENCLAW_TIMEOUT_SEC:-90}" \
   "$@"

@@ -25,7 +25,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from base_station.monitor.asr_runtime import run_once as run_asr_once
+from agent.core.action_executor import ActionExecutor
 from agent.core.gateway import RobotGateway
+from agent.core.gateway_openclaw_adapter import (
+    DEFAULT_OPENCLAW_AGENT,
+    DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC,
+    DEFAULT_OPENCLAW_GATEWAY_URL,
+    GatewayOpenClawAdapter,
+)
+from agent.core.openclaw_adapter import OpenClawDecision, OpenClawEvent
+from agent.skills.robot_motion import RobotMotionSkill
 
 
 DEFAULT_RUNTIME_DIR = REPO_ROOT / "runtime"
@@ -33,14 +42,102 @@ DEFAULT_STATE_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.json"
 DEFAULT_TEXT_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.txt"
 DEFAULT_CONTEXT_PATH = DEFAULT_RUNTIME_DIR / "demo1_openclaw_context.json"
 DEFAULT_PLAN_PATH = DEFAULT_RUNTIME_DIR / "demo1_action_plan.json"
+DEFAULT_OPENCLAW_RESULT_PATH = DEFAULT_RUNTIME_DIR / "demo1_openclaw_result.json"
 DEFAULT_LOG_PATH = DEFAULT_RUNTIME_DIR / "demo1_transcript.log.jsonl"
 DEFAULT_AUDIO_DIR = DEFAULT_RUNTIME_DIR / "demo1_audio"
 DEFAULT_SCREEN_URL = "http://127.0.0.1:8766"
 DEMO_TITLE = "小安 Demo 1：基站麦克风语音识别"
+OPENCLAW_CONTEXT_SCHEMA_VERSION = "demo1.openclaw_context.v1"
+ACTION_PLAN_SCHEMA_VERSION = "demo1.action_plan.v1"
+DEMO_INTENT = "care_companion"
+CONTEXT_SOURCE = "base_station_mic"
+ALLOWED_EXPRESSIONS = (
+    "happy",
+    "sad",
+    "caring",
+    "tired",
+    "thinking",
+    "speaking",
+    "idle",
+    "surprised",
+    "sleeping",
+)
+ALLOWED_MOTIONS = ("forward", "backward", "left", "right", "stop", "move_out_of_dock")
+ALLOWED_LOCAL_SOUNDS = ("care_01", "wake_01", "success_ding")
+MOTION_GATEWAY_ALIASES = {
+    "forward": "move_out_of_dock",
+    "backward": "move_back_to_dock",
+}
+DEFAULT_TURN_ANGLE_DEG = 30.0
+EXPRESSION_REQUEST_KEYWORDS = ("表情", "表情包", "脸", "神情")
+EXPRESSION_KEYWORD_RULES = (
+    ("surprised", "unsupported_angry_expression_fallback", ("愤怒", "生气", "发怒", "怒")),
+    ("happy", "happy_expression_keyword", ("开心", "高兴", "快乐", "笑", "happy")),
+    ("sad", "sad_expression_keyword", ("伤心", "难过", "悲伤", "sad")),
+    ("caring", "caring_expression_keyword", ("关心", "关怀", "温柔", "安慰", "caring")),
+    ("tired", "tired_expression_keyword", ("疲惫", "疲劳", "累", "困", "tired")),
+    ("thinking", "thinking_expression_keyword", ("思考", "想", "thinking")),
+    ("surprised", "surprised_expression_keyword", ("惊讶", "吃惊", "surprised")),
+    ("sleeping", "sleeping_expression_keyword", ("睡觉", "睡眠", "sleeping")),
+    ("idle", "neutral_expression_keyword", ("普通", "默认", "中性", "neutral", "idle")),
+)
 
 
 def now_iso() -> str:
     return datetime.now().replace(microsecond=0).isoformat()
+
+
+def allowed_actions_spec() -> dict[str, Any]:
+    return {
+        "display.expression": {
+            "expression": list(ALLOWED_EXPRESSIONS),
+        },
+        "motion.execute": {
+            "action": list(ALLOWED_MOTIONS),
+        },
+        "audio.play_local": {
+            "audio_id": list(ALLOWED_LOCAL_SOUNDS),
+        },
+        "audio.play_tts": {
+            "mode": "mock_tone_only",
+        },
+    }
+
+
+def openclaw_tool_contract() -> dict[str, Any]:
+    return {
+        "decision_owner": "openclaw_xiaoan_runtime",
+        "allowed_tools": [
+            "xiaoan.robot.expression",
+            "xiaoan.robot.care",
+            "xiaoan.robot.move_out",
+            "xiaoan.robot.say",
+        ],
+        "allowed_expressions": list(ALLOWED_EXPRESSIONS),
+        "unsupported_expression_fallbacks": {
+            "angry": "surprised",
+            "calm": "caring",
+            "neutral": "idle",
+        },
+        "notes": [
+            "Demo 1 main path must let OpenClaw decide before local robot actions.",
+            "Do not emit unsupported expressions; use allowed_expressions only.",
+        ],
+    }
+
+
+def build_no_decision_plan(route: str, reason: str) -> dict[str, Any]:
+    return {
+        "schema_version": ACTION_PLAN_SCHEMA_VERSION,
+        "demo_intent": DEMO_INTENT,
+        "timestamp": now_iso(),
+        "route": route,
+        "reason": reason,
+        "handled": None,
+        "allowed_actions": allowed_actions_spec(),
+        "actions": [],
+        "validation": {"ok": True, "errors": []},
+    }
 
 
 def build_state(
@@ -381,39 +478,175 @@ def build_openclaw_context(
     asr_output: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
+        "schema_version": OPENCLAW_CONTEXT_SCHEMA_VERSION,
         "event_type": "asr.transcript",
-        "source": source,
+        "demo_intent": DEMO_INTENT,
+        "transcript": transcript,
+        "source": CONTEXT_SOURCE,
+        "transcript_source": source,
         "timestamp": now_iso(),
-        "payload": {
-            "text": transcript,
-            "source": source,
-            "audio_device": audio_device,
-            "audio_path": audio_path,
+        "robot_state": {
+            "online": "unknown",
+            "busy": "unknown",
+            "battery": "unknown",
+            "dock": "unknown",
         },
-        "robot_capabilities": [
-            "display.expression",
-            "motion.execute",
-            "audio.play_local",
-        ],
-        "available_local_sounds": ["care_01"],
+        "vision_context": {
+            "available": False,
+            "summary": "",
+        },
+        "last_action": None,
+        "allowed_actions": allowed_actions_spec(),
+        "openclaw_tool_contract": openclaw_tool_contract(),
+        "audio": {
+            "device": audio_device,
+            "path": audio_path,
+        },
         "asr_output": asr_output or {},
     }
+
+
+def _allowed_values(allowed_actions: dict[str, Any], action_name: str, field: str) -> list[str]:
+    spec = allowed_actions.get(action_name)
+    if not isinstance(spec, dict):
+        return []
+    values = spec.get(field)
+    if not isinstance(values, list):
+        return []
+    return [str(value) for value in values]
+
+
+def validate_action_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    allowed_actions = plan.get("allowed_actions")
+    if not isinstance(allowed_actions, dict):
+        allowed_actions = allowed_actions_spec()
+
+    errors: list[str] = []
+    actions = plan.get("actions")
+    if not isinstance(actions, list):
+        errors.append("actions must be a list")
+        actions = []
+
+    for index, action in enumerate(actions):
+        if not isinstance(action, dict):
+            errors.append(f"actions[{index}] must be an object")
+            continue
+        name = str(action.get("name") or "")
+        arguments = action.get("arguments") if isinstance(action.get("arguments"), dict) else {}
+        if name not in allowed_actions:
+            errors.append(f"actions[{index}].name not allowed: {name}")
+            continue
+
+        if name == "display.expression":
+            expression = str(arguments.get("expression") or "")
+            if expression not in _allowed_values(allowed_actions, name, "expression"):
+                errors.append(f"actions[{index}].arguments.expression not allowed: {expression}")
+        elif name == "motion.execute":
+            motion = str(arguments.get("action") or "")
+            if motion not in _allowed_values(allowed_actions, name, "action"):
+                errors.append(f"actions[{index}].arguments.action not allowed: {motion}")
+        elif name == "audio.play_local":
+            audio_id = str(arguments.get("audio_id") or arguments.get("sound") or "")
+            if audio_id not in _allowed_values(allowed_actions, name, "audio_id"):
+                errors.append(f"actions[{index}].arguments.audio_id not allowed: {audio_id}")
+        elif name == "audio.play_tts":
+            spec = allowed_actions.get(name)
+            if not isinstance(spec, dict) or spec.get("mode") != "mock_tone_only":
+                errors.append(f"actions[{index}].audio.play_tts must be mock_tone_only")
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+    }
+
+
+def normalize_expression_for_gateway(expression: str) -> str:
+    return expression
+
+
+def normalize_motion_for_gateway(arguments: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    requested = str(arguments.get("action") or "move_out_of_dock")
+    params = dict(arguments.get("params") or {}) if isinstance(arguments.get("params"), dict) else {}
+
+    if requested == "left":
+        try:
+            angle_deg = float(params.get("angle_deg", DEFAULT_TURN_ANGLE_DEG))
+        except (TypeError, ValueError):
+            angle_deg = DEFAULT_TURN_ANGLE_DEG
+        params["angle_deg"] = -abs(angle_deg)
+        return "turn", params
+    if requested == "right":
+        try:
+            angle_deg = float(params.get("angle_deg", DEFAULT_TURN_ANGLE_DEG))
+        except (TypeError, ValueError):
+            angle_deg = DEFAULT_TURN_ANGLE_DEG
+        params["angle_deg"] = abs(angle_deg)
+        return "turn", params
+
+    return MOTION_GATEWAY_ALIASES.get(requested, requested), params
+
+
+def post_motion_delay_seconds(arguments: dict[str, Any]) -> float:
+    try:
+        timeout_ms = int(arguments.get("timeout_ms", 1200))
+    except (TypeError, ValueError):
+        timeout_ms = 1200
+    return max(0.2, min(3.0, timeout_ms / 1000.0 + 0.15))
+
+
+def detect_expression_request(text: str) -> tuple[str, str] | None:
+    if not any(keyword in text for keyword in EXPRESSION_REQUEST_KEYWORDS):
+        return None
+    for expression, reason, keywords in EXPRESSION_KEYWORD_RULES:
+        if any(keyword in text for keyword in keywords):
+            return expression, reason
+    return "happy", "generic_expression_request"
 
 
 def build_rule_action_plan(transcript: str) -> dict[str, Any]:
     text = transcript.strip()
     fatigue_keywords = ("累", "困", "疲劳", "疲勞", "低落", "烦", "煩", "陪陪")
     approach_keywords = ("过来", "過來", "来一下", "過來一下", "小安")
+    expression_request = detect_expression_request(text)
+    if expression_request:
+        expression, reason = expression_request
+        plan = {
+            "schema_version": ACTION_PLAN_SCHEMA_VERSION,
+            "demo_intent": DEMO_INTENT,
+            "timestamp": now_iso(),
+            "route": "demo1_rule_expression",
+            "reason": reason,
+            "handled": True,
+            "allowed_actions": allowed_actions_spec(),
+            "actions": [
+                {
+                    "name": "display.expression",
+                    "arguments": {
+                        "expression": expression,
+                        "duration_ms": 3000,
+                    },
+                },
+            ],
+        }
+        plan["validation"] = validate_action_plan(plan)
+        return plan
+
     should_care = any(keyword in text for keyword in fatigue_keywords)
     should_approach = any(keyword in text for keyword in approach_keywords)
 
     if not should_care and not should_approach:
-        return {
+        plan = {
+            "schema_version": ACTION_PLAN_SCHEMA_VERSION,
+            "demo_intent": DEMO_INTENT,
+            "timestamp": now_iso(),
             "route": "demo1_rule_noop",
             "reason": "no_demo_keyword",
             "handled": False,
+            "allowed_actions": allowed_actions_spec(),
             "actions": [],
         }
+        plan["validation"] = validate_action_plan(plan)
+        return plan
 
     actions = [
         {
@@ -437,7 +670,7 @@ def build_rule_action_plan(transcript: str) -> dict[str, Any]:
             {
                 "name": "motion.execute",
                 "arguments": {
-                    "action": "turn",
+                    "action": "left",
                     "params": {"speed": 0.52, "angle_deg": -20},
                     "timeout_ms": 700,
                 },
@@ -454,15 +687,71 @@ def build_rule_action_plan(transcript: str) -> dict[str, Any]:
             }
         )
 
-    return {
+    plan = {
+        "schema_version": ACTION_PLAN_SCHEMA_VERSION,
+        "demo_intent": DEMO_INTENT,
+        "timestamp": now_iso(),
         "route": "demo1_rule_care" if should_care else "demo1_rule_approach",
         "reason": "fatigue_keyword" if should_care else "approach_keyword",
         "handled": True,
+        "allowed_actions": allowed_actions_spec(),
         "actions": actions,
+    }
+    plan["validation"] = validate_action_plan(plan)
+    return plan
+
+
+def build_openclaw_asr_event(
+    *,
+    transcript: str,
+    context: dict[str, Any],
+    session_id: str,
+) -> OpenClawEvent:
+    return OpenClawEvent(
+        type="asr.transcript",
+        text=transcript,
+        source=CONTEXT_SOURCE,
+        session_id=session_id,
+        context=context,
+    )
+
+
+def validate_openclaw_decision(decision: OpenClawDecision) -> dict[str, Any]:
+    contract = openclaw_tool_contract()
+    allowed_tools = set(contract["allowed_tools"])
+    allowed_expressions = set(contract["allowed_expressions"])
+    errors: list[str] = []
+
+    for index, tool_call in enumerate(decision.tool_calls):
+        if tool_call.name not in allowed_tools:
+            errors.append(f"tool_calls[{index}].name not allowed: {tool_call.name}")
+            continue
+        if tool_call.name == "xiaoan.robot.expression":
+            expression = str(tool_call.arguments.get("expression") or "")
+            if expression not in allowed_expressions:
+                errors.append(
+                    f"tool_calls[{index}].arguments.expression not allowed: {expression}"
+                )
+
+    return {
+        "ok": not errors,
+        "errors": errors,
+        "allowed_tools": sorted(allowed_tools),
+        "allowed_expressions": sorted(allowed_expressions),
     }
 
 
 async def send_action_plan_to_agent(plan: dict[str, Any], gateway_url: str) -> dict[str, Any]:
+    validation = validate_action_plan(plan)
+    if not validation["ok"]:
+        return {
+            "attempted": False,
+            "ok": False,
+            "gateway_url": gateway_url,
+            "validation": validation,
+            "results": [],
+        }
+
     gateway = RobotGateway(url=gateway_url)
     results: list[dict[str, Any]] = []
     for index, action in enumerate(plan.get("actions") or []):
@@ -477,20 +766,27 @@ async def send_action_plan_to_agent(plan: dict[str, Any], gateway_url: str) -> d
         try:
             if name == "display.expression":
                 result["ack"] = await gateway.send_expression(
-                    str(arguments.get("expression") or "caring"),
+                    normalize_expression_for_gateway(str(arguments.get("expression") or "caring")),
                     duration_ms=int(arguments.get("duration_ms") or 3000),
                     loop=bool(arguments.get("loop", False)),
                 )
             elif name == "motion.execute":
+                gateway_action, gateway_params = normalize_motion_for_gateway(arguments)
+                result["gateway_action"] = gateway_action
+                result["gateway_params"] = gateway_params
                 result["ack"] = await gateway.send_motion(
-                    str(arguments.get("action") or "move_out_of_dock"),
-                    params=arguments.get("params") if isinstance(arguments.get("params"), dict) else {},
+                    gateway_action,
+                    params=gateway_params,
                     timeout_ms=int(arguments.get("timeout_ms") or 1200),
                 )
+                result["post_send_delay_sec"] = post_motion_delay_seconds(arguments)
+                await asyncio.sleep(float(result["post_send_delay_sec"]))
             elif name == "audio.play_local":
                 result["ack"] = await gateway.send_local_audio(
                     str(arguments.get("audio_id") or arguments.get("sound") or "care_01"),
                 )
+            elif name == "audio.play_tts":
+                result["ack"] = await gateway.send_tts(str(arguments.get("text") or ""))
             else:
                 result["error"] = f"Unsupported demo action: {name}"
         except Exception as exc:
@@ -503,8 +799,75 @@ async def send_action_plan_to_agent(plan: dict[str, Any], gateway_url: str) -> d
         "attempted": bool(plan.get("actions")),
         "ok": bool(results) and all(item.get("ok") for item in results),
         "gateway_url": gateway_url,
+        "validation": validation,
         "results": results,
     }
+
+
+async def send_transcript_to_openclaw(
+    args: argparse.Namespace,
+    *,
+    transcript: str,
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    event = build_openclaw_asr_event(
+        transcript=transcript,
+        context=context,
+        session_id=args.openclaw_session_id,
+    )
+    adapter = GatewayOpenClawAdapter(
+        gateway_url=args.openclaw_gateway_url,
+        agent=args.openclaw_agent,
+        timeout_sec=float(args.openclaw_timeout_sec),
+        gateway_token=args.openclaw_gateway_token,
+    )
+    gateway = RobotGateway(url=args.gateway_url)
+    executor = ActionExecutor(RobotMotionSkill(gateway=gateway), memory_store=None)
+
+    decision = await asyncio.to_thread(adapter.handle_event, event)
+    decision_validation = validate_openclaw_decision(decision)
+    if not decision_validation["ok"]:
+        result = {
+            "attempted": True,
+            "ok": False,
+            "gateway_url": args.openclaw_gateway_url,
+            "agent": args.openclaw_agent,
+            "session_id": args.openclaw_session_id,
+            "event": event.to_dict(),
+            "decision": decision.to_dict(),
+            "decision_validation": decision_validation,
+            "execution": {
+                "handled": False,
+                "skipped_actions": [],
+                "executed_actions": [],
+                "openclaw_error": "OpenClaw decision failed Demo 1 validation",
+            },
+        }
+        write_json_artifact(args.openclaw_result_path, result)
+        return result
+
+    execution = await executor.execute(decision, source_event_type="asr.transcript")
+    result = {
+        "attempted": True,
+        "ok": bool(decision.handled) and not bool(execution.get("openclaw_error")),
+        "gateway_url": args.openclaw_gateway_url,
+        "agent": args.openclaw_agent,
+        "session_id": args.openclaw_session_id,
+        "event": event.to_dict(),
+        "decision": decision.to_dict(),
+        "decision_validation": decision_validation,
+        "execution": execution,
+    }
+    write_json_artifact(args.openclaw_result_path, result)
+    return result
+
+
+def resolve_route_mode(args: argparse.Namespace) -> str:
+    if getattr(args, "route_openclaw", False):
+        return "openclaw"
+    if getattr(args, "route_agent", False):
+        return "legacy_rule_agent"
+    return "context_only"
 
 
 async def route_transcript_if_requested(
@@ -516,6 +879,7 @@ async def route_transcript_if_requested(
     audio_path: str | None = None,
     asr_output: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    route_mode = resolve_route_mode(args)
     context = build_openclaw_context(
         transcript=transcript,
         source=transcript_source,
@@ -523,19 +887,49 @@ async def route_transcript_if_requested(
         audio_path=audio_path,
         asr_output=asr_output,
     )
-    plan = build_rule_action_plan(transcript)
     write_json_artifact(args.context_path, context)
-    write_json_artifact(args.plan_path, plan)
 
     route_result: dict[str, Any] = {
-        "enabled": bool(args.route_agent),
+        "enabled": route_mode != "context_only",
+        "route_mode": route_mode,
         "context_path": str(Path(args.context_path)),
         "plan_path": str(Path(args.plan_path)),
+        "openclaw_result_path": str(Path(args.openclaw_result_path)),
         "context": context,
-        "action_plan": plan,
+        "action_plan": None,
+        "openclaw_send": None,
         "agent_send": None,
     }
-    if args.route_agent:
+
+    if route_mode == "openclaw":
+        gateway_plan = build_no_decision_plan(
+            route="openclaw_gateway",
+            reason="openclaw_decision_owner",
+        )
+        gateway_plan["note"] = "No local rule action plan was executed; see openclaw_result_path."
+        write_json_artifact(args.plan_path, gateway_plan)
+        route_result["action_plan"] = gateway_plan
+        route_result["openclaw_send"] = await send_transcript_to_openclaw(
+            args,
+            transcript=transcript,
+            context=context,
+        )
+        return route_result
+
+    if route_mode == "context_only":
+        plan = build_no_decision_plan(
+            route="context_only",
+            reason="no_decision_route_enabled",
+        )
+        write_json_artifact(args.plan_path, plan)
+        route_result["action_plan"] = plan
+        return route_result
+
+    plan = build_rule_action_plan(transcript)
+    write_json_artifact(args.plan_path, plan)
+    route_result["action_plan"] = plan
+
+    if route_mode == "legacy_rule_agent":
         route_result["agent_send"] = await send_action_plan_to_agent(
             plan,
             gateway_url=args.gateway_url,
@@ -704,6 +1098,7 @@ async def run_demo(args: argparse.Namespace) -> int:
     plan_path = Path(args.plan_path)
     log_path = Path(args.log_path)
     audio_dir = Path(args.audio_dir)
+    route_mode = resolve_route_mode(args)
     server = None
 
     if args.list_devices:
@@ -719,7 +1114,12 @@ async def run_demo(args: argparse.Namespace) -> int:
             "text_path": str(text_path),
             "context_path": str(context_path),
             "plan_path": str(plan_path),
+            "openclaw_result_path": str(args.openclaw_result_path),
+            "route_mode": route_mode,
+            "route_openclaw": args.route_openclaw,
             "route_agent": args.route_agent,
+            "openclaw_gateway_url": args.openclaw_gateway_url,
+            "openclaw_agent": args.openclaw_agent,
         },
     )
     if not args.no_screen:
@@ -744,6 +1144,7 @@ async def run_demo(args: argparse.Namespace) -> int:
                 details={
                     "mock_reason": "explicit --mock-text fallback",
                     "text_path": str(text_path),
+                    "route_mode": route_mode,
                     "route_result": route_result,
                 },
             )
@@ -773,6 +1174,8 @@ async def run_demo(args: argparse.Namespace) -> int:
                 "audio_backend": selected.get("backend"),
                 "audio_device_id": selected.get("device_id"),
                 "text_path": str(text_path),
+                "route_mode": route_mode,
+                "route_openclaw": args.route_openclaw,
                 "route_agent": args.route_agent,
             },
         )
@@ -804,7 +1207,7 @@ async def run_demo(args: argparse.Namespace) -> int:
         update_state(
             state_path,
             log_path,
-            status="routing" if args.route_agent else "planning",
+            status="routing" if route_mode != "context_only" else "planning",
             transcript=transcript,
             source="asr" if args.asr_backend == "sensevoice" else "mock",
             audio_device=device_name,
@@ -815,6 +1218,9 @@ async def run_demo(args: argparse.Namespace) -> int:
                 "text_path": str(text_path),
                 "context_path": str(context_path),
                 "plan_path": str(plan_path),
+                "openclaw_result_path": str(args.openclaw_result_path),
+                "route_mode": route_mode,
+                "route_openclaw": args.route_openclaw,
                 "route_agent": args.route_agent,
             },
         )
@@ -839,6 +1245,7 @@ async def run_demo(args: argparse.Namespace) -> int:
             details={
                 "asr_output": output,
                 "text_path": str(text_path),
+                "route_mode": route_mode,
                 "route_result": route_result,
             },
         )
@@ -888,12 +1295,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--speech-trim-threshold", type=float, default=0.003)
     parser.add_argument("--speech-trim-padding-ms", type=int, default=250)
     parser.add_argument("--mock-text", default=None, help="Fallback transcript. Does not pretend to be real ASR.")
-    parser.add_argument("--route-agent", action="store_true", help="Build a context/action plan and send it through /agent.")
+    parser.add_argument(
+        "--route-openclaw",
+        action="store_true",
+        help="Main Demo 1 path: send ASR context to real OpenClaw Gateway before robot execution.",
+    )
+    parser.add_argument(
+        "--route-agent",
+        action="store_true",
+        help="Legacy local-rule route. Not the main OpenClaw demo path.",
+    )
     parser.add_argument("--gateway-url", default="ws://127.0.0.1:8765/agent", help="Base station /agent URL.")
+    parser.add_argument(
+        "--openclaw-gateway-url",
+        default=DEFAULT_OPENCLAW_GATEWAY_URL,
+        help="OpenClaw Gateway WebSocket URL.",
+    )
+    parser.add_argument(
+        "--openclaw-agent",
+        default=DEFAULT_OPENCLAW_AGENT,
+        help="OpenClaw agent id, usually xiaoan-runtime.",
+    )
+    parser.add_argument(
+        "--openclaw-timeout-sec",
+        type=float,
+        default=DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC,
+        help="OpenClaw Gateway request timeout.",
+    )
+    parser.add_argument(
+        "--openclaw-gateway-token",
+        default=None,
+        help="Optional OpenClaw Gateway token. If omitted, adapter reads env/config.",
+    )
+    parser.add_argument("--openclaw-session-id", default="demo1", help="OpenClaw session id.")
     parser.add_argument("--state-path", default=str(DEFAULT_STATE_PATH))
     parser.add_argument("--text-path", default=str(DEFAULT_TEXT_PATH), help="Plain transcript text output path.")
     parser.add_argument("--context-path", default=str(DEFAULT_CONTEXT_PATH), help="OpenClaw/context input artifact path.")
     parser.add_argument("--plan-path", default=str(DEFAULT_PLAN_PATH), help="Demo action plan artifact path.")
+    parser.add_argument(
+        "--openclaw-result-path",
+        default=str(DEFAULT_OPENCLAW_RESULT_PATH),
+        help="OpenClaw decision/execution result artifact path.",
+    )
     parser.add_argument("--log-path", default=str(DEFAULT_LOG_PATH))
     parser.add_argument("--audio-dir", default=str(DEFAULT_AUDIO_DIR))
     parser.add_argument("--host", default="127.0.0.1")
@@ -901,6 +1344,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--no-screen", action="store_true", help="Do not start the local screen HTTP server.")
     parser.add_argument("--once", action="store_true", help="Exit after one recording/mock cycle instead of keeping screen open.")
     args = parser.parse_args(argv)
+    if args.route_openclaw and args.route_agent:
+        parser.error("--route-openclaw and --route-agent are mutually exclusive")
     display_host = "localhost" if args.host in {"127.0.0.1", "0.0.0.0"} else args.host
     args.screen_url = f"http://{display_host}:{args.port}"
     return args

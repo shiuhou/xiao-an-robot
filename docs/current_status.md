@@ -1,7 +1,7 @@
 # Current Status
 
-Last updated: 2026-07-02
-Branch: `0702base_mic`
+Last updated: 2026-07-03
+Branch: `main`
 
 ## Main Demo Path
 
@@ -10,7 +10,8 @@ Branch: `0702base_mic`
 ```text
 DK-2500 base-station microphone / camera
 -> base_station ASR / vision context
--> OpenClaw / Agent
+-> OpenClaw Gateway / xiaoan-runtime decision
+-> local ActionExecutor / Agent
 -> base_station WebSocket /agent and /control
 -> robot/mergetesting
 -> face expression + motion + local sound
@@ -27,7 +28,7 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 | Firmware target | `mergetesting_full_face240` |
 | `/control` | Hardware path verified for expression, motion, local sound, ack, and completion waits |
 | `/video` | Robot camera reaches base station as `runtime/latest.jpg`; OpenClaw can inspect the live frame |
-| Base-station mic | **Primary demo input target**: DK-2500 mic captures user speech, ASR turns it into `asr.transcript`, context is sent to OpenClaw/Agent, then robot commands are sent through `/control` |
+| Base-station mic | **Primary demo input target**: DK-2500 mic captures user speech, ASR turns it into `asr.transcript`; Demo 1 now defaults to `--route-openclaw`, sending context to OpenClaw Gateway `ws://127.0.0.1:18789` / `xiaoan-runtime` before `/agent` and `/control` |
 | `/audio` robot mic | Fallback/diagnostic path: robot microphone PCM reaches the base-station side as `runtime/latest_audio.pcm`; `runtime/audio_stats.json` includes RMS/peak/DC/clipping |
 | Fixed-window ASR | Current reusable ASR path is file-first: WAV/audio_file -> `base_station.monitor.asr_runtime --trim-speech`; robot `/audio` can still feed this path for diagnostics |
 | Display | 2.4 inch face240 path is the current full-demo face path |
@@ -38,6 +39,7 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 
 Evidence:
 
+- [status/2026-07-03.md](status/2026-07-03.md)
 - [status/2026-06-28.md](status/2026-06-28.md)
 - [status/2026-06-30.md](status/2026-06-30.md)
 - [status/2026-06-27.md](status/2026-06-27.md)
@@ -58,7 +60,7 @@ Evidence:
 2. Keep `audio.play_local care_01` as the reliable audible proof until real spoken TTS is implemented and verified.
 3. Investigate speaker PCM spoken playback with USB serial/backtrace before using it in a demo.
 4. Calibrate physical route timing on charged battery before chaining autonomous movement.
-5. Build the base-station mic demo path: base mic WAV capture -> ASR -> context -> OpenClaw/Agent -> `/control` commands -> ack/completed evidence.
+5. Finish the base-station mic Demo 1 hardware pass: base mic WAV capture -> ASR -> OpenClaw Gateway / `xiaoan-runtime` -> `/agent` -> `/control` -> robot-side `command.ack` and matching `motion.completed` evidence. Mock OpenClaw route is already passing.
 6. Keep robot `/audio` available as a fallback/diagnostic source: use `mergetesting_mic_only_shift18_asr`, export the latest `/audio` WAV, then run `base_station.monitor.asr_runtime --trim-speech` before SenseVoice. Keep checking RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
 7. Keep generated runtime files, logs, DBs, model binaries, `.pio/`, and local configs out of Git.
 
@@ -73,7 +75,13 @@ python -m base_station.ws_server.server
 Base-station mic demo target:
 
 ```text
-DK-2500 mic -> WAV/audio_file -> ASR -> asr.transcript -> OpenClaw/Agent context -> /control robot commands
+DK-2500 mic -> WAV/audio_file -> ASR -> asr.transcript -> OpenClaw Gateway/xiaoan-runtime -> ActionExecutor -> /agent -> /control robot commands
+```
+
+Demo 1 OpenClaw route:
+
+```powershell
+tools\demo\run_demo1_mic_to_robot.sh --once --no-screen
 ```
 
 Robot full-demo firmware:

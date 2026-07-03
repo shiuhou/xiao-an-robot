@@ -10,12 +10,17 @@ DK-2500 / base-station USB microphone
 -> existing ASR runtime
 -> runtime/demo1_transcript.json
 -> runtime/demo1_transcript.txt
--> local Agent screen page
+-> fixed OpenClaw context
+-> real OpenClaw Gateway / xiaoan-runtime decision
+-> ActionExecutor
+-> /agent -> /control robot command path
+-> local Agent screen page and JSON logs
 ```
 
-This is not the full private assistant. It does not require robot firmware,
-`/control`, `/video`, robot motion, reminders, long-term memory, or complex
-OpenClaw tool calls.
+This is not the full private assistant. It still excludes `/video`, reminders,
+long-term memory, and complex OpenClaw tools. For the robot path, the main
+Demo 1 route must use real OpenClaw Gateway before local robot execution; the
+old local-rule `/agent` route is legacy diagnostics only.
 
 ## Hardware
 
@@ -69,12 +74,72 @@ This writes the ASR text plus:
 ```text
 runtime/demo1_openclaw_context.json
 runtime/demo1_action_plan.json
+runtime/demo1_openclaw_result.json
 ```
 
-If the base-station WebSocket server and robot are online, `--route-agent`
-sends the planned commands through `/agent`, which forwards them to `/control`.
-If they are not online, the failure is recorded in `runtime/demo1_transcript.json`
-instead of being treated as a fake success.
+`runtime/demo1_openclaw_context.json` uses the fixed Demo 1 context schema:
+
+```json
+{
+  "schema_version": "demo1.openclaw_context.v1",
+  "event_type": "asr.transcript",
+  "demo_intent": "care_companion",
+  "transcript": "小安，我有点累",
+  "source": "base_station_mic",
+  "transcript_source": "asr",
+  "timestamp": "...",
+  "robot_state": {"online": "unknown", "busy": "unknown", "battery": "unknown", "dock": "unknown"},
+  "vision_context": {"available": false, "summary": ""},
+  "last_action": null,
+  "allowed_actions": {}
+}
+```
+
+`runtime/demo1_openclaw_context.json` also includes
+`openclaw_tool_contract`. OpenClaw is asked to choose only these Demo 1 tools:
+
+```text
+xiaoan.robot.expression
+xiaoan.robot.care
+xiaoan.robot.move_out
+xiaoan.robot.say
+```
+
+`runtime/demo1_action_plan.json` is no longer the main decision artifact when
+`--route-openclaw` is used. In the main route it records:
+
+```json
+{
+  "route": "openclaw_gateway",
+  "reason": "openclaw_decision_owner",
+  "actions": []
+}
+```
+
+The actual OpenClaw decision and local execution evidence are in:
+
+```text
+runtime/demo1_openclaw_result.json
+```
+
+The route validates OpenClaw tool calls before executing local robot actions.
+Allowed expression values are:
+
+```text
+happy, sad, caring, tired, thinking, speaking, idle, surprised, sleeping
+```
+
+If OpenClaw returns an unsupported tool or expression, the script records a
+validation failure in `runtime/demo1_openclaw_result.json` and does not silently
+fall back to local rules.
+
+The old `--route-agent` path still exists only for legacy diagnostics. It builds
+a local rule action plan and sends that plan through `/agent`; do not treat it
+as the main Demo 1 OpenClaw path.
+
+If the OpenClaw Gateway, base-station WebSocket server, or robot is not online,
+the failure is recorded in `runtime/demo1_transcript.json` and
+`runtime/demo1_openclaw_result.json` instead of being treated as a fake success.
 
 Equivalent expanded command:
 
@@ -83,7 +148,10 @@ Equivalent expanded command:
   --device USB \
   --duration 5 \
   --asr-backend sensevoice \
-  --asr-model-path base_station/models/sensevoice-small
+  --asr-model-path base_station/models/sensevoice-small \
+  --route-openclaw \
+  --openclaw-gateway-url ws://127.0.0.1:18789 \
+  --openclaw-agent xiaoan-runtime
 ```
 
 Open:
@@ -100,6 +168,7 @@ For a one-shot CLI check that exits after writing JSON:
   --duration 5 \
   --asr-backend sensevoice \
   --asr-model-path base_station/models/sensevoice-small \
+  --route-openclaw \
   --once
 ```
 
@@ -125,6 +194,25 @@ One-shot mock check:
 .venv/bin/python tools/demo/demo1_usb_mic_to_agent_screen.py \
   --mock-text "帮我记一下，今晚八点修改报告第三章" \
   --once
+```
+
+Mock text can also test the real OpenClaw route without using the microphone:
+
+```bash
+.venv/bin/python tools/demo/demo1_usb_mic_to_agent_screen.py \
+  --mock-text "小安，我有点累" \
+  --route-openclaw \
+  --once \
+  --no-screen
+```
+
+Successful output should include:
+
+```text
+route_mode: openclaw
+openclaw_send.ok: true
+decision.tool_calls: xiaoan.robot.care
+execution.executed_actions: robot.say and xiaoan.robot.care
 ```
 
 ## Screen Page
@@ -153,6 +241,7 @@ runtime/demo1_transcript.json
 runtime/demo1_transcript.txt
 runtime/demo1_openclaw_context.json
 runtime/demo1_action_plan.json
+runtime/demo1_openclaw_result.json
 runtime/demo1_transcript.log.jsonl
 runtime/demo1_audio/demo1_usb_mic_*.wav
 ```
@@ -173,6 +262,14 @@ runtime/demo1_audio/demo1_usb_mic_*.wav
   audio at 48 kHz.
 - ASR backend unavailable: check `funasr` and the local model directory, or run
   the mock fallback command.
+- OpenClaw Gateway unavailable: check the `openclaw gateway --port 18789`
+  process and retry `--route-openclaw`.
+- OpenClaw returns plain text or unsupported tools: update `xiaoan-runtime`
+  instructions so `xiaoan.openclaw.bridge.v1` returns JSON with supported
+  `xiaoan.robot.*` tool calls.
+- `openclaw_send.ok=true` but robot does not move: inspect base-station `/agent`
+  and robot `/control` logs; `agent.ack` means forwarded, while robot-side
+  `command.ack` / `motion.completed` is the stronger hardware evidence.
 - Empty transcript: try speaking closer to the mic, increase `--duration`, or
   adjust `--speech-trim-threshold`.
 - Page does not open: check whether port `8766` is occupied; pass another
@@ -189,7 +286,13 @@ runtime/demo1_audio/demo1_usb_mic_*.wav
 4. `runtime/demo1_transcript.json` contains status, transcript, timestamp,
    device, source, and error fields.
 5. `runtime/demo1_transcript.txt` contains the latest recognized text.
-6. `runtime/demo1_openclaw_context.json` contains the context passed forward.
-7. `runtime/demo1_action_plan.json` contains the rule/OpenClaw fallback action plan.
-8. `http://localhost:8766` clearly displays the latest transcript.
-9. `runtime/demo1_transcript.log.jsonl` proves the state chain.
+6. `runtime/demo1_openclaw_context.json` contains the context passed to OpenClaw.
+7. `runtime/demo1_openclaw_result.json` contains the OpenClaw Gateway response,
+   validated tool calls, and ActionExecutor result.
+8. `runtime/demo1_action_plan.json` shows `route=openclaw_gateway` for the main
+   path; it must not pretend local rules made the main decision.
+9. `http://localhost:8766` clearly displays the latest transcript.
+10. `runtime/demo1_transcript.log.jsonl` proves the state chain.
+11. With robot online, OpenClaw-triggered actions produce `/agent` ack; final
+    hardware acceptance still requires robot-side `command.ack` and, for motion,
+    matching `motion.completed`.

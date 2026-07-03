@@ -9,7 +9,7 @@
 1. ESP32 `/control`：hello + heartbeat + capped 自动重连，重连后重发 `device.hello` — **split env H ✅**
 2. 基站下发 expression / motion / local audio → 机器人执行 + `command.ack`；motion 同步 `action_id` 并回 `motion.completed` — **split env H ✅**
 3. OV2640 → `/video` → 基站 `runtime/latest.jpg` → OpenVINO 情绪 — **传画 H ✅；OpenVINO 真实帧待接**
-4. （可选）mock ASR → OpenClaw → 主动关怀 Demo — **未做**
+4. base-station mic / mock text → ASR/context → OpenClaw Gateway → 主动关怀 Demo — **mock OpenClaw route P，real mic/robot H 待补**
 
 ## 进度总表
 
@@ -22,7 +22,7 @@
 | 主固件 `/video` `/audio` | ⬜ | DK-2500 联调放在 `robot/mergetesting`；robot-body 主固件不新增联调入口 |
 | **mergetesting split env 联调** | ✅ H | 2026-06-26 全部 split env 实机通过；详见 `08_priority_queue_results.json` |
 | **mergetesting 合并固件** | ✅ H | `mergetesting_full_face240` full env 通过 face240/speaker/camera/mic/motor H，2026-06-27 |
-| **OpenClaw Step 33 care-demo 实机 preflight** | ✅ H / demo 待跑 | `mergetesting_care_demo_face240` 通过 `/control` caring、短移、`audio.play_tts` mock、`care_01`；motor 校准为 speed=0.56 约 1s 走 10cm；Gateway `:18789` 未运行 |
+| **OpenClaw Step 33 care-demo 实机 preflight** | ✅ H / Demo 1 mock P | `mergetesting_care_demo_face240` 通过 `/control` caring、短移、`audio.play_tts` mock、`care_01`；motor 校准为 speed=0.56 约 1s 走 10cm；2026-07-03 OpenClaw Gateway `:18789` 已运行并在 Demo 1 mock route 返回 `xiaoan.robot.care` |
 | 电机 DRV8833 | ✅ H | isolated + mergetesting；LEDC 通道 4-7 修复后方向正确 |
 | 相机 OV2640 | ✅ H | mergetesting WS `/video` QVGA JPEG |
 | 128×160 TFT | ✅ | `display.cpp` |
@@ -85,7 +85,10 @@
 | **证据包整理 2026-07-01** | `report_evidence/` | 按“时间戳 / 环境 / 输入 / 处理 / 输出 / 结论 / 代码路径”格式整理 `/control`、`/video`、`/audio`、OpenClaw、主动关怀、私人助理、DK-2500 角色和问题修复证据；只使用现有 runtime/docs 证据，未新增实机运行 |
 | **Base-station mic 主线切换 2026-07-02** | `docs/current_status.md`, `docs/runbooks/main_demo_care_loop.md`, `base_station/README.md`, `base_station/monitor/README.md`, `docs/agents/04_base_station_agent_registry.md`, `docs/agents/05_test_matrix.md` | 9 天 demo 正式输入改为 DK-2500/base-station mic；robot `/audio` 保留为 fallback/diagnostics；目标闭环为 base mic -> ASR -> context -> OpenClaw/Agent -> `/control` -> ack/completed |
 | **Demo 1 USB mic 到 Agent screen 2026-07-02** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `docs/runbooks/demo1_usb_mic_to_agent_screen.md`, `tests/unit/test_demo1_usb_mic_to_agent_screen.py` | 最小闭环工具：DK-2500 USB mic fixed-window WAV -> 复用 `asr_runtime` -> `runtime/demo1_transcript.json` -> `http://localhost:8766`；mock fallback 明确标记 `source=mock` |
-| **Demo 1 mic 到自动动作计划 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `tools/demo/run_demo1_mic_to_robot.sh`, `runtime/demo1_openclaw_context.json`, `runtime/demo1_action_plan.json` | `--route-agent` 将 ASR/mock text 包装为 `asr.transcript` context，规则 fallback 对“累/困/小安/过来”生成 expression + motion + local `care_01` action plan，并通过 `/agent` 尝试转发到 `/control`；当前验证到 mock route + `/agent`->`/control` 集成测试，真实机器人 H 待联调 |
+| **Demo 1 local-rule 临时动作计划 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `runtime/demo1_openclaw_context.json`, `runtime/demo1_action_plan.json` | 早期 `--route-agent` 本地规则 fallback 曾用于快速验证 `/agent` 转发；现已降级为 legacy diagnostic，不是主 demo 路径。主路径见下方“Demo 1 真实 OpenClaw Gateway 路由” |
+| **Demo 1 OpenClaw context/action plan 收口 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `docs/runbooks/demo1_usb_mic_to_agent_screen.md`, `tests/unit/test_demo1_usb_mic_to_agent_screen.py` | 固定 `demo1.openclaw_context.v1` 与 `demo1.action_plan.v1` JSON；context 顶层包含 transcript/source/timestamp/robot_state/vision_context/last_action/demo_intent/allowed_actions；action plan 内置 allowed_actions + validation，发送前拒绝白名单外动作，将 OpenClaw 层 `left/right` 受控映射到底层 `/control` `turn`，并在 motion 间按 `timeout_ms` 等待避免互相打断；表情请求可生成 `display.expression`，`愤怒/生气/怒` 因协议无 angry 表情而记录 fallback 并映射到 `surprised` |
+| **Demo 1 表情协议一致性实机 H 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `base_station/ws_server/protocol.py`, `robot/mergetesting/src/protocol.h`, `robot/mergetesting/src/face240_display.cpp` | Demo 1 `allowed_actions` 表情收敛到 `/agent` Python enum 与 `robot/mergetesting` 固件共同支持集合；mock route 验证 `happy/caring/surprised/thinking` 均生成 `display.expression`、`agent.ack ok`，USB 串口确认固件收到 `/control` 且回 `command.ack display.expression -> ok`；`angry` 仍只作 `surprised` fallback，不作为主 demo |
+| **Demo 1 真实 OpenClaw Gateway 路由 2026-07-03** | `tools/demo/demo1_usb_mic_to_agent_screen.py`, `tools/demo/run_demo1_mic_to_robot.sh`, `runtime/demo1_openclaw_result.json`, `docs/status/2026-07-03.md` | 主脚本默认从 `--route-agent` 本地规则改为 `--route-openclaw`：ASR/mock transcript -> `demo1.openclaw_context.v1` -> `GatewayOpenClawAdapter` -> `ws://127.0.0.1:18789` / `xiaoan-runtime` -> `ActionExecutor` -> `/agent`。Mock 输入“小安，我有点累”已返回 `xiaoan.robot.care` 并执行 `display.expression`/`motion.execute`/`audio.play_tts` 的 `agent.ack ok`；真实 mic + robot-side `command.ack`/`motion.completed` 待补验收 |
 
 ## 硬件阻塞（剩余）
 

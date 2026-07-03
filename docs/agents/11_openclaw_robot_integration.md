@@ -11,9 +11,9 @@
 |------|-------------------|----------------------|---------------------|
 | 1 | `xiaoan.robot.expression` → caring | `display.expression` | ✅ T11 face240 / display |
 | 2 | `xiaoan.robot.move_out` | `motion.execute` action=`move_out_of_dock` | ✅ T12 motor |
-| 3 | `xiaoan.robot.say` | `audio.play_tts`（固件 mock tone） | ✅ T13 speaker（TTS mock） |
+| 3 | `xiaoan.robot.care` local audio step | `audio.play_local care_01` | ✅ T13 speaker local sound |
 
-**唯一差异：** 你单独测 local 音效时用 `audio.play_local` + `care_01`；OpenClaw care demo 默认走 **`audio.play_tts`**（带 `text_preview`），mergetesting 固件在 `command_router.cpp` 里用 `speaker_play_tts_mock()` 播放，不是 `care_01` 本地 wav。
+**2026-07-03 更新：** Demo 1 care tool 现在使用 **`audio.play_local care_01`** 作为可靠发声证据；OpenClaw `reply_text` / `xiaoan.robot.say` 仍可走 `audio.play_tts`，但不作为 Demo 1 主成功标准。
 
 ## 消息路径对比
 
@@ -44,7 +44,7 @@ emotion_runtime (fake_camera, tired)
 （OpenClaw + emotion_runtime 同上）
   → RobotGateway → /agent → /control
   → 真实 ESP32 mergetesting（**mergetesting_care_demo_face240** 推荐；或 full_face240）
-  → 屏幕 caring 表情 + 电机短距前移 + 喇叭 mock TTS 音
+  → 屏幕 caring 表情 + 电机短距前移 + 喇叭本地 care_01 音
 ```
 
 **Terminal 2 不要跑 `mock_robot.py`，改为烧录并上电 ESP32。**
@@ -77,9 +77,7 @@ python -m base_station.monitor.emotion_runtime `
 
 1. **表情**：2.4" 或 128×160 屏切到 **caring**（env 需开 display/face240）
 2. **电机**：**move_out_of_dock** 约 10cm 短移（2026-06-27 实测校准：speed=0.56，timeout≈1000-1200ms；0.56 才能可靠走出 base）
-3. **发声**：**audio.play_tts** → 固件 `speaker_play_tts_mock(text_preview)`，不是 care_01 文件
-
-若 OpenClaw 回复文本较长，TTS mock 会随 `text_preview` 播放；与 `local care_01` 音色可能不同。
+3. **发声**：**audio.play_local care_01** → 本地可靠音效；TTS 只作为可选文本通道，不作为 Demo 1 主成功标准。
 
 ## 与队友文档的关系
 
@@ -106,6 +104,6 @@ python -m unittest discover -s tests -p "test_*.py"
 
 - [x] merge fusion 分支到 mergetestint_robot
 - [ ] Step 33 mock 在你机器上 PASS
-- [ ] Step 33 **实机** tired demo（display + motor + TTS mock；T18 preflight H，Gateway `:18789` 待跑）
+- [ ] Step 33 **实机** tired demo（display + motor + local `care_01`；T18 preflight H，Gateway `:18789` 待跑）
 - [ ] Step 38 真实摄像头 + 实机（见 fusion `docs/testing/smoke/real_camera_emotion_smoke.md`）
 - [x] `mergetesting_full_face240` 合并 env 实机 H（T17，2026-06-27）

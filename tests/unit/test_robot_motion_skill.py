@@ -23,9 +23,13 @@ class FakeGateway:
         self.calls.append(("tts", text))
         return {"type": "agent.ack", "payload": {"ok": True, "forwarded_type": "audio.play_tts"}}
 
+    async def send_local_audio(self, audio_id: str, audio_url: str | None = None) -> dict:
+        self.calls.append(("local_audio", audio_id, audio_url))
+        return {"type": "agent.ack", "payload": {"ok": True, "forwarded_type": "audio.play_local"}}
+
 
 class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
-    async def test_care_for_user_runs_expression_motion_and_tts(self) -> None:
+    async def test_care_for_user_runs_expression_motion_and_local_audio(self) -> None:
         gateway = FakeGateway()
         skill = RobotMotionSkill(gateway=gateway)
 
@@ -35,7 +39,7 @@ class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gateway.calls, [
             ("expression", "caring", 3000, False),
             ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0}, 1200),
-            ("tts", "take a short break"),
+            ("local_audio", "care_01", None),
         ])
 
     async def test_run_keeps_compatibility_entry_point(self) -> None:

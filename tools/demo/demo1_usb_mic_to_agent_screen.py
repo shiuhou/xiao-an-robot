@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from copy import deepcopy
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import html
@@ -34,6 +35,7 @@ from agent.core.gateway_openclaw_adapter import (
     GatewayOpenClawAdapter,
 )
 from agent.core.openclaw_adapter import OpenClawDecision, OpenClawEvent
+from agent.core.xiaoan_tool_manifest import tool_manifest
 from agent.skills.robot_motion import RobotMotionSkill
 
 
@@ -71,7 +73,6 @@ MOTION_GATEWAY_ALIASES = {
 DEFAULT_TURN_ANGLE_DEG = 30.0
 EXPRESSION_REQUEST_KEYWORDS = ("表情", "表情包", "脸", "神情")
 EXPRESSION_KEYWORD_RULES = (
-    ("surprised", "unsupported_angry_expression_fallback", ("愤怒", "生气", "发怒", "怒")),
     ("happy", "happy_expression_keyword", ("开心", "高兴", "快乐", "笑", "happy")),
     ("sad", "sad_expression_keyword", ("伤心", "难过", "悲伤", "sad")),
     ("caring", "caring_expression_keyword", ("关心", "关怀", "温柔", "安慰", "caring")),
@@ -79,7 +80,17 @@ EXPRESSION_KEYWORD_RULES = (
     ("thinking", "thinking_expression_keyword", ("思考", "想", "thinking")),
     ("surprised", "surprised_expression_keyword", ("惊讶", "吃惊", "surprised")),
     ("sleeping", "sleeping_expression_keyword", ("睡觉", "睡眠", "sleeping")),
-    ("idle", "neutral_expression_keyword", ("普通", "默认", "中性", "neutral", "idle")),
+    ("idle", "idle_expression_keyword", ("普通", "默认", "idle")),
+)
+UNSUPPORTED_EXPRESSION_KEYWORDS = (
+    "愤怒",
+    "生气",
+    "发怒",
+    "怒",
+    "angry",
+    "calm",
+    "neutral",
+    "中性",
 )
 
 
@@ -114,16 +125,38 @@ def openclaw_tool_contract() -> dict[str, Any]:
             "xiaoan.robot.say",
         ],
         "allowed_expressions": list(ALLOWED_EXPRESSIONS),
-        "unsupported_expression_fallbacks": {
-            "angry": "surprised",
-            "calm": "caring",
-            "neutral": "idle",
-        },
         "notes": [
             "Demo 1 main path must let OpenClaw decide before local robot actions.",
             "Do not emit unsupported expressions; use allowed_expressions only.",
+            "Unsupported expressions must fail validation instead of being silently remapped.",
         ],
     }
+
+
+def demo1_openclaw_tool_manifest() -> list[dict[str, Any]]:
+    allowed = set(openclaw_tool_contract()["allowed_tools"])
+    ordered = list(openclaw_tool_contract()["allowed_tools"])
+    by_name = {str(item.get("name") or ""): deepcopy(item) for item in tool_manifest()}
+    filtered: list[dict[str, Any]] = []
+    for name in ordered:
+        if name not in allowed or name not in by_name:
+            continue
+        item = by_name[name]
+        if name == "xiaoan.robot.expression":
+            expression_spec = (
+                item.get("parameters", {})
+                .get("properties", {})
+                .get("expression")
+            )
+            if isinstance(expression_spec, dict):
+                expression_spec["enum"] = list(ALLOWED_EXPRESSIONS)
+                expression_spec["description"] = (
+                    "Allowed Demo 1 expression. One of: "
+                    + ", ".join(ALLOWED_EXPRESSIONS)
+                    + "."
+                )
+        filtered.append(item)
+    return filtered
 
 
 def build_no_decision_plan(route: str, reason: str) -> dict[str, Any]:
@@ -600,13 +633,37 @@ def detect_expression_request(text: str) -> tuple[str, str] | None:
     for expression, reason, keywords in EXPRESSION_KEYWORD_RULES:
         if any(keyword in text for keyword in keywords):
             return expression, reason
-    return "happy", "generic_expression_request"
+    return None
+
+
+def detect_unsupported_expression_request(text: str) -> str | None:
+    if not any(keyword in text for keyword in EXPRESSION_REQUEST_KEYWORDS):
+        return None
+    for keyword in UNSUPPORTED_EXPRESSION_KEYWORDS:
+        if keyword in text:
+            return keyword
+    return None
 
 
 def build_rule_action_plan(transcript: str) -> dict[str, Any]:
     text = transcript.strip()
     fatigue_keywords = ("累", "困", "疲劳", "疲勞", "低落", "烦", "煩", "陪陪")
     approach_keywords = ("过来", "過來", "来一下", "過來一下", "小安")
+    unsupported_expression = detect_unsupported_expression_request(text)
+    if unsupported_expression:
+        plan = {
+            "schema_version": ACTION_PLAN_SCHEMA_VERSION,
+            "demo_intent": DEMO_INTENT,
+            "timestamp": now_iso(),
+            "route": "demo1_rule_unsupported_expression",
+            "reason": f"unsupported_expression_keyword:{unsupported_expression}",
+            "handled": False,
+            "allowed_actions": allowed_actions_spec(),
+            "actions": [],
+        }
+        plan["validation"] = validate_action_plan(plan)
+        return plan
+
     expression_request = detect_expression_request(text)
     if expression_request:
         expression, reason = expression_request
@@ -722,6 +779,11 @@ def validate_openclaw_decision(decision: OpenClawDecision) -> dict[str, Any]:
     allowed_expressions = set(contract["allowed_expressions"])
     errors: list[str] = []
 
+    if not decision.handled:
+        errors.append("decision.handled must be true for Demo 1 main path")
+    if not decision.tool_calls:
+        errors.append("decision.tool_calls must be non-empty for Demo 1 main path")
+
     for index, tool_call in enumerate(decision.tool_calls):
         if tool_call.name not in allowed_tools:
             errors.append(f"tool_calls[{index}].name not allowed: {tool_call.name}")
@@ -732,6 +794,10 @@ def validate_openclaw_decision(decision: OpenClawDecision) -> dict[str, Any]:
                 errors.append(
                     f"tool_calls[{index}].arguments.expression not allowed: {expression}"
                 )
+        elif tool_call.name == "xiaoan.robot.say":
+            text = str(tool_call.arguments.get("text") or "").strip()
+            if not text:
+                errors.append(f"tool_calls[{index}].arguments.text is required")
 
     return {
         "ok": not errors,
@@ -739,6 +805,111 @@ def validate_openclaw_decision(decision: OpenClawDecision) -> dict[str, Any]:
         "allowed_tools": sorted(allowed_tools),
         "allowed_expressions": sorted(allowed_expressions),
     }
+
+
+def _executed_tool_call_actions(execution: dict[str, Any]) -> list[dict[str, Any]]:
+    actions = execution.get("executed_actions")
+    if not isinstance(actions, list):
+        return []
+    return [
+        action
+        for action in actions
+        if isinstance(action, dict) and action.get("source") == "tool_call"
+    ]
+
+
+def openclaw_execution_ok(execution: dict[str, Any]) -> bool:
+    skipped = execution.get("skipped_actions")
+    return (
+        not bool(execution.get("openclaw_error"))
+        and bool(_executed_tool_call_actions(execution))
+        and not bool(skipped)
+    )
+
+
+def validate_main_openclaw_artifacts(
+    *,
+    transcript: str,
+    context: dict[str, Any],
+    action_plan: dict[str, Any],
+    openclaw_result: dict[str, Any],
+    expected_gateway_url: str = DEFAULT_OPENCLAW_GATEWAY_URL,
+    expected_agent: str = DEFAULT_OPENCLAW_AGENT,
+    require_robot_execution: bool = True,
+) -> dict[str, Any]:
+    errors: list[str] = []
+
+    if context.get("schema_version") != OPENCLAW_CONTEXT_SCHEMA_VERSION:
+        errors.append("context.schema_version must be demo1.openclaw_context.v1")
+    if context.get("event_type") != "asr.transcript":
+        errors.append("context.event_type must be asr.transcript")
+    if context.get("source") != CONTEXT_SOURCE:
+        errors.append("context.source must be base_station_mic")
+    if context.get("transcript") != transcript:
+        errors.append("context.transcript must equal transcript")
+
+    route = action_plan.get("route")
+    if route != "openclaw_gateway":
+        errors.append(f"action_plan.route must be openclaw_gateway, got {route}")
+    if action_plan.get("reason") != "openclaw_decision_owner":
+        errors.append("action_plan.reason must be openclaw_decision_owner")
+    if action_plan.get("actions") != []:
+        errors.append("action_plan.actions must be empty on the OpenClaw-owned main path")
+    if isinstance(route, str) and (route.startswith("demo1_rule_") or route == "legacy_rule_agent"):
+        errors.append("local rule route cannot be Demo 1 main success evidence")
+
+    if openclaw_result.get("attempted") is not True:
+        errors.append("openclaw_result.attempted must be true")
+    if openclaw_result.get("ok") is not True:
+        errors.append("openclaw_result.ok must be true")
+    if openclaw_result.get("gateway_url") != expected_gateway_url:
+        errors.append("openclaw_result.gateway_url mismatch")
+    if openclaw_result.get("agent") != expected_agent:
+        errors.append("openclaw_result.agent mismatch")
+
+    event = openclaw_result.get("event")
+    if not isinstance(event, dict):
+        errors.append("openclaw_result.event must be an object")
+        event = {}
+    if event.get("text") != transcript:
+        errors.append("openclaw_result.event.text must equal transcript")
+    if event.get("source") != CONTEXT_SOURCE:
+        errors.append("openclaw_result.event.source must be base_station_mic")
+
+    decision = openclaw_result.get("decision")
+    if not isinstance(decision, dict):
+        errors.append("openclaw_result.decision must be an object")
+        decision = {}
+    if decision.get("handled") is not True:
+        errors.append("openclaw_result.decision.handled must be true")
+    tool_calls = decision.get("tool_calls")
+    if not isinstance(tool_calls, list) or not tool_calls:
+        errors.append("openclaw_result.decision.tool_calls must be non-empty")
+
+    decision_validation = openclaw_result.get("decision_validation")
+    if not isinstance(decision_validation, dict):
+        errors.append("openclaw_result.decision_validation must be an object")
+        decision_validation = {}
+    if decision_validation.get("ok") is not True:
+        errors.append("openclaw_result.decision_validation.ok must be true")
+
+    execution = openclaw_result.get("execution")
+    if not isinstance(execution, dict):
+        errors.append("openclaw_result.execution must be an object")
+        execution = {}
+    executed_actions = execution.get("executed_actions")
+    decision_only = execution.get("mode") == "openclaw_decision_only"
+    if require_robot_execution:
+        if not isinstance(executed_actions, list) or not executed_actions:
+            errors.append("openclaw_result.execution.executed_actions must be non-empty")
+        if not _executed_tool_call_actions(execution):
+            errors.append("execution must include at least one executed tool_call action")
+        if execution.get("skipped_actions"):
+            errors.append("execution.skipped_actions must be empty for main success")
+    elif not decision_only and not _executed_tool_call_actions(execution):
+        errors.append("execution must be openclaw_decision_only or include an executed tool_call action")
+
+    return {"ok": not errors, "errors": errors}
 
 
 async def send_action_plan_to_agent(plan: dict[str, Any], gateway_url: str) -> dict[str, Any]:
@@ -820,10 +991,8 @@ async def send_transcript_to_openclaw(
         agent=args.openclaw_agent,
         timeout_sec=float(args.openclaw_timeout_sec),
         gateway_token=args.openclaw_gateway_token,
+        tools=demo1_openclaw_tool_manifest(),
     )
-    gateway = RobotGateway(url=args.gateway_url)
-    executor = ActionExecutor(RobotMotionSkill(gateway=gateway), memory_store=None)
-
     decision = await asyncio.to_thread(adapter.handle_event, event)
     decision_validation = validate_openclaw_decision(decision)
     if not decision_validation["ok"]:
@@ -846,10 +1015,43 @@ async def send_transcript_to_openclaw(
         write_json_artifact(args.openclaw_result_path, result)
         return result
 
+    if getattr(args, "openclaw_decision_only", False):
+        execution = {
+            "handled": False,
+            "mode": "openclaw_decision_only",
+            "robot_execution_skipped": True,
+            "skipped_actions": [
+                {
+                    "name": tool_call.name,
+                    "source": "tool_call",
+                    "reason": "openclaw_decision_only",
+                    "arguments": tool_call.arguments,
+                }
+                for tool_call in decision.tool_calls
+            ],
+            "executed_actions": [],
+            "openclaw_error": None,
+        }
+        result = {
+            "attempted": True,
+            "ok": True,
+            "gateway_url": args.openclaw_gateway_url,
+            "agent": args.openclaw_agent,
+            "session_id": args.openclaw_session_id,
+            "event": event.to_dict(),
+            "decision": decision.to_dict(),
+            "decision_validation": decision_validation,
+            "execution": execution,
+        }
+        write_json_artifact(args.openclaw_result_path, result)
+        return result
+
+    gateway = RobotGateway(url=args.gateway_url)
+    executor = ActionExecutor(RobotMotionSkill(gateway=gateway), memory_store=None)
     execution = await executor.execute(decision, source_event_type="asr.transcript")
     result = {
         "attempted": True,
-        "ok": bool(decision.handled) and not bool(execution.get("openclaw_error")),
+        "ok": bool(decision.handled) and openclaw_execution_ok(execution),
         "gateway_url": args.openclaw_gateway_url,
         "agent": args.openclaw_agent,
         "session_id": args.openclaw_session_id,
@@ -1301,6 +1503,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Main Demo 1 path: send ASR context to real OpenClaw Gateway before robot execution.",
     )
     parser.add_argument(
+        "--openclaw-decision-only",
+        action="store_true",
+        help=(
+            "Test-only mode for --route-openclaw: validate real OpenClaw tool_calls "
+            "and skip base_station /agent robot execution."
+        ),
+    )
+    parser.add_argument(
         "--route-agent",
         action="store_true",
         help="Legacy local-rule route. Not the main OpenClaw demo path.",
@@ -1346,6 +1556,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.route_openclaw and args.route_agent:
         parser.error("--route-openclaw and --route-agent are mutually exclusive")
+    if args.openclaw_decision_only and not args.route_openclaw:
+        parser.error("--openclaw-decision-only requires --route-openclaw")
     display_host = "localhost" if args.host in {"127.0.0.1", "0.0.0.0"} else args.host
     args.screen_url = f"http://{display_host}:{args.port}"
     return args

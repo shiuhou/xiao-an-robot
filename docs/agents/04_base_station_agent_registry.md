@@ -112,7 +112,7 @@
 | 脚本 | 用途 | 状态 |
 |------|------|------|
 | `send_robot_command.py` | CLI → `/agent` → 机器人 expression/motion/local audio | ✅ |
-| `demo/demo1_usb_mic_to_agent_screen.py` | Demo 1 DK-2500/base mic -> ASR transcript -> fixed OpenClaw context -> real OpenClaw Gateway `xiaoan-runtime` -> ActionExecutor -> `/agent` route; legacy local-rule `--route-agent` remains diagnostic only | P/H partial: 2026-07-03 unit tests pass; mock `--route-openclaw` with “小安，我有点累” returned `xiaoan.robot.care` and executed `display.expression`/`motion.execute`/`audio.play_tts` through `/agent` ack ok; expression subpath earlier reached real `robot/mergetesting_full_face240` with serial `command.ack display.expression -> ok`; real mic OpenClaw route + robot-side `command.ack`/`motion.completed` still pending |
+| `demo/demo1_usb_mic_to_agent_screen.py` | Demo 1 DK-2500/base mic -> ASR transcript -> fixed OpenClaw context -> filtered Demo 1 OpenClaw tool manifest -> real OpenClaw Gateway `xiaoan-runtime` -> strict tool_call validation -> ActionExecutor -> `/agent` route; legacy local-rule `--route-agent` remains diagnostic only | P/H partial: 2026-07-03 unit tests pass; mock transcript with `--route-openclaw` and “小安，我有点累” went through real OpenClaw Gateway / `xiaoan-runtime` and returned `xiaoan.robot.care`; care tool now executes `display.expression`/`motion.execute`/`audio.play_local care_01`; robot-side expression/motion ack and `motion.completed` observed, but local audio returned `AUDIO_UNSUPPORTED speaker not ready`; real mic ASR quality still needs dedicated hardware pass |
 | `run_integration_loop.py` | 联调 loop 编排 | 🟡 |
 | `run_ws_video_runtime.py` | WS `/video` 运行时探测 | 🟡 |
 | `send_test_video_frame.py` | 注入测试 JPEG 帧 | 🧪 |

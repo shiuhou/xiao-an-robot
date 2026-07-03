@@ -129,9 +129,25 @@ Allowed expression values are:
 happy, sad, caring, tired, thinking, speaking, idle, surprised, sleeping
 ```
 
-If OpenClaw returns an unsupported tool or expression, the script records a
-validation failure in `runtime/demo1_openclaw_result.json` and does not silently
-fall back to local rules.
+For Demo 1 the script sends OpenClaw a filtered tool manifest containing only:
+
+```text
+xiaoan.robot.expression
+xiaoan.robot.care
+xiaoan.robot.move_out
+xiaoan.robot.say
+```
+
+If OpenClaw returns only `reply_text`, an unsupported tool, or an unsupported
+expression, the script records a validation failure in
+`runtime/demo1_openclaw_result.json` and does not silently fall back to local
+rules. On the full route, `openclaw_send.ok=true` requires at least one
+validated OpenClaw `tool_call` to execute through `ActionExecutor`.
+
+For the care companion demo, `xiaoan.robot.care` expands locally to caring
+expression, short `move_out_of_dock`, and reliable `audio.play_local care_01`.
+`xiaoan.robot.say` / `audio.play_tts` is allowed as a text channel, but it is
+not the reliable audible proof.
 
 The old `--route-agent` path still exists only for legacy diagnostics. It builds
 a local rule action plan and sends that plan through `/agent`; do not treat it
@@ -212,7 +228,32 @@ Successful output should include:
 route_mode: openclaw
 openclaw_send.ok: true
 decision.tool_calls: xiaoan.robot.care
-execution.executed_actions: robot.say and xiaoan.robot.care
+execution.executed_actions: at least one source=tool_call action
+```
+
+When the base-station `/agent` route or robot network is intentionally not part
+of the test, use the OpenClaw decision-only test route:
+
+```bash
+.venv/bin/python tools/demo/demo1_usb_mic_to_agent_screen.py \
+  --mock-text "小安，我有点累" \
+  --route-openclaw \
+  --openclaw-decision-only \
+  --once \
+  --no-screen
+```
+
+This still calls the real OpenClaw Gateway and validates returned `tool_calls`,
+but it does not connect to `ws://127.0.0.1:8765/agent` and it is not robot
+execution evidence. Successful decision-only output should include:
+
+```text
+route_mode: openclaw
+openclaw_send.ok: true
+decision.tool_calls: xiaoan.robot.care
+execution.mode: openclaw_decision_only
+execution.robot_execution_skipped: true
+execution.executed_actions: []
 ```
 
 ## Screen Page

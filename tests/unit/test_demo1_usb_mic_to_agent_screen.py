@@ -14,12 +14,16 @@ from tools.demo.demo1_usb_mic_to_agent_screen import (
     build_rule_action_plan,
     build_state,
     choose_input_device,
+    demo1_openclaw_tool_manifest,
     detect_expression_request,
+    detect_unsupported_expression_request,
     load_state,
     normalize_motion_for_gateway,
+    openclaw_execution_ok,
     parse_arecord_devices,
     post_motion_delay_seconds,
     recording_sample_rate,
+    validate_main_openclaw_artifacts,
     validate_openclaw_decision,
     validate_action_plan,
     write_transcript_text,
@@ -158,6 +162,41 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
             context["openclaw_tool_contract"]["decision_owner"],
             "openclaw_xiaoan_runtime",
         )
+        self.assertNotIn("unsupported_expression_fallbacks", context["openclaw_tool_contract"])
+
+    def test_demo1_openclaw_tool_manifest_is_demo_whitelist(self) -> None:
+        manifest = demo1_openclaw_tool_manifest()
+        names = [item["name"] for item in manifest]
+
+        self.assertEqual(
+            names,
+            [
+                "xiaoan.robot.expression",
+                "xiaoan.robot.care",
+                "xiaoan.robot.move_out",
+                "xiaoan.robot.say",
+            ],
+        )
+        self.assertNotIn("xiaoan.breathing.start", names)
+        expression_tool = next(item for item in manifest if item["name"] == "xiaoan.robot.expression")
+        expression_spec = expression_tool["parameters"]["properties"]["expression"]
+        self.assertEqual(
+            expression_spec["enum"],
+            [
+                "happy",
+                "sad",
+                "caring",
+                "tired",
+                "thinking",
+                "speaking",
+                "idle",
+                "surprised",
+                "sleeping",
+            ],
+        )
+        self.assertNotIn("angry", expression_spec["enum"])
+        self.assertNotIn("calm", expression_spec["enum"])
+        self.assertNotIn("neutral", expression_spec["enum"])
 
     def test_build_openclaw_asr_event_uses_base_station_mic_source(self) -> None:
         context = build_openclaw_context(transcript="小安，我有点累", source="asr")
@@ -192,6 +231,71 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
             validation["errors"],
         )
 
+    def test_validate_openclaw_decision_rejects_reply_text_only(self) -> None:
+        decision = OpenClawDecision(
+            handled=True,
+            reply_text="听见了，我来陪你。",
+            tool_calls=[],
+        )
+
+        validation = validate_openclaw_decision(decision)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn(
+            "decision.tool_calls must be non-empty for Demo 1 main path",
+            validation["errors"],
+        )
+
+    def test_validate_openclaw_decision_rejects_unhandled_result(self) -> None:
+        decision = OpenClawDecision(
+            handled=False,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.care",
+                    arguments={},
+                )
+            ],
+        )
+
+        validation = validate_openclaw_decision(decision)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn(
+            "decision.handled must be true for Demo 1 main path",
+            validation["errors"],
+        )
+
+    def test_validate_openclaw_decision_rejects_say_without_text(self) -> None:
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.say",
+                    arguments={},
+                )
+            ],
+        )
+
+        validation = validate_openclaw_decision(decision)
+
+        self.assertFalse(validation["ok"])
+        self.assertIn("tool_calls[0].arguments.text is required", validation["errors"])
+
+    def test_validate_openclaw_decision_accepts_care_tool_call(self) -> None:
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.care",
+                    arguments={"reason": "user_fatigue_requested_care"},
+                )
+            ],
+        )
+
+        validation = validate_openclaw_decision(decision)
+
+        self.assertTrue(validation["ok"])
+
     def test_build_rule_action_plan_for_fatigue_text(self) -> None:
         plan = build_rule_action_plan("小安，我有点累")
 
@@ -221,17 +325,18 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
         self.assertEqual(plan["actions"][0]["name"], "display.expression")
         self.assertEqual(plan["actions"][0]["arguments"]["expression"], "happy")
 
-    def test_build_rule_action_plan_maps_unsupported_angry_to_surprised(self) -> None:
+    def test_build_rule_action_plan_rejects_unsupported_angry_expression(self) -> None:
         plan = build_rule_action_plan("给我换一个愤怒的表情包怒的情包")
 
-        self.assertTrue(plan["handled"])
-        self.assertEqual(plan["route"], "demo1_rule_expression")
-        self.assertEqual(plan["reason"], "unsupported_angry_expression_fallback")
-        self.assertEqual(plan["actions"][0]["arguments"]["expression"], "surprised")
+        self.assertFalse(plan["handled"])
+        self.assertEqual(plan["route"], "demo1_rule_unsupported_expression")
+        self.assertEqual(plan["reason"], "unsupported_expression_keyword:愤怒")
+        self.assertEqual(plan["actions"], [])
         self.assertTrue(plan["validation"]["ok"])
 
     def test_detect_expression_request_requires_expression_keyword(self) -> None:
         self.assertIsNone(detect_expression_request("我有点生气"))
+        self.assertEqual(detect_unsupported_expression_request("换一个 neutral 表情"), "neutral")
         self.assertEqual(
             detect_expression_request("切换到惊讶表情"),
             ("surprised", "surprised_expression_keyword"),
@@ -262,6 +367,165 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
 
         self.assertFalse(validation["ok"])
         self.assertIn("actions[1].arguments.action not allowed: turn", validation["errors"])
+
+    def test_openclaw_execution_ok_requires_tool_call_action(self) -> None:
+        reply_only_execution = {
+            "executed_actions": [
+                {
+                    "name": "robot.say",
+                    "source": "reply_text",
+                    "arguments": {"text": "听见了"},
+                }
+            ],
+            "skipped_actions": [],
+        }
+        tool_execution = {
+            "executed_actions": [
+                {
+                    "name": "xiaoan.robot.care",
+                    "source": "tool_call",
+                    "arguments": {},
+                }
+            ],
+            "skipped_actions": [],
+        }
+
+        self.assertFalse(openclaw_execution_ok(reply_only_execution))
+        self.assertTrue(openclaw_execution_ok(tool_execution))
+        self.assertFalse(openclaw_execution_ok({**tool_execution, "skipped_actions": [{"name": "x"}]}))
+
+    def test_validate_main_openclaw_artifacts_accepts_gateway_route(self) -> None:
+        transcript = "小安，我有点累"
+        context = build_openclaw_context(transcript=transcript, source="mock")
+        action_plan = {
+            "route": "openclaw_gateway",
+            "reason": "openclaw_decision_owner",
+            "actions": [],
+        }
+        result = {
+            "attempted": True,
+            "ok": True,
+            "gateway_url": "ws://127.0.0.1:18789",
+            "agent": "xiaoan-runtime",
+            "event": {"text": transcript, "source": "base_station_mic"},
+            "decision": {
+                "handled": True,
+                "tool_calls": [{"name": "xiaoan.robot.care", "arguments": {}}],
+            },
+            "decision_validation": {"ok": True, "errors": []},
+            "execution": {
+                "executed_actions": [
+                    {"name": "xiaoan.robot.care", "source": "tool_call", "arguments": {}}
+                ],
+                "skipped_actions": [],
+            },
+        }
+
+        validation = validate_main_openclaw_artifacts(
+            transcript=transcript,
+            context=context,
+            action_plan=action_plan,
+            openclaw_result=result,
+        )
+
+        self.assertTrue(validation["ok"], validation["errors"])
+
+    def test_validate_main_openclaw_artifacts_accepts_decision_only_when_requested(self) -> None:
+        transcript = "小安，我有点累"
+        context = build_openclaw_context(transcript=transcript, source="mock")
+        action_plan = {
+            "route": "openclaw_gateway",
+            "reason": "openclaw_decision_owner",
+            "actions": [],
+        }
+        result = {
+            "attempted": True,
+            "ok": True,
+            "gateway_url": "ws://127.0.0.1:18789",
+            "agent": "xiaoan-runtime",
+            "event": {"text": transcript, "source": "base_station_mic"},
+            "decision": {
+                "handled": True,
+                "tool_calls": [{"name": "xiaoan.robot.care", "arguments": {}}],
+            },
+            "decision_validation": {"ok": True, "errors": []},
+            "execution": {
+                "mode": "openclaw_decision_only",
+                "robot_execution_skipped": True,
+                "executed_actions": [],
+                "skipped_actions": [
+                    {
+                        "name": "xiaoan.robot.care",
+                        "source": "tool_call",
+                        "reason": "openclaw_decision_only",
+                        "arguments": {},
+                    }
+                ],
+                "openclaw_error": None,
+            },
+        }
+
+        full_validation = validate_main_openclaw_artifacts(
+            transcript=transcript,
+            context=context,
+            action_plan=action_plan,
+            openclaw_result=result,
+        )
+        decision_only_validation = validate_main_openclaw_artifacts(
+            transcript=transcript,
+            context=context,
+            action_plan=action_plan,
+            openclaw_result=result,
+            require_robot_execution=False,
+        )
+
+        self.assertFalse(full_validation["ok"])
+        self.assertIn(
+            "openclaw_result.execution.executed_actions must be non-empty",
+            full_validation["errors"],
+        )
+        self.assertTrue(decision_only_validation["ok"], decision_only_validation["errors"])
+
+    def test_validate_main_openclaw_artifacts_rejects_local_rule_and_empty_tools(self) -> None:
+        transcript = "小安，我有点累"
+        context = build_openclaw_context(transcript=transcript, source="mock")
+        action_plan = build_rule_action_plan(transcript)
+        result = {
+            "attempted": True,
+            "ok": True,
+            "gateway_url": "ws://127.0.0.1:18789",
+            "agent": "xiaoan-runtime",
+            "event": {"text": transcript, "source": "base_station_mic"},
+            "decision": {"handled": True, "tool_calls": []},
+            "decision_validation": {"ok": True, "errors": []},
+            "execution": {
+                "executed_actions": [
+                    {"name": "robot.say", "source": "reply_text", "arguments": {"text": "收到"}}
+                ],
+                "skipped_actions": [],
+            },
+        }
+
+        validation = validate_main_openclaw_artifacts(
+            transcript=transcript,
+            context=context,
+            action_plan=action_plan,
+            openclaw_result=result,
+        )
+
+        self.assertFalse(validation["ok"])
+        self.assertIn(
+            "action_plan.route must be openclaw_gateway, got demo1_rule_care",
+            validation["errors"],
+        )
+        self.assertIn(
+            "openclaw_result.decision.tool_calls must be non-empty",
+            validation["errors"],
+        )
+        self.assertIn(
+            "execution must include at least one executed tool_call action",
+            validation["errors"],
+        )
 
     def test_normalize_motion_for_gateway_maps_allowed_direction_to_protocol_turn(self) -> None:
         action, params = normalize_motion_for_gateway(

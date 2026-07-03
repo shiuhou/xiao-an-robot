@@ -26,7 +26,8 @@ Code source: `agent/core/xiaoan_tool_manifest.py`.
 
 - Purpose: show a named facial expression on the robot display.
 - Parameters:
-  - `expression` string, required. Example: `neutral`, `happy`, `caring`, `calm`.
+  - `expression` string, required. Allowed values: `happy`, `sad`, `caring`,
+    `tired`, `thinking`, `speaking`, `idle`, `surprised`, `sleeping`.
   - `duration_ms` integer, optional.
   - `loop` boolean, optional.
 - Success:
@@ -55,9 +56,11 @@ Code source: `agent/core/xiaoan_tool_manifest.py`.
 
 ### `xiaoan.robot.care`
 
-- Purpose: run Xiao An's local active-care sequence.
+- Purpose: run Xiao An's local active-care sequence: caring expression, short
+  move-out motion, and local `care_01` audio.
 - Parameters:
-  - `text` string, optional. Short care message to speak.
+  - `text` string, optional. Care text metadata; Demo 1 audio proof uses local
+    `care_01`, not spoken TTS.
   - `reply_text` string, optional. Decision reply text associated with this care action.
   - `reason` string, optional. Reason code for the care action.
 - Success:

@@ -38,7 +38,18 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "expression": {
                     "type": "string",
-                    "description": "Expression name such as neutral, happy, caring, calm.",
+                    "enum": [
+                        "happy",
+                        "sad",
+                        "caring",
+                        "tired",
+                        "thinking",
+                        "speaking",
+                        "idle",
+                        "surprised",
+                        "sleeping",
+                    ],
+                    "description": "Supported robot expression name.",
                 },
                 "duration_ms": {
                     "type": "integer",

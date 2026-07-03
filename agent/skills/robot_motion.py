@@ -71,7 +71,7 @@ class RobotMotionSkill:
 
     async def show_expression(
         self,
-        expression: str = "neutral",
+        expression: str = "idle",
         duration_ms: int = 3000,
         loop: bool = False,
     ) -> dict:
@@ -128,7 +128,7 @@ class RobotMotionSkill:
             distance_cm=distance_cm,
             timeout_ms=timeout_ms,
         ))
-        results.append(await self.say(text))
+        results.append(await self.gateway.send_local_audio("care_01"))
         return results
 
     async def run(self, action: str, params: dict | None = None):

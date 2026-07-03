@@ -122,8 +122,12 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([message["type"] for message in robot_messages], [
             "display.expression",
             "motion.execute",
-            "audio.play_tts",
+            "audio.play_local",
         ])
+        self.assertEqual(
+            robot_messages[2]["payload"].get("audio_id") or robot_messages[2]["payload"].get("sound"),
+            "care_01",
+        )
 
     async def test_xiaoan_robot_care_tool_call_forwards_commands_and_records_tool_run(self) -> None:
         executor = ActionExecutor(
@@ -152,14 +156,17 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([message["type"] for message in robot_messages], [
             "display.expression",
             "motion.execute",
-            "audio.play_tts",
+            "audio.play_local",
         ])
         self.assertEqual(robot_messages[0]["payload"]["expression"], "caring")
         self.assertEqual(robot_messages[1]["payload"]["action"], "move_out_of_dock")
         self.assertEqual(robot_messages[1]["payload"]["params"]["speed"], 0.56)
         self.assertEqual(robot_messages[1]["payload"]["params"]["distance_cm"], 10.0)
         self.assertEqual(robot_messages[1]["payload"]["timeout_ms"], 1200)
-        self.assertIn(CARE_TEXT, robot_messages[2]["payload"]["text_preview"])
+        self.assertEqual(
+            robot_messages[2]["payload"].get("audio_id") or robot_messages[2]["payload"].get("sound"),
+            "care_01",
+        )
         self.assertEqual(len(tool_runs), 1)
         self.assertEqual(tool_runs[0]["status"], "success")
         self.assertEqual(tool_runs[0]["source_event_type"], "frontend.message")

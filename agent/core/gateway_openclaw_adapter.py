@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 import json
 import os
 import re
@@ -29,11 +30,13 @@ class GatewayOpenClawAdapter:
         agent: str = DEFAULT_OPENCLAW_AGENT,
         timeout_sec: float = DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC,
         gateway_token: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> None:
         self.gateway_url = str(gateway_url)
         self.agent = str(agent or DEFAULT_OPENCLAW_AGENT)
         self.timeout_sec = float(timeout_sec)
         self.gateway_token = gateway_token
+        self.tools = deepcopy(tools) if tools is not None else None
 
     def handle_event(self, event: OpenClawEvent) -> OpenClawDecision:
         try:
@@ -56,7 +59,7 @@ class GatewayOpenClawAdapter:
             "type": "xiaoan.event",
             "agent": self.agent,
             "event": event.to_dict(),
-            "tools": tool_manifest(),
+            "tools": deepcopy(self.tools) if self.tools is not None else tool_manifest(),
         }
 
     async def _send_event(self, event: OpenClawEvent) -> dict[str, Any]:

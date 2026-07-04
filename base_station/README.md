@@ -13,6 +13,7 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 | `monitor/` | Emotion runtime, base-mic ASR event target, ASR runtime helpers, context builder, SQLite local event store. See `monitor/README.md` for deprecated surfaces. |
 | `api/` | Local debug API for frontend/runtime inspection; not the main product API. See `api/README.md`. |
 | `dashboard/` | Standalone 7-inch Dock dashboard at `/dashboard` with `/api/dashboard/state`. See `dashboard/README.md`. |
+| `integration_console/` | Hardware bring-up Integration Console at `/console`; manual control, state aggregation, tools, scenarios, and log export. |
 | `models/` | Local model placement area; large models should not be committed. |
 | `config.example.yaml` | Safe template for runtime config. |
 
@@ -31,6 +32,14 @@ python -m base_station.dashboard.dashboard_server
 ```
 
 Open `http://127.0.0.1:8088/dashboard`.
+
+Run the local Integration Console:
+
+```powershell
+python -m base_station.integration_console.console_server --host 0.0.0.0 --port 8090 --ws-url ws://127.0.0.1:8765/agent --runtime-dir runtime
+```
+
+Open `http://<DK2500-IP>:8090/console`.
 
 Expected robot behavior:
 
@@ -77,6 +86,7 @@ Use `config.example.yaml` as the shareable template.
 
 - [../docs/current_status.md](../docs/current_status.md)
 - [../docs/runbooks/base_station_dashboard.md](../docs/runbooks/base_station_dashboard.md)
+- [../docs/runbooks/integration_console.md](../docs/runbooks/integration_console.md)
 - [../docs/agents/04_base_station_agent_registry.md](../docs/agents/04_base_station_agent_registry.md)
 - [../docs/setup/dk2500_deployment.md](../docs/setup/dk2500_deployment.md)
 - [../docs/runbooks/main_demo_care_loop.md](../docs/runbooks/main_demo_care_loop.md)

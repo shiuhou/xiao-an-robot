@@ -62,5 +62,6 @@ For the latest full hardware/OpenClaw status, start from [current_status.md](cur
 | [setup/hardware_setup.md](setup/hardware_setup.md) | Hardware wiring bring-up order and target-side checks. |
 | [setup/local_api.md](setup/local_api.md) | Local HTTP API routes for the debug console. |
 | [runbooks/base_station_dashboard.md](runbooks/base_station_dashboard.md) | 7-inch Dock dashboard operation and acceptance notes. |
+| [runbooks/integration_console.md](runbooks/integration_console.md) | DK-2500 Integration Console for hardware bring-up, manual robot control, scenarios, tools, and log export. |
 | [runbooks/git_hygiene.md](runbooks/git_hygiene.md) | Git cleanup audit commands and keep/untrack guidance. |
 | [setup/m600_deployment.md](setup/m600_deployment.md) | Morefine M600 base-station bring-up note. |

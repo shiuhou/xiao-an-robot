@@ -35,6 +35,18 @@
 入口：`http://127.0.0.1:8088/dashboard`
 测试：`python -m unittest tests.unit.test_dashboard_server`
 
+### Integration Console — `base_station/integration_console/`
+
+| 路径 | 状态 | 说明 |
+|------|------|------|
+| `console_server.py` | P | stdlib HTTP server；`/console`、`/api/health`、`/api/state`、机器人命令 API、场景 runner、工具白名单、日志和导出。验证：2026-07-04 targeted unittest PASS。 |
+| `static/index.html/css/js` | P | 中文硬件联调 UI；STOP ALL 常驻、状态 chips、机器人控制、相机/音频、Agent/tool、场景、日志面板。验证：2026-07-04 `node --check base_station/integration_console/static/app.js` PASS。 |
+| `README.md` | P | 启动、API、安全边界说明。 |
+
+启动：`python -m base_station.integration_console.console_server --host 0.0.0.0 --port 8090`
+入口：`http://<DK2500-IP>:8090/console`
+测试：`python -m unittest tests.unit.test_integration_console_server tests.unit.test_ws_state_snapshot`
+
 ### Perception — `base_station/perception/`
 
 | 文件 | 状态 | 说明 |

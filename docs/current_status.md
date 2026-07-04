@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-03
+Last updated: 2026-07-04
 Branch: `0703` local integration branch
 
 ## Main Demo Path
@@ -38,6 +38,7 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 | Speaker | Local speaker minimal loop passed for `audio.play_local care_01` and `success_ding`; complete care sequence still needs audio-channel sequencing when TTS and local sound are sent back to back |
 | TTS | Real spoken TTS is not the reliable demo proof yet; avoid sending TTS immediately before local sound until audio-channel readiness is stabilized |
 | Dock dashboard | `python -m base_station.dashboard.dashboard_server` serves the 1024x600 kiosk dashboard at `/dashboard` |
+| Integration Console | `python -m base_station.integration_console.console_server --host 0.0.0.0 --port 8090` serves the hardware bring-up console at `/console`; software tests cover health/state/command payloads/scenario sequencing/tool guardrails, real hardware validation still pending |
 
 Evidence:
 
@@ -125,6 +126,12 @@ Dock dashboard:
 
 ```powershell
 python -m base_station.dashboard.dashboard_server
+```
+
+Integration Console:
+
+```powershell
+python -m base_station.integration_console.console_server --host 0.0.0.0 --port 8090 --ws-url ws://127.0.0.1:8765/agent --runtime-dir runtime
 ```
 
 General verification:

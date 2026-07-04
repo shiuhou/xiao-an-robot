@@ -15,8 +15,10 @@ import logging
 import os
 import time
 import uuid
+from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
@@ -48,6 +50,8 @@ logger = logging.getLogger("ws_server")
 sessions: Dict[str, dict] = {}
 video_frame_source = None
 audio_runtime_dir = Path("runtime")
+ws_runtime_dir = Path("runtime")
+server_started_at = time.time()
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
 MIN_SAFE_SPEED = 0.52
 MAX_SAFE_SPEED = 0.56
@@ -64,6 +68,137 @@ CONTROL_TTS_CHUNK_BYTES = 512
 CONTROL_TTS_START_DELAY_SECONDS = 0.2
 CONTROL_TTS_STREAM_ENV = "XIAOAN_CONTROL_TTS_STREAM"
 TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(tmp_path, path)
+
+
+def _empty_ws_state() -> dict[str, Any]:
+    return {
+        "updated_at": _now_iso(),
+        "server_started_at": datetime.fromtimestamp(server_started_at, timezone.utc).isoformat(),
+        "online_devices": [],
+        "selected_device_id": None,
+        "sessions": {},
+        "devices": {},
+        "last_command_ack": None,
+        "last_motion_completed": None,
+        "last_audio_playback_done": None,
+        "last_error": None,
+        "counters": {
+            "control_messages": 0,
+            "video_frames": 0,
+            "audio_chunks": 0,
+            "agent_commands": 0,
+        },
+    }
+
+
+ws_state: dict[str, Any] = _empty_ws_state()
+
+
+def _snapshot_session(session: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "device_id": session.get("device_id"),
+        "session_id": session.get("session_id"),
+        "last_hb": session.get("last_hb"),
+        "battery": session.get("battery"),
+        "ip": session.get("ip"),
+        "wifi_rssi": session.get("wifi_rssi"),
+        "free_heap": session.get("free_heap"),
+        "reset_reason": session.get("reset_reason"),
+        "reset_reason_code": session.get("reset_reason_code"),
+        "status": session.get("status"),
+    }
+
+
+def _refresh_ws_sessions_state() -> None:
+    ws_state["online_devices"] = sorted(sessions.keys())
+    ws_state["selected_device_id"] = ws_state["online_devices"][0] if ws_state["online_devices"] else None
+    ws_state["sessions"] = {
+        device_id: _snapshot_session(session)
+        for device_id, session in sessions.items()
+    }
+
+
+def _merge_device_event(device_id: Optional[str], event_key: str, payload: dict[str, Any]) -> None:
+    if not device_id:
+        return
+    devices = ws_state.setdefault("devices", {})
+    device_state = devices.setdefault(device_id, {})
+    device_state[event_key] = {
+        "received_at": _now_iso(),
+        "payload": deepcopy(payload),
+    }
+
+
+def write_ws_state_snapshot(runtime_dir: str | Path | None = None) -> bool:
+    """Persist the current WebSocket runtime state without leaking sockets."""
+
+    runtime_path = Path(runtime_dir) if runtime_dir is not None else ws_runtime_dir
+    ws_state["updated_at"] = _now_iso()
+    _refresh_ws_sessions_state()
+    try:
+        _atomic_write_json(runtime_path / "ws_state.json", ws_state)
+    except OSError as exc:
+        logger.warning("Failed to write ws_state snapshot: %s", exc)
+        return False
+    return True
+
+
+def record_ws_event(
+    event_type: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    device_id: Optional[str] = None,
+) -> None:
+    payload = payload if isinstance(payload, dict) else {}
+    counters = ws_state.setdefault("counters", {})
+    if event_type in {
+        "device.hello",
+        "device.heartbeat",
+        "device.status",
+        "command.ack",
+        "motion.completed",
+        "audio.playback_done",
+        "error.report",
+        "video.frame",
+        "video.frame_meta",
+        "audio.chunk_meta",
+    }:
+        counters["control_messages"] = int(counters.get("control_messages", 0)) + 1
+
+    if event_type == "device.hello":
+        _merge_device_event(device_id, "last_hello", payload)
+    elif event_type == "device.heartbeat":
+        _merge_device_event(device_id, "last_heartbeat", payload)
+    elif event_type == "device.status":
+        _merge_device_event(device_id, "last_status", payload)
+    elif event_type == "command.ack":
+        ws_state["last_command_ack"] = {"received_at": _now_iso(), "payload": deepcopy(payload)}
+    elif event_type == "motion.completed":
+        ws_state["last_motion_completed"] = {"received_at": _now_iso(), "payload": deepcopy(payload)}
+    elif event_type == "audio.playback_done":
+        ws_state["last_audio_playback_done"] = {"received_at": _now_iso(), "payload": deepcopy(payload)}
+    elif event_type == "error.report":
+        ws_state["last_error"] = {"received_at": _now_iso(), "payload": deepcopy(payload)}
+    elif event_type in {"video.frame", "video.frame_meta"}:
+        counters["video_frames"] = int(counters.get("video_frames", 0)) + 1
+    elif event_type == "audio.chunk_meta":
+        counters["audio_chunks"] = int(counters.get("audio_chunks", 0)) + 1
+
+    write_ws_state_snapshot()
 
 
 def control_tts_stream_enabled() -> bool:
@@ -105,9 +240,11 @@ def set_video_frame_source(source):
 def reset_state_for_tests() -> None:
     """Clear in-memory server state between integration tests."""
 
+    global ws_state
     sessions.clear()
     set_video_frame_source(None)
     reset_audio_runtime_stats()
+    ws_state = _empty_ws_state()
 
 
 def reset_audio_runtime_stats() -> None:
@@ -253,6 +390,9 @@ def record_audio_chunk(pcm_frame: bytes) -> None:
     audio_runtime_stats["bytes"] += len(pcm_frame)
     audio_runtime_stats["latest_chunk_bytes"] = len(pcm_frame)
     audio_runtime_stats["updated_at"] = time.time()
+    ws_state.setdefault("counters", {})["audio_chunks"] = int(
+        ws_state.setdefault("counters", {}).get("audio_chunks", 0)
+    ) + 1
 
     try:
         audio_runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -271,6 +411,7 @@ def record_audio_chunk(pcm_frame: bytes) -> None:
         logger.warning("Failed to analyze latest audio PCM: %s", exc)
 
     _write_audio_stats()
+    write_ws_state_snapshot()
 
 
 def record_audio_chunk_meta(payload: dict) -> None:
@@ -288,6 +429,7 @@ def remove_session_if_current(device_id: str, websocket: ServerConnection) -> bo
     session = sessions.get(device_id)
     if session and session.get("ws") is websocket:
         del sessions[device_id]
+        write_ws_state_snapshot()
         return True
     return False
 
@@ -306,6 +448,7 @@ async def handle_control(websocket: ServerConnection):
             raw_type = data.get("type")
             payload = data.get("payload", {})
             if raw_type == "command.ack":
+                record_ws_event(raw_type, payload, device_id=payload.get("device_id") or device_id)
                 logger.info(
                     "Command ack: type=%s status=%s",
                     payload.get("command_type"),
@@ -314,6 +457,7 @@ async def handle_control(websocket: ServerConnection):
                 continue
 
             if raw_type == "audio.playback_done":
+                record_ws_event(raw_type, payload, device_id=payload.get("device_id") or device_id)
                 logger.info(
                     "Audio playback done: status=%s bytes_written=%s duration_ms=%s",
                     payload.get("status"),
@@ -323,6 +467,7 @@ async def handle_control(websocket: ServerConnection):
                 continue
 
             if raw_type == "video.frame_meta":
+                record_ws_event(raw_type, payload, device_id=payload.get("device_id") or device_id)
                 logger.info(
                     "Video meta: frame_id=%s %sx%s",
                     payload.get("frame_id"),
@@ -333,6 +478,11 @@ async def handle_control(websocket: ServerConnection):
 
             if raw_type == "video.frame":
                 frame_data = payload.get("data", "")
+                record_ws_event(raw_type, {
+                    "device_id": payload.get("device_id") or device_id,
+                    "frame_id": payload.get("frame_id"),
+                    "bytes": len(frame_data) if isinstance(frame_data, str) else 0,
+                }, device_id=payload.get("device_id") or device_id)
                 logger.info(
                     "Video frame base64: frame_id=%s bytes=%s",
                     payload.get("frame_id"),
@@ -342,6 +492,7 @@ async def handle_control(websocket: ServerConnection):
 
             if raw_type == "audio.chunk_meta":
                 record_audio_chunk_meta(payload)
+                record_ws_event(raw_type, payload, device_id=payload.get("device_id") or device_id)
                 logger.info(
                     "Audio meta: chunk_id=%s format=%s sample_rate=%s channels=%s",
                     payload.get("chunk_id"),
@@ -385,6 +536,7 @@ async def handle_control(websocket: ServerConnection):
                     payload.get("free_heap", "-"),
                     session_id,
                 )
+                record_ws_event(raw_type, payload, device_id=device_id)
                 welcome = make_welcome(session_id)
                 await websocket.send(json.dumps(welcome, ensure_ascii=False))
 
@@ -392,12 +544,19 @@ async def handle_control(websocket: ServerConnection):
                 if device_id and device_id in sessions:
                     sessions[device_id]["last_hb"] = time.time()
                     sessions[device_id]["battery"] = payload.get("battery", 0)
+                    for key in ("charging", "docked", "wifi_rssi", "free_heap", "reset_reason"):
+                        if key in payload:
+                            sessions[device_id][key] = payload.get(key)
                     logger.debug(f"Heartbeat from {device_id}, battery={payload.get('battery')}%")
+                record_ws_event(raw_type, payload, device_id=device_id or payload.get("device_id"))
 
             elif msg_type == MessageType.DEVICE_STATUS:
                 if device_id and device_id in sessions:
                     sessions[device_id]["last_hb"] = time.time()
                     sessions[device_id]["status"] = payload
+                    for key in ("battery", "charging", "docked", "wifi_rssi", "free_heap", "reset_reason"):
+                        if key in payload:
+                            sessions[device_id][key] = payload.get(key)
                 logger.info(
                     "Robot status: expression=%s motion=%s camera=%s docked=%s",
                     payload.get("expression"),
@@ -405,15 +564,18 @@ async def handle_control(websocket: ServerConnection):
                     payload.get("camera"),
                     payload.get("docked"),
                 )
+                record_ws_event(raw_type, payload, device_id=device_id or payload.get("device_id"))
 
             elif msg_type == MessageType.MOTION_COMPLETED:
                 action_id = payload.get("action_id")
                 result = payload.get("result")
                 logger.info(f"Motion completed: {action_id} -> {result}")
+                record_ws_event(raw_type, payload, device_id=device_id or payload.get("device_id"))
                 # TODO: notify agent/gateway that action finished
 
             elif msg_type == MessageType.ERROR_REPORT:
                 logger.warning(f"Robot error [{payload.get('code')}]: {payload.get('message')}")
+                record_ws_event(raw_type, payload, device_id=device_id or payload.get("device_id"))
 
     except ConnectionClosed:
         logger.info(f"Robot disconnected: {device_id}")
@@ -567,6 +729,10 @@ async def handle_agent(websocket: ServerConnection):
                 payload = data.get("payload", {})
                 device_id = payload.get("device_id")
                 tts_stream = None
+                ws_state.setdefault("counters", {})["agent_commands"] = int(
+                    ws_state.setdefault("counters", {}).get("agent_commands", 0)
+                ) + 1
+                write_ws_state_snapshot()
                 if (
                     payload.get("command") == MessageType.AUDIO_PLAY_TTS.value
                     and control_tts_stream_enabled()
@@ -635,6 +801,11 @@ async def handle_video(websocket: ServerConnection):
         if latest_path and jpeg_data:
             try:
                 latest_path.write_bytes(jpeg_data)
+                record_ws_event("video.frame", {
+                    "bytes": len(jpeg_data),
+                    "timestamp": timestamp,
+                    "path": str(latest_path),
+                })
             except OSError as exc:
                 logger.warning("Failed to write latest video frame: %s", exc)
 
@@ -718,6 +889,7 @@ async def heartbeat_monitor():
             except Exception:
                 pass
             del sessions[did]
+            write_ws_state_snapshot()
 
 
 async def start_server(host: str = "0.0.0.0", port: int = 8765):

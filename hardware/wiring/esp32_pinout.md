@@ -173,15 +173,24 @@ Current product-candidate diagnostic env: `mergetesting_audio_shared_i2s_diag` i
 
 Do **not** use GPIO35/36/37 for MAX98357A on the current ESP32-S3 Octal PSRAM module. The 2026-06-29 A/B tests showed GPIO35/36/37 can reset at the first embedded PCM write with `TG1WDT_SYS_RST`.
 
-Temporary speaker-only diagnostic for ESP32-S3 Octal PSRAM pin conflict confirmed on 2026-06-29:
+Current P0 spoken-TTS baseline, confirmed again on 2026-07-04, uses the same
+temporary speaker-only map because the robot mic is not part of the public demo
+input:
 
 | MAX98357A pin | Temporary connect to |
 | --- | --- |
 | BCLK | GPIO39 |
 | LRC / WS | GPIO40 |
 | DIN | GPIO41 |
+| SD | 3V3 |
+| VIN | 5V |
 
-Use `mergetesting_speaker_altpins_only` first, then `mergetesting_speaker_altpins_phrase_only` for the embedded-sentence retest. OTA variants are `mergetesting_speaker_altpins_only_ota` and `mergetesting_speaker_altpins_phrase_only_ota`. Do not use this map with INMP441 connected; GPIO39/40/41 are the default mic pins. The A/B result is: GPIO35/36/37 resets during embedded PCM playback, GPIO39/40/41 completes the same PCM path without WDT.
+Use `mergetesting_care_demo_face240_spoken_tts_din41` for the current P0
+OpenClaw preflight. Do not use this map with INMP441 connected; GPIO41 is the
+default INMP441 SD/DOUT pin. The product-candidate map with robot mic keeps
+INMP441 SD on GPIO41 and moves MAX98357A DIN to GPIO47. The older A/B result
+is: GPIO35/36/37 resets during embedded PCM playback, GPIO39/40/41 completes
+the same PCM path without WDT.
 
 Legacy isolated amp env `speaker_amp_test` remains a robot-body bring-up target, not the current DK-2500 integrated audio path. Before using it, verify its pin map against `robot/firmware/platformio.ini` and the actual harness.
 

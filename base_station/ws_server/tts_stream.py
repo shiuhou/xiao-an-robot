@@ -11,6 +11,11 @@ import time
 import uuid
 import wave
 
+DEFAULT_TTS_TARGET_PEAK = 24000
+TTS_TARGET_PEAK_ENV = "XIAOAN_TTS_TARGET_PEAK"
+TTS_VOICE_ENV = "XIAOAN_TTS_VOICE"
+TTS_RATE_ENV = "XIAOAN_TTS_RATE"
+
 
 @dataclass(frozen=True)
 class TtsPcmStream:
@@ -40,7 +45,7 @@ def _read_pcm_s16le_wav(path: Path) -> tuple[bytes, int, int]:
         return wav.readframes(wav.getnframes()), sample_rate, channels
 
 
-def limit_pcm_peak_s16le(pcm: bytes, target_peak: int = 900) -> bytes:
+def normalize_pcm_peak_s16le(pcm: bytes, target_peak: int = DEFAULT_TTS_TARGET_PEAK) -> bytes:
     if not pcm or target_peak <= 0:
         return pcm
 
@@ -53,22 +58,40 @@ def limit_pcm_peak_s16le(pcm: bytes, target_peak: int = 900) -> bytes:
         for index in range(0, usable_len, 2)
     ]
     peak = max((abs(sample) for sample in samples), default=0)
-    if peak <= target_peak:
+    if peak == 0:
         return pcm
 
     scale = target_peak / peak
-    limited = bytearray()
+    normalized = bytearray()
     for sample in samples:
         scaled = int(sample * scale)
-        limited.extend(scaled.to_bytes(2, "little", signed=True))
+        if scaled > 32767:
+            scaled = 32767
+        elif scaled < -32768:
+            scaled = -32768
+        normalized.extend(scaled.to_bytes(2, "little", signed=True))
     if usable_len < len(pcm):
-        limited.extend(pcm[usable_len:])
-    return bytes(limited)
+        normalized.extend(pcm[usable_len:])
+    return bytes(normalized)
 
 
-def _run_windows_sapi(text_path: Path, wav_path: Path) -> None:
-    script_path = wav_path.with_suffix(".ps1")
-    script = r"""
+def limit_pcm_peak_s16le(pcm: bytes, target_peak: int = DEFAULT_TTS_TARGET_PEAK) -> bytes:
+    return normalize_pcm_peak_s16le(pcm, target_peak=target_peak)
+
+
+def tts_target_peak_from_env() -> int:
+    raw = os.environ.get(TTS_TARGET_PEAK_ENV, "").strip()
+    if not raw:
+        return DEFAULT_TTS_TARGET_PEAK
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_TTS_TARGET_PEAK
+    return max(1, min(value, 32767))
+
+
+def windows_sapi_script() -> str:
+    return r"""
 param([string]$TextPath, [string]$WavPath)
 Add-Type -AssemblyName System.Speech
 $text = Get-Content -LiteralPath $TextPath -Raw -Encoding UTF8
@@ -78,18 +101,51 @@ $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(
   [System.Speech.AudioFormat.AudioChannel]::Mono
 )
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
-if ($text -match '[\u3400-\u9fff]') {
+$requestedVoice = [Environment]::GetEnvironmentVariable('XIAOAN_TTS_VOICE')
+$requestedRate = [Environment]::GetEnvironmentVariable('XIAOAN_TTS_RATE')
+if ($requestedRate) {
+  $parsedRate = 0
+  if ([int]::TryParse($requestedRate, [ref]$parsedRate)) {
+    if ($parsedRate -lt -10) { $parsedRate = -10 }
+    if ($parsedRate -gt 10) { $parsedRate = 10 }
+    $synth.Rate = $parsedRate
+  }
+}
+$voiceSelected = $false
+if ($requestedVoice) {
   $voice = $synth.GetInstalledVoices() |
-    Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -like 'zh-*' } |
+    Where-Object { $_.Enabled -and $_.VoiceInfo.Name -eq $requestedVoice } |
     Select-Object -First 1
   if ($voice -ne $null) {
     $synth.SelectVoice($voice.VoiceInfo.Name)
+    $voiceSelected = $true
+  }
+}
+if ($text -match '[\u3400-\u9fff]') {
+  $selectedVoice = $null
+  if (-not $voiceSelected) {
+    foreach ($culture in @('zh-CN', 'zh-TW', 'zh-HK')) {
+      $selectedVoice = $synth.GetInstalledVoices() |
+        Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -eq $culture } |
+        Select-Object -First 1
+      if ($selectedVoice -ne $null) {
+        break
+      }
+    }
+  }
+  if ($selectedVoice -ne $null) {
+    $synth.SelectVoice($selectedVoice.VoiceInfo.Name)
   }
 }
 $synth.SetOutputToWaveFile($WavPath, $format)
 $synth.Speak($text)
 $synth.Dispose()
 """
+
+
+def _run_windows_sapi(text_path: Path, wav_path: Path) -> None:
+    script_path = wav_path.with_suffix(".ps1")
+    script = windows_sapi_script()
     script_path.write_text(script, encoding="utf-8")
     result = subprocess.run(
         [
@@ -152,7 +208,7 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
         _run_external_tts_command(text_path, wav_path)
 
     pcm, sample_rate, channels = _read_pcm_s16le_wav(wav_path)
-    pcm = limit_pcm_peak_s16le(pcm)
+    pcm = normalize_pcm_peak_s16le(pcm, target_peak=tts_target_peak_from_env())
     if not pcm:
         raise RuntimeError("TTS backend produced an empty PCM stream")
     return TtsPcmStream(

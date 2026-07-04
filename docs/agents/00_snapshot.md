@@ -123,3 +123,22 @@ Phase 4 闭环（video → OpenVINO → OpenClaw → 三命令）见 `06_integra
 | `base_station` | 郑斯悦+张子尧 | 改 protocol 要同步 `shared/` |
 | `agent` | 张子尧 | Gateway/Brain 与 WS 耦合 |
 | `docs/protocol/protocol.md` | 三人 PR | 破坏性变更升 major |
+
+## 2026-07-04 Addendum
+
+- Streamed spoken TTS: this PC as base station streamed arbitrary `audio.play_tts`
+  text to the COM23 ESP32 over `/agent -> /control`. Low-volume
+  `XIAOAN_TTS_TARGET_PEAK=800` checks reached `audio.playback_done ok` for
+  `你好`, `你好，我是小安。`, and an arbitrary OpenClaw sentence.
+
+## 2026-07-04 OpenClaw Preflight Addendum
+
+- Added `docs/runbooks/openclaw_preflight_acceptance.md` as the current
+  action-by-action checklist before connecting the real OpenClaw decision loop.
+  It uses the spoken TTS baseline of base station `XIAOAN_TTS_TARGET_PEAK=800`,
+  `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`, and ESP stream gain `32`.
+- P0 preflight passed on COM23 with `python tools\run_openclaw_preflight_p0.py
+  --device-id xiaoan_robot_01`: robot online, streamed TTS intro/arbitrary
+  sentence/fallback phrase, local `wake_01`, thinking/speaking face, and
+  stop-only motion command all returned robot-side event evidence. SAPI voice
+  quality is acceptable as a temporary demo baseline but not final product TTS.

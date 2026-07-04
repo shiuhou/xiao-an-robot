@@ -32,6 +32,9 @@
 #ifndef AUDIO_DIAG_LOG_UART0
 #define AUDIO_DIAG_LOG_UART0 1
 #endif
+#ifndef AUDIO_DIAG_SKIP_PROBE_TONE
+#define AUDIO_DIAG_SKIP_PROBE_TONE 0
+#endif
 #ifndef AUDIO_DIAG_UART0_RX
 #define AUDIO_DIAG_UART0_RX 44
 #endif
@@ -443,7 +446,12 @@ bool runSpeak() {
   }
 
   uint32_t bytesWritten = 0;
-  const bool probeOk = playOutputProbeTone();
+  bool probeOk = true;
+#if !AUDIO_DIAG_SKIP_PROBE_TONE
+  probeOk = playOutputProbeTone();
+#else
+  AUDIO_DIAG_LOG_SERIAL.println("[AudioDiag] output_probe_tone skipped");
+#endif
   const bool ok = probeOk && playEmbeddedPhrase(&bytesWritten);
   if (ok) {
     AUDIO_DIAG_LOG_SERIAL.println("[AudioDiag] playback_done ok");
@@ -511,7 +519,11 @@ void runDiagnostics() {
 }  // namespace
 
 void setup() {
+#if AUDIO_DIAG_LOG_UART0
   AUDIO_DIAG_LOG_SERIAL.begin(115200, SERIAL_8N1, AUDIO_DIAG_UART0_RX, AUDIO_DIAG_UART0_TX);
+#else
+  AUDIO_DIAG_LOG_SERIAL.begin(115200);
+#endif
   delay(1500);
   forceSpeakerDinLow();
   runDiagnostics();

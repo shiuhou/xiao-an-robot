@@ -22,7 +22,7 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         ws_server.reset_state_for_tests()
 
-    async def test_control_pcm_stream_is_paced_to_audio_duration(self) -> None:
+    async def test_control_pcm_stream_is_paced_slightly_ahead_of_audio_duration(self) -> None:
         websocket = FakeControlWebSocket()
         ws_server.sessions["speaker-test"] = {"ws": websocket}
         stream = ws_server.TtsPcmStream(
@@ -53,12 +53,19 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len([msg for msg in websocket.sent if isinstance(msg, bytes)]), 2)
         self.assertEqual(len(sleeps), 3)
         self.assertTrue(all(duration > 0 for duration in sleeps))
+        self.assertGreaterEqual(ws_server.CONTROL_TTS_START_DELAY_SECONDS, 1.0)
         self.assertAlmostEqual(sleeps[0], ws_server.CONTROL_TTS_START_DELAY_SECONDS, places=3)
-        self.assertAlmostEqual(sleeps[1], 0.064, places=3)
+        self.assertAlmostEqual(
+            sleeps[1],
+            0.064 * ws_server.CONTROL_TTS_CHUNK_PACE_RATIO,
+            places=3,
+        )
         self.assertIn("audio.stream_end", websocket.sent[-1])
 
-    def test_control_tts_chunks_stay_small_for_firmware_callback_latency(self) -> None:
-        self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_BYTES, 512)
+    def test_control_tts_chunks_fit_firmware_pcm_queue_budget(self) -> None:
+        self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_BYTES, 2048)
+        self.assertGreater(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.75)
+        self.assertLess(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 1.0)
 
 
 if __name__ == "__main__":

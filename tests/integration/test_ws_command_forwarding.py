@@ -290,6 +290,87 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_message["payload"]["sample_rate"], 16000)
         self.assertEqual(robot_message["payload"]["channels"], 1)
 
+    async def test_audio_play_tts_stream_synthesis_error_returns_agent_ack(self) -> None:
+        original_synthesizer = ws_server.synthesize_tts_pcm_stream
+
+        def fail_synthesis(_text: str):
+            raise RuntimeError("TTS backend produced an empty PCM stream")
+
+        ws_server.synthesize_tts_pcm_stream = fail_synthesis
+        try:
+            with mock.patch.dict(
+                "os.environ",
+                {ws_server.CONTROL_TTS_STREAM_ENV: "1"},
+                clear=False,
+            ):
+                await asyncio.wait_for(
+                    self.agent.send(json.dumps({
+                        "type": "agent.command",
+                        "payload": {
+                            "command": "audio.play_tts",
+                            "text": "bad tts",
+                        },
+                    }, ensure_ascii=False)),
+                    timeout=2,
+                )
+
+                ack = await self.recv_json(self.agent)
+                self.assertEqual(ack["type"], "agent.ack")
+                self.assertFalse(ack["payload"]["ok"])
+                self.assertIn("empty PCM stream", ack["payload"]["error"])
+        finally:
+            ws_server.synthesize_tts_pcm_stream = original_synthesizer
+
+    async def test_agent_query_state_reports_online_robot(self) -> None:
+        await asyncio.wait_for(
+            self.agent.send(json.dumps({
+                "type": "agent.query",
+                "payload": {"query": "state"},
+            }, ensure_ascii=False)),
+            timeout=2,
+        )
+
+        response = await self.recv_json(self.agent)
+        self.assertEqual(response["type"], "agent.state")
+        self.assertEqual(response["payload"]["sessions"][0]["device_id"], "test-robot-001")
+        self.assertIn("server_time", response["payload"])
+
+    async def test_agent_query_recent_events_reports_robot_ack(self) -> None:
+        await asyncio.wait_for(
+            self.robot.send(build_message(
+                "command.ack",
+                2,
+                {
+                    "device_id": "test-robot-001",
+                    "command_type": "audio.play_local",
+                    "status": "ok",
+                    "detail": "wake_01",
+                },
+            )),
+            timeout=2,
+        )
+
+        await asyncio.wait_for(
+            self.agent.send(json.dumps({
+                "type": "agent.query",
+                "payload": {
+                    "query": "recent_events",
+                    "event_type": "command.ack",
+                    "device_id": "test-robot-001",
+                },
+            }, ensure_ascii=False)),
+            timeout=2,
+        )
+
+        response = await self.recv_json(self.agent)
+        self.assertEqual(response["type"], "agent.events")
+        events = response["payload"]["events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["type"], "command.ack")
+        self.assertEqual(events[0]["device_id"], "test-robot-001")
+        self.assertEqual(events[0]["payload"]["command_type"], "audio.play_local")
+        self.assertEqual(events[0]["payload"]["status"], "ok")
+
 
 if __name__ == "__main__":
     unittest.main()

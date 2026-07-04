@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-07-02
+Last updated: 2026-07-04
 Branch: `0702base_mic`
 
 ## Main Demo Path
@@ -13,7 +13,7 @@ DK-2500 base-station microphone / camera
 -> OpenClaw / Agent
 -> base_station WebSocket /agent and /control
 -> robot/mergetesting
--> face expression + motion + local sound
+-> face expression + motion + local sound / spoken TTS
 ```
 
 For the nine-day demo sprint, the primary voice input is the DK-2500/base-station microphone. The robot `/audio` path remains a fallback and diagnostics path for PCM capture, not the primary public-demo microphone.
@@ -24,7 +24,7 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 
 | Area | Current status |
 | --- | --- |
-| Firmware target | `mergetesting_full_face240` |
+| Firmware target | P0 spoken TTS baseline: `mergetesting_care_demo_face240_spoken_tts_din41`; full product candidate: `mergetesting_full_face240_spoken_tts` |
 | `/control` | Hardware path verified for expression, motion, local sound, ack, and completion waits |
 | `/video` | Robot camera reaches base station as `runtime/latest.jpg`; OpenClaw can inspect the live frame |
 | Base-station mic | **Primary demo input target**: DK-2500 mic captures user speech, ASR turns it into `asr.transcript`, context is sent to OpenClaw/Agent, then robot commands are sent through `/control` |
@@ -32,14 +32,17 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 | Fixed-window ASR | Current reusable ASR path is file-first: WAV/audio_file -> `base_station.monitor.asr_runtime --trim-speech`; robot `/audio` can still feed this path for diagnostics |
 | Display | 2.4 inch face240 path is the current full-demo face path |
 | Motor | DRV8833 motion works with practical demo speed around `0.56` |
-| Speaker | Reliable demo sound is `audio.play_local care_01` |
-| TTS | Real spoken TTS is not the reliable demo path yet; speaker PCM playback remains diagnostic |
+| Speaker | Current P0 spoken TTS speaker wiring is MAX98357A BCLK=39, LRC=40, DIN=41, robot mic disabled; product candidate with robot mic uses DIN=47 |
+| TTS | Streamed `audio.play_tts` passed P0 with `XIAOAN_TTS_TARGET_PEAK=800`, `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`, and robot `MERGETEST_SPEAKER_STREAM_GAIN=32` |
 | Dock dashboard | `python -m base_station.dashboard.dashboard_server` serves the 1024x600 kiosk dashboard at `/dashboard` |
 
 Evidence:
 
 - [status/2026-06-28.md](status/2026-06-28.md)
 - [status/2026-06-30.md](status/2026-06-30.md)
+- [status/2026-07-04-openclaw-p0-preflight.md](status/2026-07-04-openclaw-p0-preflight.md)
+- [runbooks/base_station_openclaw_handoff.md](runbooks/base_station_openclaw_handoff.md)
+- [runbooks/openclaw_preflight_acceptance.md](runbooks/openclaw_preflight_acceptance.md)
 - [status/2026-06-27.md](status/2026-06-27.md)
 - [agents/03_mergetesting_registry.md](agents/03_mergetesting_registry.md)
 - [agents/08_priority_queue_results.json](agents/08_priority_queue_results.json)
@@ -49,16 +52,16 @@ Evidence:
 - screen monitoring
 - work activity tracking
 - local reminder/task/memory APIs
-- real spoken TTS playback
+- free-form/full-quality spoken TTS beyond the current P0 SAPI baseline
 - legacy firmware-side DK-2500 integration snapshots
 
 ## Known Open Items
 
-1. Confirm DK-2500/OpenClaw consistently observes matching `motion.completed` events after motion commands.
-2. Keep `audio.play_local care_01` as the reliable audible proof until real spoken TTS is implemented and verified.
-3. Investigate speaker PCM spoken playback with USB serial/backtrace before using it in a demo.
+1. Connect real OpenClaw to the P0 allowed action set and verify it forwards through `/agent` without local keyword-rule shortcuts.
+2. Confirm DK-2500/OpenClaw consistently observes matching `motion.completed` events after non-stop motion commands.
+3. Improve Mandarin TTS quality if time permits; current SAPI/Hanhan baseline is demo-acceptable but not product quality.
 4. Calibrate physical route timing on charged battery before chaining autonomous movement.
-5. Build the base-station mic demo path: base mic WAV capture -> ASR -> context -> OpenClaw/Agent -> `/control` commands -> ack/completed evidence.
+5. Keep the base-station mic demo path explicit: base mic WAV/capture -> ASR -> context -> OpenClaw/Agent -> `/agent` -> `/control` commands -> ack/completed evidence.
 6. Keep robot `/audio` available as a fallback/diagnostic source: use `mergetesting_mic_only_shift18_asr`, export the latest `/audio` WAV, then run `base_station.monitor.asr_runtime --trim-speech` before SenseVoice. Keep checking RMS/peak/DC/clipping from `base_station.perception.audio_diagnostics`.
 7. Keep generated runtime files, logs, DBs, model binaries, `.pio/`, and local configs out of Git.
 
@@ -67,6 +70,9 @@ Evidence:
 Base station:
 
 ```powershell
+$env:XIAOAN_CONTROL_TTS_STREAM='1'
+$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
 
@@ -76,12 +82,27 @@ Base-station mic demo target:
 DK-2500 mic -> WAV/audio_file -> ASR -> asr.transcript -> OpenClaw/Agent context -> /control robot commands
 ```
 
-Robot full-demo firmware:
+Robot current P0 spoken-TTS firmware:
 
 ```powershell
 cd robot\mergetesting
-pio run -e mergetesting_full_face240
-pio run -e mergetesting_full_face240 -t upload --upload-port COM19
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41 -t upload --upload-port COM23
+```
+
+P0 preflight:
+
+```powershell
+python tools\run_openclaw_preflight_p0.py --device-id xiaoan_robot_01
+```
+
+Full product candidate, when MAX98357A DIN is moved to GPIO47 and robot mic is
+needed:
+
+```powershell
+cd robot\mergetesting
+pio run -e mergetesting_full_face240_spoken_tts
+pio run -e mergetesting_full_face240_spoken_tts -t upload --upload-port COMxx
 ```
 
 Direct smoke:

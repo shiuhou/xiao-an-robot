@@ -15,8 +15,9 @@ import logging
 import os
 import time
 import uuid
+from collections import deque
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Deque, Dict, Optional
 
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
@@ -46,6 +47,7 @@ logger = logging.getLogger("ws_server")
 
 # Active robot sessions: device_id -> session dict
 sessions: Dict[str, dict] = {}
+recent_robot_events: Deque[dict] = deque(maxlen=200)
 video_frame_source = None
 audio_runtime_dir = Path("runtime")
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
@@ -60,8 +62,9 @@ BENCH_MAX_SPEED = 1.0
 BENCH_MAX_TIMEOUT_MS = 10000
 BENCH_MAX_DISTANCE_CM = 100.0
 BENCH_MAX_DURATION_MS = 10000
-CONTROL_TTS_CHUNK_BYTES = 512
-CONTROL_TTS_START_DELAY_SECONDS = 0.2
+CONTROL_TTS_CHUNK_BYTES = 2048
+CONTROL_TTS_START_DELAY_SECONDS = 1.2
+CONTROL_TTS_CHUNK_PACE_RATIO = 0.85
 CONTROL_TTS_STREAM_ENV = "XIAOAN_CONTROL_TTS_STREAM"
 TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
 
@@ -106,6 +109,7 @@ def reset_state_for_tests() -> None:
     """Clear in-memory server state between integration tests."""
 
     sessions.clear()
+    recent_robot_events.clear()
     set_video_frame_source(None)
     reset_audio_runtime_stats()
 
@@ -282,6 +286,64 @@ def record_audio_chunk_meta(payload: dict) -> None:
     _write_audio_stats()
 
 
+def record_robot_event(event_type: str, payload: dict, device_id: Optional[str] = None) -> None:
+    """Keep a bounded in-memory event trail for demo acceptance checks."""
+
+    event_payload = dict(payload) if isinstance(payload, dict) else {}
+    event_device_id = device_id or event_payload.get("device_id")
+    recent_robot_events.append({
+        "type": event_type,
+        "device_id": event_device_id,
+        "recorded_at": time.time(),
+        "payload": event_payload,
+    })
+
+
+def session_snapshot(now: Optional[float] = None) -> list[dict]:
+    """Return JSON-safe session state for operator and preflight checks."""
+
+    now = time.time() if now is None else now
+    snapshots = []
+    for device_id, session in sessions.items():
+        item = {
+            "device_id": device_id,
+            "session_id": session.get("session_id"),
+            "last_heartbeat_age_sec": max(0.0, now - float(session.get("last_hb", now))),
+            "battery": session.get("battery"),
+            "ip": session.get("ip"),
+            "wifi_rssi": session.get("wifi_rssi"),
+            "reset_reason": session.get("reset_reason"),
+            "free_heap": session.get("free_heap"),
+        }
+        if "status" in session:
+            item["status"] = session["status"]
+        snapshots.append(item)
+    return snapshots
+
+
+def query_recent_robot_events(payload: dict) -> list[dict]:
+    """Filter recent robot events by time, device, and event type."""
+
+    since = payload.get("since")
+    device_id = payload.get("device_id")
+    event_type = payload.get("event_type")
+    try:
+        since_value = float(since) if since is not None else None
+    except (TypeError, ValueError):
+        since_value = None
+
+    events = []
+    for event in recent_robot_events:
+        if since_value is not None and event.get("recorded_at", 0.0) < since_value:
+            continue
+        if device_id and event.get("device_id") != device_id:
+            continue
+        if event_type and event.get("type") != event_type:
+            continue
+        events.append(dict(event))
+    return events
+
+
 def remove_session_if_current(device_id: str, websocket: ServerConnection) -> bool:
     """Remove a robot session only if it still points at this connection."""
 
@@ -306,6 +368,7 @@ async def handle_control(websocket: ServerConnection):
             raw_type = data.get("type")
             payload = data.get("payload", {})
             if raw_type == "command.ack":
+                record_robot_event(raw_type, payload, device_id=device_id)
                 logger.info(
                     "Command ack: type=%s status=%s",
                     payload.get("command_type"),
@@ -314,6 +377,7 @@ async def handle_control(websocket: ServerConnection):
                 continue
 
             if raw_type == "audio.playback_done":
+                record_robot_event(raw_type, payload, device_id=device_id)
                 logger.info(
                     "Audio playback done: status=%s bytes_written=%s duration_ms=%s",
                     payload.get("status"),
@@ -342,6 +406,7 @@ async def handle_control(websocket: ServerConnection):
 
             if raw_type == "audio.chunk_meta":
                 record_audio_chunk_meta(payload)
+                record_robot_event(raw_type, payload, device_id=device_id)
                 logger.info(
                     "Audio meta: chunk_id=%s format=%s sample_rate=%s channels=%s",
                     payload.get("chunk_id"),
@@ -385,6 +450,7 @@ async def handle_control(websocket: ServerConnection):
                     payload.get("free_heap", "-"),
                     session_id,
                 )
+                record_robot_event(MessageType.DEVICE_HELLO.value, payload, device_id=device_id)
                 welcome = make_welcome(session_id)
                 await websocket.send(json.dumps(welcome, ensure_ascii=False))
 
@@ -398,6 +464,7 @@ async def handle_control(websocket: ServerConnection):
                 if device_id and device_id in sessions:
                     sessions[device_id]["last_hb"] = time.time()
                     sessions[device_id]["status"] = payload
+                record_robot_event(MessageType.DEVICE_STATUS.value, payload, device_id=device_id)
                 logger.info(
                     "Robot status: expression=%s motion=%s camera=%s docked=%s",
                     payload.get("expression"),
@@ -409,10 +476,12 @@ async def handle_control(websocket: ServerConnection):
             elif msg_type == MessageType.MOTION_COMPLETED:
                 action_id = payload.get("action_id")
                 result = payload.get("result")
+                record_robot_event(MessageType.MOTION_COMPLETED.value, payload, device_id=device_id)
                 logger.info(f"Motion completed: {action_id} -> {result}")
                 # TODO: notify agent/gateway that action finished
 
             elif msg_type == MessageType.ERROR_REPORT:
+                record_robot_event(MessageType.ERROR_REPORT.value, payload, device_id=device_id)
                 logger.warning(f"Robot error [{payload.get('code')}]: {payload.get('message')}")
 
     except ConnectionClosed:
@@ -467,7 +536,10 @@ async def stream_control_binary_to_robot(
         for offset in range(0, len(pcm_stream.pcm), CONTROL_TTS_CHUNK_BYTES):
             chunk = pcm_stream.pcm[offset:offset + CONTROL_TTS_CHUNK_BYTES]
             await websocket.send(chunk)
-            await asyncio.sleep(pcm_stream_chunk_duration_seconds(pcm_stream, len(chunk)))
+            await asyncio.sleep(
+                pcm_stream_chunk_duration_seconds(pcm_stream, len(chunk))
+                * CONTROL_TTS_CHUNK_PACE_RATIO
+            )
         await websocket.send(json.dumps(make_audio_stream_end(pcm_stream.audio_id), ensure_ascii=False))
     except ConnectionClosed:
         remove_session_if_current(device_id, websocket)
@@ -553,6 +625,27 @@ async def send_agent_ack(
     }, ensure_ascii=False))
 
 
+async def send_agent_state(websocket: ServerConnection) -> None:
+    now = time.time()
+    await websocket.send(json.dumps({
+        "type": "agent.state",
+        "payload": {
+            "server_time": now,
+            "sessions": session_snapshot(now),
+        },
+    }, ensure_ascii=False))
+
+
+async def send_agent_events(websocket: ServerConnection, query_payload: dict) -> None:
+    await websocket.send(json.dumps({
+        "type": "agent.events",
+        "payload": {
+            "server_time": time.time(),
+            "events": query_recent_robot_events(query_payload),
+        },
+    }, ensure_ascii=False))
+
+
 async def handle_agent(websocket: ServerConnection):
     """Handle local Agent commands and forward them to the online robot."""
 
@@ -561,10 +654,22 @@ async def handle_agent(websocket: ServerConnection):
         async for raw in websocket:
             try:
                 data = json.loads(raw)
-                if data.get("type") != "agent.command":
+                msg_type = data.get("type")
+                payload = data.get("payload", {})
+
+                if msg_type == "agent.query":
+                    query_name = payload.get("query", "state")
+                    if query_name == "state":
+                        await send_agent_state(websocket)
+                    elif query_name == "recent_events":
+                        await send_agent_events(websocket, payload)
+                    else:
+                        await send_agent_ack(websocket, ok=False, error=f"Unsupported agent query: {query_name}")
+                    continue
+
+                if msg_type != "agent.command":
                     raise ValueError(f"Unsupported message type: {data.get('type')}")
 
-                payload = data.get("payload", {})
                 device_id = payload.get("device_id")
                 tts_stream = None
                 if (
@@ -590,6 +695,8 @@ async def handle_agent(websocket: ServerConnection):
             except json.JSONDecodeError:
                 await send_agent_ack(websocket, ok=False, error="Invalid JSON")
             except (TypeError, ValueError) as exc:
+                await send_agent_ack(websocket, ok=False, error=str(exc))
+            except RuntimeError as exc:
                 await send_agent_ack(websocket, ok=False, error=str(exc))
     except ConnectionClosed:
         logger.info("Agent command channel disconnected")

@@ -6,9 +6,10 @@ This directory is organized by document purpose. Prefer current entry points ove
 
 1. [current_status.md](current_status.md) - current demo baseline, known working paths, and next checks.
 2. [architecture/system_architecture.md](architecture/system_architecture.md) - system architecture overview.
-3. [runbooks/main_demo_care_loop.md](runbooks/main_demo_care_loop.md) - reproducible main demo flow.
-4. [protocol/protocol.md](protocol/protocol.md) - WebSocket message contracts.
-5. [agents/README.md](agents/README.md) - AI agent handoff, registries, and session protocol.
+3. [runbooks/base_station_openclaw_handoff.md](runbooks/base_station_openclaw_handoff.md) - current base-station/OpenClaw handoff, P0 tests, and hardware config.
+4. [runbooks/main_demo_care_loop.md](runbooks/main_demo_care_loop.md) - reproducible main demo flow.
+5. [protocol/protocol.md](protocol/protocol.md) - WebSocket message contracts.
+6. [agents/README.md](agents/README.md) - AI agent handoff, registries, and session protocol.
 
 ## Truth Priority
 
@@ -61,6 +62,8 @@ For the latest full hardware/OpenClaw status, start from [current_status.md](cur
 | [../scripts/README.md](../scripts/README.md) | Setup/start/debug script grouping. |
 | [setup/hardware_setup.md](setup/hardware_setup.md) | Hardware wiring bring-up order and target-side checks. |
 | [setup/local_api.md](setup/local_api.md) | Local HTTP API routes for the debug console. |
+| [runbooks/base_station_openclaw_handoff.md](runbooks/base_station_openclaw_handoff.md) | Current base-station mic/OpenClaw handoff, P0 preflight, TTS env, and speaker pin assumptions. |
+| [runbooks/openclaw_preflight_acceptance.md](runbooks/openclaw_preflight_acceptance.md) | P0/P1/P2 acceptance checklist before connecting real OpenClaw. |
 | [runbooks/base_station_dashboard.md](runbooks/base_station_dashboard.md) | 7-inch Dock dashboard operation and acceptance notes. |
 | [runbooks/git_hygiene.md](runbooks/git_hygiene.md) | Git cleanup audit commands and keep/untrack guidance. |
 | [setup/m600_deployment.md](setup/m600_deployment.md) | Morefine M600 base-station bring-up note. |

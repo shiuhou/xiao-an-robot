@@ -2,6 +2,9 @@
 
 This runbook captures the current reproducible demo path. Use it with [current_status.md](../current_status.md) and the latest dated snapshot under [../status/](../status/).
 
+For the latest base-station teammate/OpenClaw handoff, start with
+[`base_station_openclaw_handoff.md`](base_station_openclaw_handoff.md).
+
 ## Scope
 
 The main demo path is:
@@ -21,7 +24,9 @@ but the public demo should not depend on the robot microphone.
 
 ## Preconditions
 
-- Robot is flashed with `mergetesting_full_face240`.
+- Current P0 spoken-TTS firmware is `mergetesting_care_demo_face240_spoken_tts_din41`.
+- The full product-candidate firmware is `mergetesting_full_face240_spoken_tts`
+  after MAX98357A DIN is moved to GPIO47.
 - `robot/mergetesting/src/config.local.h` is locally configured for the active WiFi and base-station IP. Do not commit this file.
 - DK-2500/base station is reachable from the robot.
 - DK-2500/base-station microphone capture is available to the ASR runner, or a clearly labeled base-mic WAV sample is available for the same flow.
@@ -30,6 +35,9 @@ but the public demo should not depend on the robot microphone.
 ## Start Base Station
 
 ```powershell
+$env:XIAOAN_CONTROL_TTS_STREAM='1'
+$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
 
@@ -70,15 +78,16 @@ User says "小安，我有点累"
 
 ```powershell
 cd robot\mergetesting
-pio run -e mergetesting_full_face240
-pio run -e mergetesting_full_face240 -t upload --upload-port COM19
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41 -t upload --upload-port COM23
 ```
 
 Notes:
 
-- `COM19` was the validated port during the 2026-06-27 hardware session; verify the live port before flashing.
+- `COM23` was the validated port during the 2026-07-04 P0 spoken-TTS session; verify the live port before flashing.
 - USB upload at `460800` was reliable for full firmware during handoff.
 - Do not run broad `pio run` for this workflow.
+- Current P0 speaker wiring is MAX98357A BCLK=39, LRC/WS=40, DIN=41, with robot mic disabled. If robot mic is required, use the product-candidate DIN=47 path instead.
 
 ## Direct Smoke
 
@@ -90,6 +99,17 @@ python tools\send_robot_command.py --device-id xiaoan_robot_01 motion forward --
 python tools\send_robot_command.py --device-id xiaoan_robot_01 motion left --bench --speed 0.56 --duration-ms 500 --timeout-ms 700
 python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 ```
+
+For the spoken TTS preflight, use the dedicated one-command runner:
+
+```powershell
+python tools\run_openclaw_preflight_p0.py --device-id xiaoan_robot_01
+python tools\run_spoken_tts_demo.py --device-id xiaoan_robot_01
+python tools\run_spoken_tts_demo.py --device-id xiaoan_robot_01 --include-motion
+```
+
+Full spoken TTS setup details are in
+[`spoken_tts_demo_smoke.md`](spoken_tts_demo_smoke.md).
 
 Expected behavior:
 
@@ -109,7 +129,7 @@ Use this behavior as the next autonomous target:
 4. Wait for matching `motion.completed`.
 5. Turn toward the user with `speed=0.56`, `duration_ms=500`.
 6. Wait for matching `motion.completed`.
-7. Play `audio.play_local care_01`, or real TTS only after the spoken path is verified.
+7. Play streamed `audio.play_tts` for short spoken replies, or `audio.play_local care_01` as the fallback chime.
 8. Log the observation that caused the action.
 
 ## Stop Conditions
@@ -117,6 +137,7 @@ Use this behavior as the next autonomous target:
 Stop the demo and inspect logs if:
 
 - `agent.ack` appears but robot `command.ack` does not.
+- `audio.play_tts` is accepted but `audio.playback_done` does not appear.
 - A motion command lacks matching `motion.completed`.
 - The robot reconnects during motion.
 - `runtime/latest.jpg` or audio artifacts stop updating while channels are expected to be active.

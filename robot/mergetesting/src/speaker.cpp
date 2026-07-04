@@ -22,6 +22,9 @@
 #ifndef EMBEDDED_TTS_GAIN
 #define EMBEDDED_TTS_GAIN 1
 #endif
+#ifndef MERGETEST_SPEAKER_STREAM_GAIN
+#define MERGETEST_SPEAKER_STREAM_GAIN 1
+#endif
 
 #if MERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE
 #include "embedded_tts_phrase.h"
@@ -139,7 +142,6 @@ bool writeFramesWithTimeout(const int16_t* samples, uint32_t frames, TickType_t 
       bytesToWrite,
       &bytesWritten,
       timeoutTicks);
-  vTaskDelay(1);
   if (err != ESP_OK || bytesWritten != bytesToWrite) {
     LOGE(
         "Speaker",
@@ -422,6 +424,7 @@ bool enqueuePcmEnd() {
 
 void pcmStreamTask(void* arg) {
   (void)arg;
+  const uint32_t startedMs = millis();
   bool ok = true;
   size_t playedBytes = 0;
 
@@ -439,7 +442,7 @@ void pcmStreamTask(void* arg) {
     }
 
     if (job.data && job.len > 0) {
-      ok = writeMonoPcmS16Le(job.data, job.len, PCM_WRITE_TIMEOUT_TICKS) && ok;
+      ok = writeMonoPcmS16Le(job.data, job.len, PCM_WRITE_TIMEOUT_TICKS, MERGETEST_SPEAKER_STREAM_GAIN) && ok;
       playedBytes += job.len;
     }
     freePcmJob(job);
@@ -451,6 +454,7 @@ void pcmStreamTask(void* arg) {
   gPcmStreaming = false;
   gPlaying = false;
   gPcmTaskHandle = nullptr;
+  storeTtsPlaybackResult(ok, static_cast<uint32_t>(playedBytes), millis() - startedMs);
   LOGI("Speaker", "pcm stream task done ok=%s played_bytes=%u", ok ? "true" : "false", static_cast<unsigned>(playedBytes));
   vTaskDelete(nullptr);
 }

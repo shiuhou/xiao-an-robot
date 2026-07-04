@@ -21,8 +21,14 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 Run from the repository root:
 
 ```powershell
+$env:XIAOAN_CONTROL_TTS_STREAM='1'
+$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
+
+For the current OpenClaw/robot P0 handoff, use
+[../docs/runbooks/base_station_openclaw_handoff.md](../docs/runbooks/base_station_openclaw_handoff.md).
 
 Run the local Dock dashboard:
 
@@ -39,6 +45,9 @@ Expected robot behavior:
 - Base-station mic capture is the primary voice-input target for ASR -> OpenClaw/Agent -> robot action demos.
 - `/audio` receives robot PCM/audio chunks and writes local runtime artifacts as a fallback/diagnostics path.
 - `/agent` accepts local Agent/tool commands and forwards them to the robot.
+- streamed `audio.play_tts` is enabled by `XIAOAN_CONTROL_TTS_STREAM=1`; the
+  current P0 baseline uses `XIAOAN_TTS_TARGET_PEAK=800` and
+  `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`.
 
 ## Boundaries
 
@@ -76,6 +85,8 @@ Use `config.example.yaml` as the shareable template.
 ## Related Docs
 
 - [../docs/current_status.md](../docs/current_status.md)
+- [../docs/runbooks/base_station_openclaw_handoff.md](../docs/runbooks/base_station_openclaw_handoff.md)
+- [../docs/runbooks/openclaw_preflight_acceptance.md](../docs/runbooks/openclaw_preflight_acceptance.md)
 - [../docs/runbooks/base_station_dashboard.md](../docs/runbooks/base_station_dashboard.md)
 - [../docs/agents/04_base_station_agent_registry.md](../docs/agents/04_base_station_agent_registry.md)
 - [../docs/setup/dk2500_deployment.md](../docs/setup/dk2500_deployment.md)

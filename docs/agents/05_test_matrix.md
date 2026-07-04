@@ -25,6 +25,7 @@ python tools/check_runtime_env.py
 | Fixed-window ASR demo | `tests/unit/test_fixed_window_asr_demo.py` | rolling PCM tail energy, utterance start/end detector, fixed-window ASR demo helper | P |
 | Base-station mic demo | manual demo target | DK-2500 mic -> WAV/audio_file -> ASR -> OpenClaw/Agent context -> `/control` robot command | — |
 | Dock dashboard | `tests/unit/test_dashboard_server.py` | `/api/dashboard/state` pipeline/triggers contract, mock fallback, static 1024x600 right-panel constraints | P |
+| OpenClaw P0 preflight runner | `tests/unit/test_openclaw_preflight_p0_runner.py`; manual `python tools\run_openclaw_preflight_p0.py --device-id xiaoan_robot_01` | robot online, streamed TTS x3, local wake sound, thinking/speaking face, stop command through `/agent` with robot-side event evidence | P/H: 2026-07-04 COM23, `XIAOAN_TTS_TARGET_PEAK=800`, `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'` |
 | OpenVINO/Qwen | `tests/unit/test_openvino_*` | 模型 wrapper | 🧪 P |
 | Mock robot | `tests/mocks/mock_robot.py` | 无 ESP32 测 control | 手动 |
 
@@ -92,6 +93,10 @@ pio run -e mergetesting
 | `mergetesting_care_demo_face240_ota` | P: 2026-06-27 | P: build/upload path verified; current T18 H used USB |
 | `mergetesting_full_face240` | P: 2026-06-26 combined face240 + all subs | H: USB upload at 460800 + `/control` full-speed 5s motor + `/video` + `/audio`, 2026-06-27 |
 | `mergetesting_full_face240_ota` | P: 2026-06-26 | H/P: OTA smoke passed earlier; current full H used USB after OTA/COM instability |
+| `mergetesting_full_face240_spoken_tts` | P: 2026-07-04 env set to embedded phrase gain 32; full face240 + camera + robot mic fallback + motor + speaker | H: speaker path validated on DIN41 standalone MAX98357A board; full robot `/control` loop pending WiFi/base-station run |
+| `mergetesting_full_face240_spoken_tts_ota` | P: 2026-07-04 env inherits embedded phrase gain 32 | H: pending OTA retest |
+| `mergetesting_care_demo_face240_spoken_tts` | P: 2026-07-04 env set to embedded phrase gain 32; care demo + embedded spoken TTS phrase, speaker DIN=47 | H: speaker path validated on DIN41 standalone MAX98357A board; DIN47 robot harness pending |
+| `mergetesting_care_demo_face240_spoken_tts_din41` | P: 2026-07-04 build target updated to embedded phrase gain 32; temporary care-demo fallback for MAX98357A DIN=41, robot mic disabled | H: COM23 standalone speaker path heard `I can speak now`; tone probe loud; gain 32 chosen over gain 64 for stability; streamed PCM TTS over `/agent -> /control` passed at low volume with `你好` (`40052` bytes, `2297` ms), `你好，我是小安。` (`83068` bytes, `3741` ms), and an arbitrary OpenClaw sentence (`148038` bytes, `5491` ms) |
 | `mergetesting` | P: 2026-06-26 combined baseline | —: burn after split env H (split envs now all H) |
 
 ## 固件工具脚本

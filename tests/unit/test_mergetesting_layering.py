@@ -603,6 +603,26 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn('TEXT = "I can speak now."', embedded_header)
         self.assertIn("PCM_LEN = ", embedded_header)
 
+    def test_spoken_tts_envs_apply_streaming_pcm_gain(self) -> None:
+        platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
+            encoding="utf-8"
+        )
+        speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
+
+        for env in (
+            "mergetesting_care_demo_face240_spoken_tts",
+            "mergetesting_care_demo_face240_spoken_tts_din41",
+            "mergetesting_full_face240_spoken_tts",
+        ):
+            body = platformio.split(f"[env:{env}]", 1)[1].split("[env:", 1)[0]
+            self.assertIn("-DMERGETEST_SPEAKER_STREAM_GAIN=32", body)
+
+        self.assertIn("MERGETEST_SPEAKER_STREAM_GAIN", speaker_cpp)
+        self.assertIn(
+            "writeMonoPcmS16Le(job.data, job.len, PCM_WRITE_TIMEOUT_TICKS, MERGETEST_SPEAKER_STREAM_GAIN)",
+            speaker_cpp,
+        )
+
     def test_speaker_tts_reports_playback_done_after_async_completion(self) -> None:
         protocol = (MERGETEST_SRC / "protocol.h").read_text(encoding="utf-8")
         speaker_header = (MERGETEST_SRC / "speaker.h").read_text(encoding="utf-8")
@@ -718,7 +738,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("PendingPcmStreamEnd", router_header)
         self.assertNotIn("speaker_begin_pcm_stream", tts_body)
 
-    def test_speaker_i2s_writes_use_timeout_and_yield(self) -> None:
+    def test_speaker_i2s_writes_use_timeout_without_extra_chunk_delay(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
 
         self.assertNotIn("portMAX_DELAY", speaker_cpp)
@@ -727,7 +747,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("PCM_PLAYBACK_FRAMES_PER_BUFFER = 128", speaker_cpp)
         self.assertIn("PCM_WRITE_TIMEOUT_TICKS = pdMS_TO_TICKS(20)", speaker_cpp)
         self.assertIn("pdMS_TO_TICKS", speaker_cpp)
-        self.assertIn("vTaskDelay(1);", speaker_cpp)
+        self.assertNotIn("vTaskDelay(1);", speaker_cpp)
         self.assertIn("writeFramesWithTimeout", speaker_cpp)
         self.assertIn("writeFramesWithTimeout(stereoBuffer, chunk, timeoutTicks)", speaker_cpp)
         self.assertNotIn("esp_task_wdt_reset();", speaker_cpp)

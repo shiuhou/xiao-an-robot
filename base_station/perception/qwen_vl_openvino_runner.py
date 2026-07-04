@@ -50,6 +50,7 @@ class QwenVLOpenVINORunner:
             processor = deps["AutoProcessor"].from_pretrained(
                 self.model_dir,
                 trust_remote_code=True,
+                fix_mistral_regex=True,
             )
             model = deps["OVModelForVisualCausalLM"].from_pretrained(
                 self.model_dir,

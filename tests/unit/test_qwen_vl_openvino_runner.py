@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -69,6 +71,28 @@ class QwenVLOpenVINORunnerTest(unittest.TestCase):
         runner = QwenVLOpenVINORunner(model_dir="~/models/Qwen2.5-VL-3B-OV-int4")
 
         self.assertNotIn("~", runner.model_dir)
+
+    def test_load_passes_mistral_regex_fix_to_processor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "openvino_model.xml").write_text("<xml />", encoding="utf-8")
+            Path(temp_dir, "openvino_model.bin").write_bytes(b"bin")
+            auto_processor = SimpleNamespace(from_pretrained=MagicMock(return_value=object()))
+            ov_model = SimpleNamespace(from_pretrained=MagicMock(return_value=object()))
+            deps = {
+                "AutoProcessor": auto_processor,
+                "OVModelForVisualCausalLM": ov_model,
+                "process_vision_info": object(),
+            }
+            runner = QwenVLOpenVINORunner(model_dir=temp_dir)
+
+            with patch.object(QwenVLOpenVINORunner, "_import_dependencies", return_value=deps):
+                runner.load()
+
+            auto_processor.from_pretrained.assert_called_once_with(
+                temp_dir,
+                trust_remote_code=True,
+                fix_mistral_regex=True,
+            )
 
     def test_generate_valid_prompt_reports_missing_model_dir_not_not_implemented(self) -> None:
         runner = QwenVLOpenVINORunner(model_dir="models/qwen")

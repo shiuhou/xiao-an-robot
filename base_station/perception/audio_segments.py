@@ -15,6 +15,9 @@ def trim_wav_to_speech(
     threshold: float = 0.01,
     frame_ms: int = 20,
     padding_ms: int = 200,
+    min_speech_ms: int = 0,
+    start_padding_ms: int | None = None,
+    end_padding_ms: int | None = None,
 ) -> dict:
     """Trim a PCM WAV to the first/last energy frames above threshold."""
 
@@ -47,11 +50,31 @@ def trim_wav_to_speech(
             "duration_ms": 0,
         }
 
-    padding_samples = int(sample_rate * padding_ms / 1000)
-    start_sample = max(0, speech_frames[0] * frame_samples - padding_samples)
+    speech_start_sample = speech_frames[0] * frame_samples
+    speech_end_sample = min(len(samples), (speech_frames[-1] + 1) * frame_samples)
+    speech_duration_ms = int(round((speech_end_sample - speech_start_sample) * 1000 / sample_rate))
+    if min_speech_ms > 0 and speech_duration_ms < min_speech_ms:
+        return {
+            "speech_detected": False,
+            "source_path": str(source),
+            "trimmed_path": str(target),
+            "sample_rate": sample_rate,
+            "channels": channels,
+            "start_ms": int(round(speech_start_sample * 1000 / sample_rate)),
+            "end_ms": int(round(speech_end_sample * 1000 / sample_rate)),
+            "duration_ms": speech_duration_ms,
+            "reason": "speech_shorter_than_min_speech_ms",
+            "min_speech_ms": min_speech_ms,
+        }
+
+    start_padding = padding_ms if start_padding_ms is None else start_padding_ms
+    end_padding = padding_ms if end_padding_ms is None else end_padding_ms
+    start_padding_samples = int(sample_rate * start_padding / 1000)
+    end_padding_samples = int(sample_rate * end_padding / 1000)
+    start_sample = max(0, speech_start_sample - start_padding_samples)
     end_sample = min(
         len(samples),
-        (speech_frames[-1] + 1) * frame_samples + padding_samples,
+        speech_end_sample + end_padding_samples,
     )
     trimmed_samples = samples[start_sample:end_sample]
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +94,9 @@ def trim_wav_to_speech(
         "threshold": threshold,
         "frame_ms": frame_ms,
         "padding_ms": padding_ms,
+        "min_speech_ms": min_speech_ms,
+        "start_padding_ms": start_padding,
+        "end_padding_ms": end_padding,
     }
 
 

@@ -84,8 +84,8 @@
 | 文件 | 状态 | 关键类/函数 |
 |------|------|-------------|
 | `core/brain.py` | ✅ | `XiaoAnBrain` — 事件路由 |
-| `core/gateway.py` | ✅ | `RobotGateway` — WS `/agent` 客户端 |
-| `core/action_executor.py` | ✅ | 动作执行编排 |
+| `core/gateway.py` | ✅ | `RobotGateway` — WS `/agent` 客户端；`audio.play_tts` 使用较长 ack timeout，避免 server 生成 TTS PCM 时假超时 |
+| `core/action_executor.py` | ✅ | 动作执行编排；care tool 负责 reply speech，避免 `reply_text` 在动作前先播 |
 | `core/openclaw_adapter.py` | 🟡 | OpenClaw 适配 |
 | `core/http_openclaw_adapter.py` | 🟡 | HTTP 版 |
 | `core/local_tools.py` | ✅ | 本地工具；notes/tasks/reminders/summaries 为兼容层 |
@@ -95,7 +95,7 @@
 
 | 文件 | 状态 | 说明 |
 |------|------|------|
-| `skills/robot_motion.py` | ✅ | 发 expression/motion/tts |
+| `skills/robot_motion.py` | ✅ | 发 expression/motion/tts；`care_for_user` 串行执行 move-out -> left-turn -> caring expression -> streamed TTS |
 | `skills/emotion_monitor.py` | ✅ | 情绪监控 skill |
 | `skills/companion_request.py` | ✅ | 主动关怀 |
 | `skills/*` (calendar, habit, etc.) | 🟡 | 扩展 skill |
@@ -124,7 +124,7 @@
 | 脚本 | 用途 | 状态 |
 |------|------|------|
 | `send_robot_command.py` | CLI → `/agent` → 机器人 expression/motion/local audio | ✅ |
-| `demo/demo1_usb_mic_to_agent_screen.py` | Demo 1 DK-2500/base mic -> ASR transcript -> fixed OpenClaw context -> filtered Demo 1 OpenClaw tool manifest -> real OpenClaw Gateway `xiaoan-runtime` -> strict tool_call validation -> ActionExecutor -> `/agent` route; legacy local-rule `--route-agent` remains diagnostic only | P/H partial: 2026-07-03 unit tests pass; mock transcript with `--route-openclaw` and “小安，我有点累” went through real OpenClaw Gateway / `xiaoan-runtime` and returned `xiaoan.robot.care`; care tool now executes `display.expression`/`motion.execute`/`audio.play_local care_01`; robot-side expression/motion ack and `motion.completed` observed, but local audio returned `AUDIO_UNSUPPORTED speaker not ready`; real mic ASR quality still needs dedicated hardware pass |
+| `demo/demo1_usb_mic_to_agent_screen.py` | Demo 1 DK-2500/base mic -> fixed-format ASR WAV (`16 kHz / mono / pcm_s16le`) + input peak/clipping diagnostics -> ASR transcript -> fixed OpenClaw context -> filtered Demo 1 OpenClaw tool manifest -> real OpenClaw Gateway `xiaoan-runtime` -> strict tool_call validation -> ActionExecutor -> `/agent` route; legacy local-rule `--route-agent` remains diagnostic only | P/H partial: 2026-07-05 targeted mic/ASR tests PASS 80 after SenseVoice local loader stopped using `trust_remote_code=True`; replay of live WAV returned “小安我有点累了”. Live interrupted run completed through OpenClaw and real robot: move-out completed before turn, then caring expression and streamed TTS playback done. Remaining H issue: mic gain calibration is close but not final. |
 | `demo/demo_assistant_capture.py` | DK-2500/base mic or mock text -> ASR transcript -> `assistant_capture_context.v1` -> OpenClaw Gateway `xiaoan-runtime` capture result -> dashboard state and optional robot expression/local-sound/TTS feedback; OpenClaw remains source of truth for notes/ideas/reminders/tasks/meeting capture | P: 2026-07-03 `.venv/bin/python -m unittest tests.unit.test_demo_assistant_capture tests.unit.test_dashboard_server tests.unit.test_prepare_visual_chain_preflight`; mock context-only writes `ignored` with `source_of_truth=openclaw_xiaoan_runtime`; empty mock text now fails before capture context; OpenClaw offline smoke exits 1 with `failed` and does not use local SQLite fallback |
 | `prepare_visual_chain_preflight.py` | Camera-free Demo 1 visual-chain preflight: static image decode, mock `emotion_runtime`, OpenFace OV dependency/model readiness including Git LFS pointer detection, Qwen OpenVINO dependency/model readiness, optional OpenClaw socket, optional real OpenFace/Qwen runtime checks | P: 2026-07-03 `tests.unit.test_prepare_visual_chain_preflight`; timeout output is JSON-safe, bad Qwen manifest reports readiness failure, and relative model paths resolve from repo root; current local preflight passes image decode + mock image runtime; after `git lfs pull --include="base_station/models/openface_ov/**"`, OpenFace readiness and `--run-openface` pass; Qwen remains partial after interrupted download with 3 large `.bin` files missing |
 | `run_integration_loop.py` | 联调 loop 编排 | 🟡 |

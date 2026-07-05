@@ -91,7 +91,7 @@ class ActionExecutor:
                     result["openclaw_error"] = str(error)
             return result
 
-        if decision.reply_text:
+        if decision.reply_text and not self._tool_calls_handle_reply(decision.tool_calls):
             arguments = {"text": decision.reply_text}
             try:
                 result = await self._call(self.robot_motion_skill.say, decision.reply_text)
@@ -145,6 +145,13 @@ class ActionExecutor:
             "executed_actions": executed_actions,
             "skipped_actions": skipped_actions,
         }
+
+    def _tool_calls_handle_reply(self, tool_calls: list[OpenClawToolCall]) -> bool:
+        for tool_call in tool_calls:
+            canonical_name = self.LEGACY_ROBOT_TOOL_ALIASES.get(tool_call.name, tool_call.name)
+            if canonical_name == "xiaoan.robot.care":
+                return True
+        return False
 
     async def _execute_tool_call(
         self,
@@ -249,6 +256,7 @@ class ActionExecutor:
                     self.robot_motion_skill.move_out_of_dock,
                     speed=arguments.get("speed"),
                     distance_cm=arguments.get("distance_cm"),
+                    duration_ms=arguments.get("duration_ms"),
                     timeout_ms=arguments.get("timeout_ms"),
                 )
             except Exception as exc:
@@ -309,10 +317,11 @@ class ActionExecutor:
             return
 
         if canonical_name == "xiaoan.robot.care":
-            text = arguments.get("text")
+            text = arguments.get("text") or arguments.get("reply_text")
             motion_kwargs = {
                 "speed": arguments.get("speed"),
                 "distance_cm": arguments.get("distance_cm"),
+                "duration_ms": arguments.get("duration_ms"),
                 "timeout_ms": arguments.get("timeout_ms"),
             }
             try:

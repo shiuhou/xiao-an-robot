@@ -156,6 +156,16 @@ class ASRTranscriptSourceTest(unittest.TestCase):
         self.assertEqual(calls["init"], 1)
         self.assertEqual(calls["generate"], 2)
 
+    def test_sensevoice_backend_uses_builtin_funasr_model_for_local_path(self) -> None:
+        with fake_funasr_module({"text": "你好"}) as calls:
+            backend = SenseVoiceASRBackend(model_dir=populated_temp_model_dir(), device="cpu")
+
+            backend.transcribe({"audio_path": "sample.wav"})
+
+        self.assertNotIn("trust_remote_code", calls["init_kwargs"])
+        self.assertEqual(calls["init_kwargs"]["device"], "cpu")
+        self.assertTrue(calls["init_kwargs"]["disable_update"])
+
 
 def populated_temp_model_dir() -> str:
     temp_dir = tempfile.TemporaryDirectory()
@@ -171,7 +181,7 @@ _TEMP_DIRS: list[tempfile.TemporaryDirectory] = []
 class fake_funasr_module:
     def __init__(self, generate_result):
         self.generate_result = generate_result
-        self.calls = {"init": 0, "generate": 0}
+        self.calls = {"init": 0, "generate": 0, "init_kwargs": {}}
         self.previous = sys.modules.get("funasr", _MISSING)
 
     def __enter__(self):
@@ -179,8 +189,9 @@ class fake_funasr_module:
         generate_result = self.generate_result
 
         class FakeAutoModel:
-            def __init__(self, **_kwargs):
+            def __init__(self, **kwargs):
                 calls["init"] += 1
+                calls["init_kwargs"] = kwargs
 
             def generate(self, **_kwargs):
                 calls["generate"] += 1

@@ -12,6 +12,9 @@ import json
 from typing import Any
 
 
+DEFAULT_TTS_ACK_TIMEOUT_SEC = 15.0
+
+
 class RobotGatewayError(RuntimeError):
     """Raised when a robot command cannot be delivered through base_station."""
 
@@ -23,7 +26,7 @@ class RobotGateway:
         self.url = url
         self.timeout_sec = timeout_sec
 
-    async def send_command(self, command: str, **payload: Any) -> dict:
+    async def send_command(self, command: str, *, ack_timeout_sec: float | None = None, **payload: Any) -> dict:
         """Send an agent.command message and return a successful agent.ack."""
 
         try:
@@ -40,6 +43,7 @@ class RobotGateway:
                 **payload,
             },
         }
+        recv_timeout_sec = self.timeout_sec if ack_timeout_sec is None else ack_timeout_sec
 
         websocket = None
         try:
@@ -48,7 +52,7 @@ class RobotGateway:
                 websocket.send(json.dumps(message, ensure_ascii=False)),
                 timeout=self.timeout_sec,
             )
-            raw_ack = await asyncio.wait_for(websocket.recv(), timeout=self.timeout_sec)
+            raw_ack = await asyncio.wait_for(websocket.recv(), timeout=recv_timeout_sec)
         except asyncio.TimeoutError as exc:
             raise RobotGatewayError(f"Timed out sending robot command to {self.url}") from exc
         except OSError as exc:
@@ -90,7 +94,11 @@ class RobotGateway:
         )
 
     async def send_tts(self, text: str) -> dict:
-        return await self.send_command("audio.play_tts", text=text)
+        return await self.send_command(
+            "audio.play_tts",
+            ack_timeout_sec=max(self.timeout_sec, DEFAULT_TTS_ACK_TIMEOUT_SEC),
+            text=text,
+        )
 
     async def send_local_audio(self, audio_id: str, audio_url: str | None = None) -> dict:
         payload: dict[str, Any] = {

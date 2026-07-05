@@ -119,7 +119,6 @@ class SenseVoiceASRBackend:
 
         self._model = AutoModel(
             model=str(model_dir),
-            trust_remote_code=True,
             device=self.device,
             disable_update=True,
         )

@@ -98,6 +98,30 @@ class AgentGatewayTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ack["payload"]["ok"])
         self.assertEqual(ack["payload"]["forwarded_type"], "audio.play_tts")
 
+    async def test_send_tts_allows_slow_ack_from_tts_generation(self) -> None:
+        async def handler(websocket):
+            await websocket.recv()
+            await asyncio.sleep(0.2)
+            await websocket.send(json.dumps({
+                "type": "agent.ack",
+                "payload": {
+                    "ok": True,
+                    "forwarded_type": "audio.play_tts",
+                },
+            }))
+
+        slow_server = await websockets.serve(handler, "127.0.0.1", 0)
+        slow_port = slow_server.sockets[0].getsockname()[1]
+        gateway = RobotGateway(url=f"ws://127.0.0.1:{slow_port}/agent", timeout_sec=0.05)
+        try:
+            ack = await asyncio.wait_for(gateway.send_tts("慢一点生成语音"), timeout=1)
+        finally:
+            slow_server.close()
+            await slow_server.wait_closed()
+
+        self.assertTrue(ack["payload"]["ok"])
+        self.assertEqual(ack["payload"]["forwarded_type"], "audio.play_tts")
+
 
 if __name__ == "__main__":
     unittest.main()

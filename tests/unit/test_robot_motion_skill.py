@@ -29,17 +29,23 @@ class FakeGateway:
 
 
 class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
-    async def test_care_for_user_runs_expression_motion_and_local_audio(self) -> None:
+    async def test_care_for_user_runs_motion_turn_expression_and_tts_in_order(self) -> None:
         gateway = FakeGateway()
-        skill = RobotMotionSkill(gateway=gateway)
+        skill = RobotMotionSkill(
+            gateway=gateway,
+            post_move_delay_sec=0,
+            post_turn_delay_sec=0,
+            post_expression_delay_sec=0,
+        )
 
         result = await skill.care_for_user("take a short break")
 
-        self.assertEqual(len(result), 3)
+        self.assertEqual(len(result), 4)
         self.assertEqual(gateway.calls, [
+            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0, "duration_ms": 2200}, 2600),
+            ("motion", "turn", {"speed": 0.56, "angle_deg": -25.0, "duration_ms": 450}, 900),
             ("expression", "caring", 3000, False),
-            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0}, 1200),
-            ("local_audio", "care_01", None),
+            ("tts", "take a short break"),
         ])
 
     async def test_run_keeps_compatibility_entry_point(self) -> None:
@@ -48,11 +54,13 @@ class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
 
         await skill.run("show_expression", {"expression": "happy", "duration_ms": 1000})
         await skill.run("move_out_of_dock")
+        await skill.run("turn_left")
         await skill.run("say", {"text": "hello"})
 
         self.assertEqual(gateway.calls, [
             ("expression", "happy", 1000, False),
-            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0}, 1200),
+            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0, "duration_ms": 2200}, 2600),
+            ("motion", "turn", {"speed": 0.56, "angle_deg": -25.0, "duration_ms": 450}, 900),
             ("tts", "hello"),
         ])
 
@@ -94,8 +102,8 @@ class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
         await skill.return_to_dock(speed=5, timeout_ms=20000)
 
         self.assertEqual(gateway.calls, [
-            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0}, 1200),
-            ("motion", "move_back_to_dock", {"speed": 0.56}, 1200),
+            ("motion", "move_out_of_dock", {"speed": 0.56, "distance_cm": 10.0, "duration_ms": 2200}, 2600),
+            ("motion", "move_back_to_dock", {"speed": 0.56}, 2600),
         ])
 
 

@@ -10,14 +10,17 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import html
 import json
+import math
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import struct
 import sys
 import threading
 import time
 from typing import Any
+import warnings
 import wave
 
 
@@ -71,6 +74,11 @@ MOTION_GATEWAY_ALIASES = {
     "backward": "move_back_to_dock",
 }
 DEFAULT_TURN_ANGLE_DEG = 30.0
+ASR_SAMPLE_RATE = 16000
+ASR_CHANNELS = 1
+ASR_SAMPLE_WIDTH = 2
+TARGET_MAX_DBFS_MIN = -12.0
+TARGET_MAX_DBFS_MAX = -6.0
 EXPRESSION_REQUEST_KEYWORDS = ("表情", "表情包", "脸", "神情")
 EXPRESSION_KEYWORD_RULES = (
     ("happy", "happy_expression_keyword", ("开心", "高兴", "快乐", "笑", "happy")),
@@ -401,6 +409,227 @@ def print_devices(devices: list[dict[str, Any]]) -> None:
         )
 
 
+def _dbfs(amplitude: float) -> float:
+    if amplitude <= 0:
+        return float("-inf")
+    return round(20.0 * math.log10(amplitude / 32768.0), 3)
+
+
+def wav_format(path: str | Path) -> dict[str, Any]:
+    target = Path(path)
+    with wave.open(str(target), "rb") as wav:
+        return {
+            "path": str(target),
+            "sample_rate": wav.getframerate(),
+            "channels": wav.getnchannels(),
+            "sample_width": wav.getsampwidth(),
+            "frame_count": wav.getnframes(),
+            "duration_ms": int(round(wav.getnframes() * 1000 / wav.getframerate()))
+            if wav.getframerate()
+            else 0,
+        }
+
+
+def wav_level_report(path: str | Path) -> dict[str, Any]:
+    target = Path(path)
+    with wave.open(str(target), "rb") as wav:
+        channels = wav.getnchannels()
+        sample_width = wav.getsampwidth()
+        sample_rate = wav.getframerate()
+        frame_count = wav.getnframes()
+        pcm = wav.readframes(frame_count)
+
+    report: dict[str, Any] = {
+        "path": str(target),
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "sample_width": sample_width,
+        "frame_count": frame_count,
+        "duration_ms": int(round(frame_count * 1000 / sample_rate)) if sample_rate else 0,
+        "target_max_volume_dbfs": [TARGET_MAX_DBFS_MIN, TARGET_MAX_DBFS_MAX],
+    }
+    if sample_width != ASR_SAMPLE_WIDTH:
+        report.update(
+            {
+                "max_volume_dbfs": None,
+                "rms_dbfs": None,
+                "clipping_percent": None,
+                "gain_status": "unsupported_sample_width",
+            }
+        )
+        return report
+
+    usable = len(pcm) - (len(pcm) % 2)
+    if usable <= 0:
+        report.update(
+            {
+                "max_volume_dbfs": None,
+                "rms_dbfs": None,
+                "clipping_percent": 0.0,
+                "gain_status": "empty_audio",
+            }
+        )
+        return report
+
+    samples = struct.unpack("<" + "h" * (usable // 2), pcm[:usable])
+    max_abs = max(abs(sample) for sample in samples)
+    mean_square = sum((sample / 32768.0) ** 2 for sample in samples) / len(samples)
+    clipping_count = sum(1 for sample in samples if abs(sample) >= 32767)
+    clipping_percent = round(clipping_count * 100.0 / len(samples), 4)
+    max_volume_dbfs = _dbfs(float(max_abs))
+    rms_dbfs = _dbfs(math.sqrt(mean_square) * 32768.0)
+
+    if clipping_count > 0 or max_volume_dbfs >= -1.0:
+        gain_status = "clipping_or_too_hot"
+    elif TARGET_MAX_DBFS_MIN <= max_volume_dbfs <= TARGET_MAX_DBFS_MAX:
+        gain_status = "ok"
+    elif max_volume_dbfs < -25.0:
+        gain_status = "too_low"
+    elif max_volume_dbfs > TARGET_MAX_DBFS_MAX:
+        gain_status = "too_hot"
+    else:
+        gain_status = "usable_but_low"
+
+    report.update(
+        {
+            "max_abs": max_abs,
+            "max_volume_dbfs": max_volume_dbfs,
+            "rms_dbfs": rms_dbfs,
+            "clipping_samples": clipping_count,
+            "clipping_percent": clipping_percent,
+            "gain_status": gain_status,
+        }
+    )
+    return report
+
+
+def ensure_asr_wav_format(
+    audio_path: str | Path,
+    *,
+    sample_rate: int = ASR_SAMPLE_RATE,
+    channels: int = ASR_CHANNELS,
+) -> tuple[Path, dict[str, Any]]:
+    source = Path(audio_path)
+    source_format = wav_format(source)
+    format_ok = (
+        source_format["sample_rate"] == sample_rate
+        and source_format["channels"] == channels
+        and source_format["sample_width"] == ASR_SAMPLE_WIDTH
+    )
+    if format_ok:
+        return source, {
+            "converted": False,
+            "source": source_format,
+            "asr": source_format,
+            "target": {
+                "sample_rate": sample_rate,
+                "channels": channels,
+                "sample_width": ASR_SAMPLE_WIDTH,
+                "format": "pcm_s16le",
+            },
+        }
+
+    target = source.with_name(f"{source.stem}.asr.wav")
+    try:
+        _convert_wav_to_asr_format_python(source, target, sample_rate=sample_rate, channels=channels)
+        return target, {
+            "converted": True,
+            "converter": "python_audioop",
+            "source": source_format,
+            "asr": wav_format(target),
+            "target": {
+                "sample_rate": sample_rate,
+                "channels": channels,
+                "sample_width": ASR_SAMPLE_WIDTH,
+                "format": "pcm_s16le",
+            },
+        }
+    except Exception as python_exc:
+        python_error = str(python_exc)
+
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError(
+            "Failed to convert microphone WAV to 16 kHz mono pcm_s16le for ASR "
+            f"with Python audioop ({python_error}), and ffmpeg is not installed."
+        )
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(source),
+        "-ac",
+        str(channels),
+        "-ar",
+        str(sample_rate),
+        "-acodec",
+        "pcm_s16le",
+        str(target),
+    ]
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg audio format conversion failed: {result.stderr.strip()}")
+    return target, {
+        "converted": True,
+        "converter": "ffmpeg",
+        "source": source_format,
+        "asr": wav_format(target),
+        "target": {
+            "sample_rate": sample_rate,
+            "channels": channels,
+            "sample_width": ASR_SAMPLE_WIDTH,
+            "format": "pcm_s16le",
+        },
+        "command": " ".join(command),
+    }
+
+
+def _convert_wav_to_asr_format_python(
+    source: Path,
+    target: Path,
+    *,
+    sample_rate: int,
+    channels: int,
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        import audioop
+
+    with wave.open(str(source), "rb") as wav:
+        source_channels = wav.getnchannels()
+        source_sample_width = wav.getsampwidth()
+        source_sample_rate = wav.getframerate()
+        pcm = wav.readframes(wav.getnframes())
+
+    if source_sample_width != ASR_SAMPLE_WIDTH:
+        pcm = audioop.lin2lin(pcm, source_sample_width, ASR_SAMPLE_WIDTH)
+        source_sample_width = ASR_SAMPLE_WIDTH
+    if source_channels > 1:
+        pcm = audioop.tomono(pcm, source_sample_width, 0.5, 0.5)
+        source_channels = 1
+    if source_channels != channels:
+        raise RuntimeError(f"Unsupported channel conversion: {source_channels} -> {channels}")
+    if source_sample_rate != sample_rate:
+        pcm, _ = audioop.ratecv(
+            pcm,
+            source_sample_width,
+            channels,
+            source_sample_rate,
+            sample_rate,
+            None,
+        )
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(ASR_SAMPLE_WIDTH)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
+
+
 def record_wav(
     *,
     device: dict[str, Any],
@@ -499,6 +728,9 @@ async def transcribe_audio_file(args: argparse.Namespace, audio_path: Path) -> d
         speech_trim_path=str(trim_path) if trim_path else None,
         speech_trim_threshold=args.speech_trim_threshold,
         speech_trim_padding_ms=args.speech_trim_padding_ms,
+        speech_trim_min_speech_ms=args.speech_trim_min_speech_ms,
+        speech_trim_start_padding_ms=args.speech_trim_start_padding_ms,
+        speech_trim_end_padding_ms=args.speech_trim_end_padding_ms,
     )
 
 
@@ -1291,6 +1523,7 @@ def recording_sample_rate(device: dict[str, Any], requested_sample_rate: int) ->
         return requested_sample_rate
     default_rate = int(float(device.get("default_sample_rate") or 0))
     return default_rate if default_rate > 0 else requested_sample_rate
+    return requested_sample_rate
 
 
 async def run_demo(args: argparse.Namespace) -> int:
@@ -1373,6 +1606,11 @@ async def run_demo(args: argparse.Namespace) -> int:
                 "duration_seconds": args.duration,
                 "sample_rate": sample_rate,
                 "requested_sample_rate": args.sample_rate,
+                "asr_target_format": {
+                    "sample_rate": ASR_SAMPLE_RATE,
+                    "channels": ASR_CHANNELS,
+                    "format": "pcm_s16le",
+                },
                 "audio_backend": selected.get("backend"),
                 "audio_device_id": selected.get("device_id"),
                 "text_path": str(text_path),
@@ -1389,6 +1627,12 @@ async def run_demo(args: argparse.Namespace) -> int:
             sample_rate=sample_rate,
             channels=1,
         )
+        asr_wav_path, format_report = ensure_asr_wav_format(
+            wav_path,
+            sample_rate=ASR_SAMPLE_RATE,
+            channels=ASR_CHANNELS,
+        )
+        level_report = wav_level_report(asr_wav_path)
 
         update_state(
             state_path,
@@ -1397,10 +1641,24 @@ async def run_demo(args: argparse.Namespace) -> int:
             source="asr",
             audio_device=device_name,
             audio_device_index=device_index,
-            audio_path=str(wav_path),
+            audio_path=str(asr_wav_path),
             asr_backend=args.asr_backend,
+            details={
+                "raw_audio_path": str(wav_path),
+                "asr_audio_path": str(asr_wav_path),
+                "audio_format": format_report,
+                "input_level": level_report,
+                "vad_starting_config": {
+                    "vad_backend": args.vad_backend,
+                    "vad_threshold": args.vad_threshold,
+                    "min_speech_ms": args.speech_trim_min_speech_ms,
+                    "end_silence_ms": args.speech_trim_end_padding_ms,
+                    "pre_roll_ms": args.speech_trim_start_padding_ms,
+                    "noise_reduction": "off",
+                },
+            },
         )
-        output = await transcribe_audio_file(args, wav_path)
+        output = await transcribe_audio_file(args, asr_wav_path)
         transcript = str(output.get("text") or "").strip()
         if not transcript:
             raise RuntimeError(f"ASR returned no transcript: {json.dumps(output, ensure_ascii=False)}")
@@ -1414,7 +1672,7 @@ async def run_demo(args: argparse.Namespace) -> int:
             source="asr" if args.asr_backend == "sensevoice" else "mock",
             audio_device=device_name,
             audio_device_index=device_index,
-            audio_path=str(wav_path),
+            audio_path=str(asr_wav_path),
             asr_backend=args.asr_backend,
             details={
                 "text_path": str(text_path),
@@ -1424,6 +1682,10 @@ async def run_demo(args: argparse.Namespace) -> int:
                 "route_mode": route_mode,
                 "route_openclaw": args.route_openclaw,
                 "route_agent": args.route_agent,
+                "raw_audio_path": str(wav_path),
+                "asr_audio_path": str(asr_wav_path),
+                "audio_format": format_report,
+                "input_level": level_report,
             },
         )
         route_result = await route_transcript_if_requested(
@@ -1431,7 +1693,7 @@ async def run_demo(args: argparse.Namespace) -> int:
             transcript=transcript,
             transcript_source="asr" if args.asr_backend == "sensevoice" else "mock",
             audio_device=device_name,
-            audio_path=str(wav_path),
+            audio_path=str(asr_wav_path),
             asr_output=output,
         )
         state = update_state(
@@ -1442,13 +1704,17 @@ async def run_demo(args: argparse.Namespace) -> int:
             source="asr" if args.asr_backend == "sensevoice" else "mock",
             audio_device=device_name,
             audio_device_index=device_index,
-            audio_path=str(wav_path),
+            audio_path=str(asr_wav_path),
             asr_backend=args.asr_backend,
             details={
                 "asr_output": output,
                 "text_path": str(text_path),
                 "route_mode": route_mode,
                 "route_result": route_result,
+                "raw_audio_path": str(wav_path),
+                "asr_audio_path": str(asr_wav_path),
+                "audio_format": format_report,
+                "input_level": level_report,
             },
         )
         print(json.dumps(state, ensure_ascii=False, indent=2))
@@ -1496,6 +1762,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--no-trim-speech", dest="trim_speech", action="store_false")
     parser.add_argument("--speech-trim-threshold", type=float, default=0.003)
     parser.add_argument("--speech-trim-padding-ms", type=int, default=250)
+    parser.add_argument("--speech-trim-min-speech-ms", type=int, default=350)
+    parser.add_argument("--speech-trim-start-padding-ms", type=int, default=250)
+    parser.add_argument("--speech-trim-end-padding-ms", type=int, default=800)
     parser.add_argument("--mock-text", default=None, help="Fallback transcript. Does not pretend to be real ASR.")
     parser.add_argument(
         "--route-openclaw",

@@ -159,6 +159,9 @@ def build_audio_file_event(
     speech_trim_threshold: float = 0.01,
     speech_trim_frame_ms: int = 20,
     speech_trim_padding_ms: int = 200,
+    speech_trim_min_speech_ms: int = 0,
+    speech_trim_start_padding_ms: int | None = None,
+    speech_trim_end_padding_ms: int | None = None,
 ) -> tuple[dict | None, dict]:
     original_audio_path = audio_path
     speech_trim = None
@@ -170,6 +173,9 @@ def build_audio_file_event(
             threshold=speech_trim_threshold,
             frame_ms=speech_trim_frame_ms,
             padding_ms=speech_trim_padding_ms,
+            min_speech_ms=speech_trim_min_speech_ms,
+            start_padding_ms=speech_trim_start_padding_ms,
+            end_padding_ms=speech_trim_end_padding_ms,
         )
         if not speech_trim.get("speech_detected", False):
             audio_clip = load_wav_audio_file(audio_path)
@@ -253,6 +259,9 @@ async def run_once(
     speech_trim_threshold: float = 0.01,
     speech_trim_frame_ms: int = 20,
     speech_trim_padding_ms: int = 200,
+    speech_trim_min_speech_ms: int = 0,
+    speech_trim_start_padding_ms: int | None = None,
+    speech_trim_end_padding_ms: int | None = None,
 ) -> dict:
     selected_source = source
     if selected_source is None:
@@ -277,6 +286,9 @@ async def run_once(
             speech_trim_threshold=speech_trim_threshold,
             speech_trim_frame_ms=speech_trim_frame_ms,
             speech_trim_padding_ms=speech_trim_padding_ms,
+            speech_trim_min_speech_ms=speech_trim_min_speech_ms,
+            speech_trim_start_padding_ms=speech_trim_start_padding_ms,
+            speech_trim_end_padding_ms=speech_trim_end_padding_ms,
         )
         if event is None:
             return prepared
@@ -330,6 +342,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--speech-trim-threshold", type=float, default=0.01, help="Energy threshold for --trim-speech.")
     parser.add_argument("--speech-trim-frame-ms", type=int, default=20, help="Frame size for --trim-speech.")
     parser.add_argument("--speech-trim-padding-ms", type=int, default=200, help="Padding kept around detected speech.")
+    parser.add_argument("--speech-trim-min-speech-ms", type=int, default=0, help="Minimum detected speech duration.")
+    parser.add_argument("--speech-trim-start-padding-ms", type=int, default=None, help="Padding kept before detected speech.")
+    parser.add_argument("--speech-trim-end-padding-ms", type=int, default=None, help="Padding kept after detected speech.")
     parser.add_argument("--no-agent", action="store_true", help="Build ASR output without initializing XiaoAnBrain.")
     parser.add_argument("--gateway-url", default="ws://127.0.0.1:8765/agent", help="Base station /agent URL.")
     parser.add_argument("--verbose", action="store_true", help="Print JSON result.")
@@ -359,6 +374,9 @@ async def main(args: argparse.Namespace | None = None) -> dict:
         speech_trim_threshold=args.speech_trim_threshold,
         speech_trim_frame_ms=args.speech_trim_frame_ms,
         speech_trim_padding_ms=args.speech_trim_padding_ms,
+        speech_trim_min_speech_ms=args.speech_trim_min_speech_ms,
+        speech_trim_start_padding_ms=args.speech_trim_start_padding_ms,
+        speech_trim_end_padding_ms=args.speech_trim_end_padding_ms,
     )
     if args.verbose:
         print(json.dumps(output, ensure_ascii=False, indent=2))

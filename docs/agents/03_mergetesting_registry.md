@@ -13,6 +13,8 @@
 | `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
 | **`mergetesting_care_demo_face240`** | ST7789 九表情 | **关** | **关** | **OpenClaw Step 33 实机 care demo**（control+face240+motor+speaker，无 `/video`/`/audio`） | ✅ H 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | ST7789 | 关 | 关 | 上述 care demo OTA | ✅ P |
+| `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；USB 首刷后启用 ArduinoOTA | ✅ H 2026-07-05 |
+| `mergetesting_care_demo_face240_spoken_tts_din41_ota` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；无线 OTA 更新目标 | ✅ H 2026-07-05 |
 | `mergetesting_cam_only` | 关 | 开 | 关 | **Phase 3 传画** QVGA | ✅ 2026-06-26 |
 | `mergetesting_cam_only_ota` | 关 | 开 | 关 | camera OTA + `/video` 落图 | ✅ 2026-06-26 |
 | `mergetesting_mic_only` | 关 | 关 | 开 | PCM → `/audio` | ✅ 2026-06-26 |
@@ -36,6 +38,12 @@
 | `mergetesting_control_ping_ota` | 关 | 关 | 关 | control ping OTA | ✅ P |
 | `mergetesting_control_only` | 关 | 关 | 关 | motor+speaker+control（无 display/cam/mic） | ✅ P |
 | `mergetesting_control_only_ota` | 关 | 关 | 关 | control-only OTA | ✅ P |
+
+2026-07-04 追加：`mergetesting_care_demo_face240_spoken_tts_din41` 在 Linux `/dev/ttyACM0` USB upload PASS；ignored `config.local.h` 指向 SSID `PnX` 与基站 `192.168.31.252:8765`。串口启动确认 face240/motor/speaker enabled、camera/mic disabled、机器人 WiFi IP `192.168.31.176`，基站 WS 未启动时按 capped reconnect 重试 `/control`。
+
+2026-07-05 追加：新增 DIN41 OTA env 对。`mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` 用 USB 首刷并启用 `ENABLE_ARDUINO_OTA=1`；`mergetesting_care_demo_face240_spoken_tts_din41_ota` 用 `espota` 无线更新。验证：USB upload `/dev/ttyACM0` PASS，串口显示 `OTA Ready hostname=xiao-an-esp32 auth=disabled`；随后无线 upload 到 `192.168.31.176` PASS，`Result: OK`。
+
+2026-07-05 晚间喇叭恢复记录：`mergetesting_speaker_volume_probe_din41` 证明 DIN41/MAX98357A 输出仍可发声，700 Hz probe amplitudes `2000/8000/16000/28000` 中仅 `28000` 被用户听到明显失真；`mergetesting_speaker_auto_tts_din41_gain64` 内置句子可听。随后恢复 `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb`，基站使用 `XIAOAN_TTS_TARGET_PEAK=800`，USB reset 后机器人以 `192.168.31.175` 连接 `/control`。直发中文 TTS 和完整 Demo 1 mock care path 均返回 `audio.playback_done ok`，但用户反馈声音仍偏小；下一步应在不接近 `28000` 失真边界的前提下提高 spoken TTS 有效音量。
 
 编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/status/2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07-T17 全部 PASS_H）。`mergetesting_full_face240` 已在 2026-06-27 通过 full env `/control` motor、face240、speaker、`/video`、`/audio` 硬件 smoke。
 

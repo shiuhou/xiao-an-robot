@@ -145,7 +145,7 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
             "speed": 0.56,
             "distance_cm": 10.0,
         })
-        self.assertEqual(robot_message["payload"]["timeout_ms"], 1200)
+        self.assertEqual(robot_message["payload"]["timeout_ms"], 2600)
 
     async def test_motion_bench_command_forwards_full_speed_and_timeout(self) -> None:
         robot_message = await self.send_agent_command_and_assert_forwarded(

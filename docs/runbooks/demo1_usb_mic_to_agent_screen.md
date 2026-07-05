@@ -44,12 +44,53 @@ The PyAudio numeric index can change between runs, so prefer the name fragment:
 --device USB
 ```
 
+## Mic Gain Preflight
+
+Before the public run, record one short sentence and check the input peak:
+
+```bash
+arecord -D plughw:1,0 -f S16_LE -c 1 -r 16000 -d 5 runtime/demo1_audio/mic_gain_check.wav
+ffmpeg -i runtime/demo1_audio/mic_gain_check.wav -af volumedetect -f null -
+```
+
+Use the actual `plughw:X,Y` from `--list-devices`. The target is:
+
+```text
+max_volume: about -12 dB to -6 dB
+not near 0 dB
+no clipping
+```
+
+If `ffmpeg` is not installed, the Demo 1 tool still reports a built-in level
+summary in `runtime/demo1_transcript.json`:
+
+```text
+details.input_level.max_volume_dbfs
+details.input_level.gain_status
+details.input_level.clipping_percent
+```
+
+Start with OS/ALSA mic input volume around `60%` to `75%`, then adjust until
+`gain_status=ok` or `max_volume_dbfs` is roughly `-10 dBFS`.
+
 ## Run Real ASR Demo
 
-The real ASR path records a 5-second WAV, calls the existing
+The real ASR path records a fixed-window WAV, converts the ASR input to
+`16 kHz / mono / pcm_s16le` when needed, calls the existing
 `base_station.monitor.asr_runtime` audio-file path, writes
 `runtime/demo1_transcript.txt` and `runtime/demo1_transcript.json`, appends
 `runtime/demo1_transcript.log.jsonl`, and keeps a local screen page open.
+
+Demo 1 starts with these speech trimming/VAD timing defaults:
+
+```text
+vad_backend = energy
+vad_threshold = 0.003
+min_speech_ms = 350
+pre_roll_ms = 250
+end_silence_ms = 800
+noise_reduction = off
+```
 
 One-command run:
 
@@ -299,8 +340,8 @@ runtime/demo1_audio/demo1_usb_mic_*.wav
 - Device not selected: pass `--device "USB"` or the current PyAudio USB index
   shown by `--list-devices`.
 - `hw:1,0` records silence but the PyAudio USB device works: use
-  `--device "USB"`; on the checked DK-2500 this PyAudio path recorded valid
-  audio at 48 kHz.
+  `--device "USB"`; Demo 1 will convert the ASR input WAV to 16 kHz mono S16
+  before transcription.
 - ASR backend unavailable: check `funasr` and the local model directory, or run
   the mock fallback command.
 - OpenClaw Gateway unavailable: check the `openclaw gateway --port 18789`
@@ -311,8 +352,10 @@ runtime/demo1_audio/demo1_usb_mic_*.wav
 - `openclaw_send.ok=true` but robot does not move: inspect base-station `/agent`
   and robot `/control` logs; `agent.ack` means forwarded, while robot-side
   `command.ack` / `motion.completed` is the stronger hardware evidence.
-- Empty transcript: try speaking closer to the mic, increase `--duration`, or
-  adjust `--speech-trim-threshold`.
+- Empty transcript: first check `details.input_level.max_volume_dbfs`; if it is
+  below `-25 dBFS`, raise mic input volume. If the sentence tail is cut, retry
+  with `--speech-trim-end-padding-ms 1000`. If false triggers happen, raise
+  `--speech-trim-threshold`.
 - Page does not open: check whether port `8766` is occupied; pass another
   `--port`.
 - JSON updates but page is stale: open `/api/demo1/transcript` directly and

@@ -70,6 +70,37 @@ class AudioSegmentsTest(unittest.TestCase):
             self.assertFalse(result["speech_detected"])
             self.assertFalse(trimmed.exists())
 
+    def test_trim_wav_to_speech_accepts_demo_vad_timing_defaults(self) -> None:
+        sample_rate = 16000
+        quiet = [0] * sample_rate
+        speech = [
+            int(9000 * math.sin(2 * math.pi * 440 * i / sample_rate))
+            for i in range(sample_rate // 2)
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "window.wav"
+            trimmed = Path(temp_dir) / "trimmed.wav"
+            write_test_wav(source, quiet + speech + quiet, sample_rate=sample_rate)
+
+            result = trim_wav_to_speech(
+                source,
+                trimmed,
+                threshold=0.02,
+                frame_ms=20,
+                padding_ms=250,
+                min_speech_ms=350,
+                start_padding_ms=250,
+                end_padding_ms=800,
+            )
+
+        self.assertTrue(result["speech_detected"])
+        self.assertEqual(result["min_speech_ms"], 350)
+        self.assertEqual(result["start_padding_ms"], 250)
+        self.assertEqual(result["end_padding_ms"], 800)
+        self.assertGreaterEqual(result["duration_ms"], 1500)
+        self.assertLessEqual(result["duration_ms"], 1600)
+
 
 if __name__ == "__main__":
     unittest.main()

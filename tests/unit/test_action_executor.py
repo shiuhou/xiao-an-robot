@@ -479,6 +479,25 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
             "timeout_ms": 9000,
         }])
 
+    async def test_xiaoan_robot_care_tool_call_handles_reply_text_inside_care_sequence(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            reply_text="先缓一缓",
+            tool_calls=[OpenClawToolCall(
+                name="xiaoan.robot.care",
+                arguments={"reply_text": "我出来陪你一下"},
+            )],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.say_calls, [])
+        self.assertEqual(robot_motion.care_calls, ["我出来陪你一下"])
+        self.assertEqual(result["skipped_actions"], [])
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.care")
+
     async def test_xiaoan_breathing_start_runs_local_guidance(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)

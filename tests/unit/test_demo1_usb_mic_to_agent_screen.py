@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import struct
 import tempfile
 import unittest
 from pathlib import Path
+import wave
 
 from tools.demo.demo1_usb_mic_to_agent_screen import (
     append_log,
@@ -17,6 +19,7 @@ from tools.demo.demo1_usb_mic_to_agent_screen import (
     demo1_openclaw_tool_manifest,
     detect_expression_request,
     detect_unsupported_expression_request,
+    ensure_asr_wav_format,
     load_state,
     normalize_motion_for_gateway,
     openclaw_execution_ok,
@@ -26,6 +29,7 @@ from tools.demo.demo1_usb_mic_to_agent_screen import (
     validate_main_openclaw_artifacts,
     validate_openclaw_decision,
     validate_action_plan,
+    wav_level_report,
     write_transcript_text,
     write_state,
 )
@@ -123,11 +127,75 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
         self.assertEqual(choose_input_device(devices, "5")["backend"], "pyaudio")
         self.assertEqual(choose_input_device(devices, "hw:1,0")["backend"], "arecord")
 
-    def test_recording_sample_rate_uses_pyaudio_default_rate(self) -> None:
+    def test_recording_sample_rate_uses_pyaudio_native_rate_before_asr_conversion(self) -> None:
         device = {"backend": "pyaudio", "default_sample_rate": 48000.0}
 
         self.assertEqual(recording_sample_rate(device, 16000), 48000)
         self.assertEqual(recording_sample_rate({"backend": "arecord"}, 16000), 16000)
+
+    def test_wav_level_report_flags_target_peak_range(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            samples = [0, 8192, -8192, 16000, -16000, 0]
+            with wave.open(str(audio_path), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<" + "h" * len(samples), *samples))
+
+            report = wav_level_report(audio_path)
+
+        self.assertEqual(report["sample_rate"], 16000)
+        self.assertEqual(report["channels"], 1)
+        self.assertEqual(report["sample_width"], 2)
+        self.assertLess(report["max_volume_dbfs"], -6.0)
+        self.assertGreater(report["max_volume_dbfs"], -12.0)
+        self.assertEqual(report["gain_status"], "ok")
+        self.assertEqual(report["clipping_percent"], 0.0)
+
+    def test_ensure_asr_wav_format_keeps_16k_mono_s16(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            with wave.open(str(audio_path), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<hhh", 0, 1000, -1000))
+
+            asr_path, report = ensure_asr_wav_format(audio_path)
+
+        self.assertEqual(asr_path, audio_path)
+        self.assertFalse(report["converted"])
+        self.assertEqual(report["asr"]["sample_rate"], 16000)
+        self.assertEqual(report["asr"]["channels"], 1)
+        self.assertEqual(report["asr"]["sample_width"], 2)
+
+    def test_ensure_asr_wav_format_converts_stereo_48k_without_ffmpeg(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "native.wav"
+            frames = []
+            for index in range(4800):
+                value = int(8000 * (1 if index % 2 == 0 else -1))
+                frames.extend([value, value])
+            with wave.open(str(audio_path), "wb") as wav:
+                wav.setnchannels(2)
+                wav.setsampwidth(2)
+                wav.setframerate(48000)
+                wav.writeframes(struct.pack("<" + "h" * len(frames), *frames))
+
+            asr_path, report = ensure_asr_wav_format(audio_path)
+
+            with wave.open(str(asr_path), "rb") as wav:
+                converted_rate = wav.getframerate()
+                converted_channels = wav.getnchannels()
+                converted_width = wav.getsampwidth()
+
+        self.assertNotEqual(asr_path, audio_path)
+        self.assertTrue(report["converted"])
+        self.assertEqual(report["converter"], "python_audioop")
+        self.assertEqual(converted_rate, 16000)
+        self.assertEqual(converted_channels, 1)
+        self.assertEqual(converted_width, 2)
 
     def test_write_transcript_text_writes_plain_text_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from base_station.api.router import ApiRouter
@@ -148,6 +149,36 @@ class ApiRouterTest(unittest.TestCase):
         self.assertEqual(response.status, 400)
         self.assertFalse(response.body["ok"])
         self.assertEqual(response.body["error"]["code"], "missing_type")
+
+    def test_openclaw_notify_accepts_cron_webhook_summary(self) -> None:
+        response = self.router.route(
+            "POST",
+            "/api/openclaw/notify",
+            body_json={
+                "jobId": "cron-123",
+                "runAtMs": 123456,
+                "summary": json.dumps(
+                    {
+                        "type": "reminder.due",
+                        "display_text": "提醒：检查 Dashboard",
+                        "spoken_text": "该检查 Dashboard 啦。",
+                        "metadata": {"title": "检查 Dashboard"},
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        )
+
+        self.assertEqual(response.status, 200)
+        notification = response.body["data"]["notification"]
+        self.assertEqual(notification["notification_type"], "reminder.due")
+        self.assertEqual(notification["display_text"], "提醒：检查 Dashboard")
+        self.assertEqual(notification["spoken_text"], "该检查 Dashboard 啦。")
+        self.assertEqual(notification["metadata"]["title"], "检查 Dashboard")
+        self.assertEqual(
+            notification["metadata"]["openclaw_cron"]["jobId"],
+            "cron-123",
+        )
 
     def test_query_parameter_helpers(self) -> None:
         self.assertEqual(

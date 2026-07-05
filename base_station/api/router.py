@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from base_station.api.response import ApiResponse, error, success
@@ -169,6 +170,7 @@ class ApiRouter:
                     message="notification payload must be an object",
                     status=400,
                 )
+            active_body = self._openclaw_notify_body(active_body)
             notification_type = active_body.get("type")
             if not isinstance(notification_type, str) or not notification_type.strip():
                 return error(
@@ -448,6 +450,41 @@ class ApiRouter:
             return None
         local_result = skipped[0].get("result", {})
         return local_result.get("error") or skipped[0].get("reason")
+
+    @staticmethod
+    def _openclaw_notify_body(body: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(body.get("type"), str):
+            return body
+
+        summary = body.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            return body
+        try:
+            parsed = json.loads(summary)
+        except json.JSONDecodeError:
+            return body
+        if not isinstance(parsed, dict):
+            return body
+        if not isinstance(parsed.get("type"), str):
+            return body
+
+        metadata = parsed.get("metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        cron_metadata = {
+            key: body[key]
+            for key in ("jobId", "runAtMs", "sessionId", "sessionKey")
+            if key in body
+        }
+        if cron_metadata:
+            metadata = {
+                **metadata,
+                "openclaw_cron": cron_metadata,
+            }
+        return {
+            **parsed,
+            "metadata": metadata,
+        }
 
     @staticmethod
     def _query_value(

@@ -173,27 +173,31 @@ class RobotMotionSkill:
     async def say(self, text: str) -> dict:
         return await self.gateway.send_tts(text)
 
+    async def play_local_audio(self, audio_id: str = "care_01", audio_url: str | None = None) -> dict:
+        return await self.gateway.send_local_audio(audio_id, audio_url=audio_url)
+
     async def care_for_user(
         self,
-        text: str = "你已经工作很久了，休息一下吧。",
+        text: str | None = "",
         speed=None,
         distance_cm=None,
         duration_ms=None,
         timeout_ms=None,
     ) -> list[dict]:
+        spoken_text = str(text).strip() if text is not None else ""
         results = []
+        results.append(await self.show_expression("caring"))
+        await asyncio.sleep(self.post_expression_delay_sec)
         results.append(await self.move_out_of_dock(
             speed=speed,
             distance_cm=distance_cm,
             duration_ms=duration_ms,
             timeout_ms=timeout_ms,
         ))
-        await asyncio.sleep(self.post_move_delay_sec)
-        results.append(await self.turn_left(speed=speed))
-        await asyncio.sleep(self.post_turn_delay_sec)
-        results.append(await self.show_expression("caring"))
-        await asyncio.sleep(self.post_expression_delay_sec)
-        results.append(await self.say(text))
+        if spoken_text:
+            results.append(await self.say(spoken_text))
+        else:
+            results.append(await self.play_local_audio("care_01"))
         return results
 
     async def run(self, action: str, params: dict | None = None):
@@ -213,6 +217,8 @@ class RobotMotionSkill:
             return await self.turn_left(**params)
         if action == "say":
             return await self.say(**params)
+        if action in {"play_local_audio", "audio.play_local"}:
+            return await self.play_local_audio(**params)
         if action == "care_for_user":
             return await self.care_for_user(**params)
 

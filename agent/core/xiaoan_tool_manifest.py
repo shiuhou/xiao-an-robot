@@ -131,14 +131,14 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
     },
     {
         "name": "xiaoan.robot.care",
-        "purpose": "Run Xiao An's local active-care sequence.",
+        "purpose": "Run Xiao An's local active-care sequence; speaks text when provided, otherwise uses the fixed care audio fallback.",
         "parameters": {
             "type": "object",
             "required": [],
             "properties": {
                 "text": {
                     "type": "string",
-                    "description": "Optional short care message to speak.",
+                    "description": "Optional short care message to speak. If omitted, Xiao An plays the fixed care_01 local audio fallback.",
                 },
                 "reply_text": {
                     "type": "string",

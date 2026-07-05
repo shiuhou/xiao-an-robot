@@ -49,7 +49,7 @@ class FakeRobotMotionSkill:
 
     def care_for_user(
         self,
-        text: str = "你已经工作很久了，休息一下吧。",
+        text: str = "",
         speed=None,
         distance_cm=None,
         timeout_ms=None,
@@ -83,7 +83,7 @@ class OfflineRobotMotionSkill(FakeRobotMotionSkill):
 
     def care_for_user(
         self,
-        text: str = "你已经工作很久了，休息一下吧。",
+        text: str = "",
         speed=None,
         distance_cm=None,
         timeout_ms=None,
@@ -119,7 +119,7 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
 
     async def care_for_user(
         self,
-        text: str = "你已经工作很久了，休息一下吧。",
+        text: str = "",
         speed=None,
         distance_cm=None,
         timeout_ms=None,
@@ -500,6 +500,32 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.care_calls, ["legacy"])
         self.assertEqual(result["executed_actions"][0]["name"], "robot.care")
+
+    async def test_legacy_robot_care_for_user_tool_call_still_runs_care_sequence(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="robot.care_for_user", arguments={"text": "legacy user"})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.care_calls, ["legacy user"])
+        self.assertEqual(result["executed_actions"][0]["name"], "robot.care_for_user")
+
+    async def test_xiaoan_robot_care_without_text_uses_care_fallback_path(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.robot.care", arguments={})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.care_calls, [""])
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.care")
 
     async def test_xiaoan_robot_care_tool_call_forwards_safety_args(self) -> None:
         robot_motion = FakeRobotMotionSkill()

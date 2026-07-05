@@ -121,23 +121,35 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_care_for_user_sequence(self) -> None:
         acks = await asyncio.wait_for(self.skill.care_for_user(CARE_TEXT), timeout=5)
-        robot_messages = [await self.recv_json(self.robot) for _ in range(4)]
+        robot_messages = [await self.recv_json(self.robot) for _ in range(3)]
 
-        self.assertEqual(len(acks), 4)
+        self.assertEqual(len(acks), 3)
         self.assertTrue(all(ack["payload"]["ok"] for ack in acks))
         self.assertEqual([message["type"] for message in robot_messages], [
-            "motion.execute",
-            "motion.execute",
             "display.expression",
+            "motion.execute",
             "audio.play_tts",
         ])
-        self.assertEqual(robot_messages[0]["payload"]["action"], "move_out_of_dock")
-        self.assertEqual(robot_messages[0]["payload"]["params"]["duration_ms"], 2200)
-        self.assertEqual(robot_messages[0]["payload"]["timeout_ms"], 2600)
-        self.assertEqual(robot_messages[1]["payload"]["action"], "turn")
-        self.assertEqual(robot_messages[1]["payload"]["params"]["angle_deg"], -25.0)
-        self.assertEqual(robot_messages[2]["payload"]["expression"], "caring")
-        self.assertIn(CARE_TEXT, robot_messages[3]["payload"]["text_preview"])
+        self.assertEqual(robot_messages[0]["payload"]["expression"], "caring")
+        self.assertEqual(robot_messages[1]["payload"]["action"], "move_out_of_dock")
+        self.assertEqual(robot_messages[1]["payload"]["params"]["duration_ms"], 2200)
+        self.assertEqual(robot_messages[1]["payload"]["timeout_ms"], 2600)
+        self.assertIn(CARE_TEXT, robot_messages[2]["payload"]["text_preview"])
+
+    async def test_care_for_user_without_text_uses_local_audio_fallback(self) -> None:
+        acks = await asyncio.wait_for(self.skill.care_for_user(), timeout=5)
+        robot_messages = [await self.recv_json(self.robot) for _ in range(3)]
+
+        self.assertEqual(len(acks), 3)
+        self.assertTrue(all(ack["payload"]["ok"] for ack in acks))
+        self.assertEqual([message["type"] for message in robot_messages], [
+            "display.expression",
+            "motion.execute",
+            "audio.play_local",
+        ])
+        self.assertEqual(robot_messages[0]["payload"]["expression"], "caring")
+        self.assertEqual(robot_messages[1]["payload"]["action"], "move_out_of_dock")
+        self.assertEqual(robot_messages[2]["payload"]["sound"], "care_01")
 
     async def test_xiaoan_robot_care_tool_call_forwards_commands_and_records_tool_run(self) -> None:
         executor = ActionExecutor(
@@ -158,25 +170,23 @@ class RobotMotionSkillIntegrationTest(unittest.IsolatedAsyncioTestCase):
             executor.execute(decision, source_event_type="frontend.message"),
             timeout=5,
         )
-        robot_messages = [await self.recv_json(self.robot) for _ in range(4)]
+        robot_messages = [await self.recv_json(self.robot) for _ in range(3)]
         tool_runs = self.memory_store.query_recent_tool_runs(tool_name="xiaoan.robot.care")
 
         self.assertEqual(result["skipped_actions"], [])
         self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.care")
         self.assertEqual([message["type"] for message in robot_messages], [
-            "motion.execute",
-            "motion.execute",
             "display.expression",
+            "motion.execute",
             "audio.play_tts",
         ])
-        self.assertEqual(robot_messages[0]["payload"]["action"], "move_out_of_dock")
-        self.assertEqual(robot_messages[0]["payload"]["params"]["speed"], 0.56)
-        self.assertEqual(robot_messages[0]["payload"]["params"]["distance_cm"], 10.0)
-        self.assertEqual(robot_messages[0]["payload"]["params"]["duration_ms"], 2200)
-        self.assertEqual(robot_messages[0]["payload"]["timeout_ms"], 2600)
-        self.assertEqual(robot_messages[1]["payload"]["action"], "turn")
-        self.assertEqual(robot_messages[2]["payload"]["expression"], "caring")
-        self.assertIn(CARE_TEXT, robot_messages[3]["payload"]["text_preview"])
+        self.assertEqual(robot_messages[0]["payload"]["expression"], "caring")
+        self.assertEqual(robot_messages[1]["payload"]["action"], "move_out_of_dock")
+        self.assertEqual(robot_messages[1]["payload"]["params"]["speed"], 0.56)
+        self.assertEqual(robot_messages[1]["payload"]["params"]["distance_cm"], 10.0)
+        self.assertEqual(robot_messages[1]["payload"]["params"]["duration_ms"], 2200)
+        self.assertEqual(robot_messages[1]["payload"]["timeout_ms"], 2600)
+        self.assertIn(CARE_TEXT, robot_messages[2]["payload"]["text_preview"])
         self.assertEqual(len(tool_runs), 1)
         self.assertEqual(tool_runs[0]["status"], "success")
         self.assertEqual(tool_runs[0]["source_event_type"], "frontend.message")

@@ -702,6 +702,26 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(memory_store.tool_runs[0]["status"], "success")
         self.assertEqual(memory_store.tool_runs[0]["source_event_type"], "asr.transcript")
 
+    async def test_robot_say_tool_call_prevents_reply_text_double_say(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            reply_text="hello from reply",
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.say",
+                    arguments={"text": "hello from tool"},
+                ),
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.say_calls, ["hello from tool"])
+        self.assertEqual(len(result["executed_actions"]), 1)
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.say")
+
     async def test_xiaoan_robot_tool_failure_returns_clear_reason_and_records_tool_run(self) -> None:
         memory_store = FakeMemoryStore()
         executor = ActionExecutor(OfflineRobotMotionSkill(), memory_store=memory_store)

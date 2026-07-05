@@ -149,7 +149,7 @@ class ActionExecutor:
     def _tool_calls_handle_reply(self, tool_calls: list[OpenClawToolCall]) -> bool:
         for tool_call in tool_calls:
             canonical_name = self.LEGACY_ROBOT_TOOL_ALIASES.get(tool_call.name, tool_call.name)
-            if canonical_name == "xiaoan.robot.care":
+            if canonical_name in {"xiaoan.robot.care", "xiaoan.robot.say"}:
                 return True
         return False
 

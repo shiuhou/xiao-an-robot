@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -112,6 +113,7 @@ class ApiRuntime:
             "latest_command_ack": None,
             "last_error": None,
         }
+        self._latest_reply: dict[str, Any] | None = None
 
         self.memory_store = XiaoAnMemoryStore(
             db_path=self.db_path,
@@ -165,7 +167,21 @@ class ApiRuntime:
             },
         }
         with self._operation_lock:
-            return self.run_async(self.brain.handle_event(event))
+            result = self.run_async(self.brain.handle_event(event))
+            reply_text = result.get("reply_text", "") if isinstance(result, dict) else ""
+            if reply_text:
+                self._set_latest_reply(
+                    notification_type="frontend.message",
+                    display_text=reply_text,
+                    spoken_text="",
+                    reply_text=reply_text,
+                    tool_calls=[],
+                    metadata=dict(metadata or {}),
+                    session_id=session_id,
+                    source="api.chat",
+                    execution_result=result,
+                )
+            return result
 
     def preview_context(
         self,
@@ -203,6 +219,92 @@ class ApiRuntime:
                     | self.action_executor.LOCAL_TOOL_NAMES
                 )
             ],
+        }
+
+    def latest_reply(self) -> dict[str, Any]:
+        with self._operation_lock:
+            latest = self._latest_reply
+            if latest is None:
+                return {
+                    "available": False,
+                    "latest": None,
+                }
+            return {
+                "available": True,
+                "latest": self._copy_jsonish(latest),
+            }
+
+    def notify_from_openclaw(
+        self,
+        notification_type: str,
+        display_text: str = "",
+        spoken_text: str = "",
+        reply_text: str = "",
+        tool_calls: list[Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        session_id: str = "default",
+    ) -> dict[str, Any]:
+        parsed_tool_calls = [
+            OpenClawToolCall.from_dict(item)
+            for item in (tool_calls or [])
+            if isinstance(item, dict)
+        ]
+        active_display_text = self._text_or_empty(display_text)
+        active_spoken_text = self._text_or_empty(spoken_text)
+        active_reply_text = self._text_or_empty(reply_text)
+        robot_reply_text = active_spoken_text or active_reply_text
+        active_metadata = dict(metadata or {})
+        tool_call_payloads = [
+            tool_call.to_dict()
+            for tool_call in parsed_tool_calls
+        ]
+        raw_notification = {
+            "type": notification_type,
+            "display_text": active_display_text,
+            "spoken_text": active_spoken_text,
+            "reply_text": active_reply_text,
+            "tool_calls": tool_call_payloads,
+            "metadata": active_metadata,
+            "session_id": session_id,
+        }
+        decision = OpenClawDecision(
+            handled=True,
+            reply_text=robot_reply_text,
+            tool_calls=parsed_tool_calls,
+            raw={
+                "source": "api.openclaw.notify",
+                "notification": raw_notification,
+            },
+        )
+
+        with self._operation_lock:
+            execution_result = self.run_async(
+                self.action_executor.execute(
+                    decision,
+                    source_event_type="api.openclaw.notify",
+                ),
+            )
+            for tool_call in parsed_tool_calls:
+                self._update_robot_connection_status(
+                    tool_call.name,
+                    execution_result,
+                )
+            latest = self._set_latest_reply(
+                notification_type=notification_type,
+                display_text=active_display_text,
+                spoken_text=active_spoken_text,
+                reply_text=active_reply_text,
+                tool_calls=tool_call_payloads,
+                metadata=active_metadata,
+                session_id=session_id,
+                source="api.openclaw.notify",
+                execution_result=execution_result,
+            )
+
+        return {
+            "notification": raw_notification,
+            "latest": latest,
+            "execution_result": execution_result,
         }
 
     def call_tool(
@@ -558,6 +660,79 @@ class ApiRuntime:
             detail["last_error"] = error or skipped_actions[0].get("reason")
             self.robot_connection_status = "offline_via_command_ack"
             self.robot_connection_detail = detail
+
+    def _set_latest_reply(
+        self,
+        notification_type: str,
+        display_text: str,
+        spoken_text: str,
+        reply_text: str,
+        tool_calls: list[dict[str, Any]],
+        metadata: dict[str, Any],
+        session_id: str,
+        source: str,
+        execution_result: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        output_text = (
+            self._text_or_empty(display_text)
+            or self._text_or_empty(spoken_text)
+            or self._text_or_empty(reply_text)
+            or self._first_say_text(tool_calls)
+        )
+        latest = {
+            "type": notification_type,
+            "display_text": self._text_or_empty(display_text),
+            "spoken_text": self._text_or_empty(spoken_text),
+            "reply_text": self._text_or_empty(reply_text),
+            "output_text": output_text,
+            "tool_calls": self._copy_jsonish(tool_calls),
+            "metadata": self._copy_jsonish(metadata),
+            "session_id": session_id,
+            "source": source,
+            "received_at_ms": int(time.time() * 1000),
+        }
+        if execution_result is not None:
+            latest["execution_result"] = self._copy_jsonish(execution_result)
+        self._latest_reply = latest
+        return self._copy_jsonish(latest)
+
+    @classmethod
+    def _first_say_text(cls, tool_calls: list[dict[str, Any]]) -> str:
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            name = tool_call.get("name", "")
+            canonical_name = ActionExecutor.LEGACY_ROBOT_TOOL_ALIASES.get(
+                name,
+                name,
+            )
+            if canonical_name != "xiaoan.robot.say":
+                continue
+            arguments = tool_call.get("arguments", {})
+            if not isinstance(arguments, dict):
+                continue
+            text = cls._text_or_empty(arguments.get("text", ""))
+            if text:
+                return text
+        return ""
+
+    @staticmethod
+    def _text_or_empty(value: Any) -> str:
+        return value.strip() if isinstance(value, str) else ""
+
+    @staticmethod
+    def _copy_jsonish(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                str(key): ApiRuntime._copy_jsonish(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                ApiRuntime._copy_jsonish(item)
+                for item in value
+            ]
+        return value
 
     @staticmethod
     def _iter_robot_ack_payloads(result: Any) -> Iterable[dict[str, Any]]:

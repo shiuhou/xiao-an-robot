@@ -36,6 +36,9 @@ class ApiRouter:
         if active_method == "GET" and active_path == "/api/tools":
             return success(self.runtime.list_tools())
 
+        if active_method == "GET" and active_path == "/api/replies/latest":
+            return success(self.runtime.latest_reply())
+
         if active_method == "GET" and active_path == "/api/memory/recent":
             return success(self.runtime.query_recent_memory(
                 limit=self._query_limit(query, default=20),
@@ -155,6 +158,58 @@ class ApiRouter:
             return success(self.runtime.call_tool(
                 tool=tool,
                 arguments=arguments,
+                session_id=session_id,
+            ))
+
+        if active_method == "POST" and active_path == "/api/openclaw/notify":
+            active_body = body_json if isinstance(body_json, dict) else None
+            if active_body is None:
+                return error(
+                    code="invalid_notify_payload",
+                    message="notification payload must be an object",
+                    status=400,
+                )
+            notification_type = active_body.get("type")
+            if not isinstance(notification_type, str) or not notification_type.strip():
+                return error(
+                    code="missing_type",
+                    message="type must be a non-empty string",
+                    status=400,
+                )
+            for field_name in ("display_text", "spoken_text", "reply_text"):
+                value = active_body.get(field_name)
+                if value is not None and not isinstance(value, str):
+                    return error(
+                        code=f"invalid_{field_name}",
+                        message=f"{field_name} must be a string",
+                        status=400,
+                    )
+            tool_calls = active_body.get("tool_calls", [])
+            if tool_calls is None:
+                tool_calls = []
+            if not isinstance(tool_calls, list):
+                return error(
+                    code="invalid_tool_calls",
+                    message="tool_calls must be an array",
+                    status=400,
+                )
+            metadata = active_body.get("metadata", {})
+            if metadata is None:
+                metadata = {}
+            if not isinstance(metadata, dict):
+                return error(
+                    code="invalid_metadata",
+                    message="metadata must be an object",
+                    status=400,
+                )
+            session_id = self._session_id(active_body)
+            return success(self.runtime.notify_from_openclaw(
+                notification_type=notification_type.strip(),
+                display_text=active_body.get("display_text", ""),
+                spoken_text=active_body.get("spoken_text", ""),
+                reply_text=active_body.get("reply_text", ""),
+                tool_calls=tool_calls,
+                metadata=metadata,
                 session_id=session_id,
             ))
 

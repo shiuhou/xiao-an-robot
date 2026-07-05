@@ -15,6 +15,22 @@ class FakeRuntime:
             "db_path": "temp.db",
         }
 
+    def latest_reply(self) -> dict:
+        return {
+            "available": True,
+            "latest": {
+                "display_text": "hello",
+            },
+        }
+
+    def notify_from_openclaw(self, **kwargs) -> dict:
+        return {
+            "notification": kwargs,
+            "execution_result": {
+                "handled": True,
+            },
+        }
+
 
 class ApiRouterTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -32,6 +48,16 @@ class ApiRouterTest(unittest.TestCase):
 
         self.assertEqual(response.status, 200)
         self.assertEqual(response.body["data"]["db_path"], "temp.db")
+
+    def test_latest_reply(self) -> None:
+        response = self.router.route("GET", "/api/replies/latest")
+
+        self.assertEqual(response.status, 200)
+        self.assertTrue(response.body["data"]["available"])
+        self.assertEqual(
+            response.body["data"]["latest"]["display_text"],
+            "hello",
+        )
 
     def test_status_exposes_openclaw_ownership_boundary(self) -> None:
         class OwnershipRuntime(FakeRuntime):
@@ -89,6 +115,35 @@ class ApiRouterTest(unittest.TestCase):
         self.assertEqual(response.status, 404)
         self.assertFalse(response.body["ok"])
         self.assertEqual(response.body["error"]["code"], "not_found")
+
+    def test_openclaw_notify_routes_valid_payload(self) -> None:
+        response = self.router.route(
+            "POST",
+            "/api/openclaw/notify",
+            body_json={
+                "type": "generic.notify",
+                "display_text": "显示给基站",
+                "metadata": {"source": "test"},
+                "session_id": "notify-session",
+            },
+        )
+
+        self.assertEqual(response.status, 200)
+        notification = response.body["data"]["notification"]
+        self.assertEqual(notification["notification_type"], "generic.notify")
+        self.assertEqual(notification["display_text"], "显示给基站")
+        self.assertEqual(notification["session_id"], "notify-session")
+
+    def test_openclaw_notify_requires_type(self) -> None:
+        response = self.router.route(
+            "POST",
+            "/api/openclaw/notify",
+            body_json={"display_text": "missing type"},
+        )
+
+        self.assertEqual(response.status, 400)
+        self.assertFalse(response.body["ok"])
+        self.assertEqual(response.body["error"]["code"], "missing_type")
 
     def test_query_parameter_helpers(self) -> None:
         self.assertEqual(

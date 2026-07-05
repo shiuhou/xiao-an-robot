@@ -269,6 +269,36 @@ class DashboardTodayDataTest(unittest.TestCase):
 
         self.assertEqual(args.openclaw_workspace, "/tmp/xiaoan-runtime")
 
+    def test_dashboard_state_includes_openclaw_dashboard_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as data_temp, tempfile.TemporaryDirectory() as workspace_temp:
+            data_dir = Path(data_temp)
+            workspace = Path(workspace_temp)
+            self._write_runtime_dashboard(
+                workspace,
+                {
+                    "schema": "xiaoan.dashboard.v1",
+                    "mode": "focus",
+                    "status_text": "正在专注",
+                    "next_item": {"title": "写报告"},
+                    "latest_reply": {"display_text": "我帮你看着今天的重点。"},
+                    "todos": [],
+                    "schedules": [],
+                    "reminders": [],
+                },
+            )
+
+            state = load_dashboard_state(
+                data_dir=data_dir,
+                runtime_dir=data_dir,
+                openclaw_workspace=workspace,
+            )
+
+        self.assertEqual(state["openclaw_dashboard"]["mode"], "focus")
+        self.assertEqual(
+            state["openclaw_dashboard"]["latest_reply"]["display_text"],
+            "我帮你看着今天的重点。",
+        )
+
 
 class DashboardHttpTest(unittest.TestCase):
     def test_dashboard_routes_return_html_and_json(self) -> None:
@@ -315,44 +345,39 @@ class DashboardHttpTest(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=5)
 
-        self.assertIn("最近觸發", html)
+        self.assertIn("Todo List", html)
+        self.assertIn("今日日程", html)
         self.assertEqual(state["pipeline"]["robot"], "ready")
         self.assertEqual(state["triggers"][0]["title"], "喝水提醒")
 
 
 class DashboardStaticAssetTest(unittest.TestCase):
-    def test_dashboard_defaults_to_glance_layout(self) -> None:
+    def test_dashboard_defaults_to_work_assistant_layout(self) -> None:
         html = (DEFAULT_STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
         css = (DEFAULT_STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
 
-        self.assertIn('id="glanceTitle"', html)
-        self.assertIn('class="next-panel"', html)
+        self.assertIn('class="todo-panel"', html)
+        self.assertIn('class="schedule-panel"', html)
+        self.assertIn('id="nextLine"', html)
+        self.assertIn('id="replyLine"', html)
         self.assertIn(
             "grid-template-areas:",
             css,
         )
-        self.assertIn("font-size: 112px;", css)
-        self.assertIn("font-size: 34px;", css)
-        self.assertIn("font-size: 21px;", css)
-        self.assertIn("minmax(182px, 2.0fr)", css)
-        self.assertIn("minmax(132px, 0.9fr)", css)
+        self.assertIn('"todos schedules"', css)
+        self.assertIn("font-size: 74px;", css)
+        self.assertIn("background: #eef2f0;", css)
 
-    def test_static_assets_keep_latest_trigger_and_pipeline_visible(self) -> None:
+    def test_static_assets_focus_on_today_work_data(self) -> None:
         css = (DEFAULT_STATIC_DIR / "dashboard.css").read_text(encoding="utf-8")
         js = (DEFAULT_STATIC_DIR / "dashboard.js").read_text(encoding="utf-8")
 
-        self.assertIn(
-            "grid-template-columns: repeat(4, minmax(0, 1fr));",
-            css,
-        )
-        self.assertIn("trigger-chain", js)
-        self.assertIn("trigger-status", js)
-        self.assertIn(".trigger-status", css)
-        self.assertIn("triggers.slice(0, 1)", js)
-        self.assertIn("voiceStatusLabels", js)
-        self.assertIn("voice.transcript", js)
-        self.assertIn("assistant_capture", js)
-        self.assertIn("captureStatusLabels", js)
+        self.assertIn("renderTodos", js)
+        self.assertIn("renderSchedules", js)
+        self.assertIn("openclaw_dashboard", js)
+        self.assertIn("latest_reply", js)
+        self.assertIn(".todo-item", css)
+        self.assertIn(".schedule-item", css)
 
 
 if __name__ == "__main__":

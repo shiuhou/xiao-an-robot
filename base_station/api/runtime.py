@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -81,6 +83,9 @@ DEPRECATED_LOCAL_FEATURES = [
     },
 ]
 
+DEFAULT_OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace-xiaoan-runtime"
+OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
+
 
 def build_api_openclaw_adapter(environ: dict[str, str] | None = None) -> Any:
     active_environ = os.environ if environ is None else environ
@@ -97,10 +102,17 @@ class ApiRuntime:
         self,
         db_path: str = "agent/data/xiao_an.db",
         robot_ws_url: str = "ws://127.0.0.1:8765/agent",
+        openclaw_workspace: str | Path | None = None,
         verbose: bool = False,
     ):
         self.db_path = str(Path(db_path))
         self.robot_ws_url = robot_ws_url
+        self.openclaw_workspace = Path(
+            openclaw_workspace or DEFAULT_OPENCLAW_WORKSPACE
+        ).expanduser()
+        self.openclaw_dashboard_path = (
+            self.openclaw_workspace / "state" / "dashboard.json"
+        )
         self.verbose = bool(verbose)
         self.closed = False
         self._operation_lock = threading.RLock()
@@ -709,7 +721,115 @@ class ApiRuntime:
         if execution_result is not None:
             latest["execution_result"] = self._copy_jsonish(execution_result)
         self._latest_reply = latest
+        try:
+            self._sync_latest_reply_to_dashboard(latest)
+        except Exception as exc:
+            if self.verbose:
+                print(f"warning: failed to sync latest reply to dashboard: {exc}")
         return self._copy_jsonish(latest)
+
+    def _sync_latest_reply_to_dashboard(self, latest: dict[str, Any]) -> None:
+        now_iso = self._now_iso()
+        dashboard = self._load_dashboard_snapshot()
+        status_text = (
+            self._text_or_empty(latest.get("display_text", ""))
+            or self._text_or_empty(latest.get("output_text", ""))
+            or self._text_or_empty(latest.get("reply_text", ""))
+            or self._text_or_empty(dashboard.get("status_text", ""))
+        )
+
+        dashboard["schema"] = OPENCLAW_DASHBOARD_SCHEMA
+        dashboard["updated_at"] = now_iso
+        dashboard["mode"] = self._dashboard_mode_for_latest(latest, dashboard)
+        dashboard["status_text"] = status_text
+        dashboard["next_item"] = dashboard.get("next_item")
+        dashboard["todos"] = self._list_or_empty(dashboard.get("todos"))
+        dashboard["schedules"] = self._list_or_empty(dashboard.get("schedules"))
+        dashboard["reminders"] = self._list_or_empty(dashboard.get("reminders"))
+        dashboard["latest_reply"] = {
+            "display_text": self._text_or_empty(latest.get("display_text", "")),
+            "spoken_text": self._text_or_empty(latest.get("spoken_text", "")),
+            "source": self._text_or_empty(latest.get("source", "")),
+            "received_at": now_iso,
+        }
+
+        self.openclaw_dashboard_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.openclaw_dashboard_path.with_name(
+            f"{self.openclaw_dashboard_path.name}.tmp"
+        )
+        tmp_path.write_text(
+            json.dumps(dashboard, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        tmp_path.replace(self.openclaw_dashboard_path)
+
+    def _load_dashboard_snapshot(self) -> dict[str, Any]:
+        try:
+            raw = self.openclaw_dashboard_path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError):
+            return self._minimal_dashboard_snapshot()
+        if not isinstance(data, dict):
+            return self._minimal_dashboard_snapshot()
+        if data.get("schema") != OPENCLAW_DASHBOARD_SCHEMA:
+            return self._minimal_dashboard_snapshot()
+        snapshot = self._minimal_dashboard_snapshot()
+        snapshot.update(data)
+        return snapshot
+
+    @staticmethod
+    def _minimal_dashboard_snapshot() -> dict[str, Any]:
+        return {
+            "schema": OPENCLAW_DASHBOARD_SCHEMA,
+            "updated_at": "",
+            "mode": "idle",
+            "status_text": "",
+            "next_item": None,
+            "todos": [],
+            "schedules": [],
+            "reminders": [],
+            "latest_reply": {
+                "display_text": "",
+                "spoken_text": "",
+                "source": "",
+                "received_at": "",
+            },
+        }
+
+    @classmethod
+    def _dashboard_mode_for_latest(
+        cls,
+        latest: dict[str, Any],
+        dashboard: dict[str, Any],
+    ) -> str:
+        metadata = latest.get("metadata", {})
+        if isinstance(metadata, dict):
+            mode = cls._text_or_empty(metadata.get("mode", ""))
+            if mode:
+                return mode
+
+        for tool_call in latest.get("tool_calls", []):
+            if not isinstance(tool_call, dict):
+                continue
+            name = tool_call.get("name", "")
+            canonical_name = ActionExecutor.LEGACY_ROBOT_TOOL_ALIASES.get(
+                name,
+                name,
+            )
+            if canonical_name == "xiaoan.robot.care":
+                return "care"
+
+        if cls._text_or_empty(latest.get("spoken_text", "")):
+            return "speaking"
+        return cls._text_or_empty(dashboard.get("mode", "")) or "idle"
+
+    @staticmethod
+    def _list_or_empty(value: Any) -> list[Any]:
+        return value if isinstance(value, list) else []
+
+    @staticmethod
+    def _now_iso() -> str:
+        return datetime.now().replace(microsecond=0).isoformat()
 
     @classmethod
     def _first_say_text(cls, tool_calls: list[dict[str, Any]]) -> str:

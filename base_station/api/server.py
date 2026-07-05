@@ -5,12 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from base_station.api.response import ApiResponse, error
 from base_station.api.router import ApiRouter
 from base_station.api.runtime import ApiRuntime
+
+DEFAULT_OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace-xiaoan-runtime"
 
 
 def make_handler(router: ApiRouter, verbose: bool = False):
@@ -102,6 +105,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--robot-ws-url",
         default="ws://127.0.0.1:8765/agent",
     )
+    parser.add_argument("--openclaw-workspace", default=str(DEFAULT_OPENCLAW_WORKSPACE))
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -111,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     runtime = ApiRuntime(
         db_path=args.db_path,
         robot_ws_url=args.robot_ws_url,
+        openclaw_workspace=args.openclaw_workspace,
         verbose=args.verbose,
     )
     server = create_server(

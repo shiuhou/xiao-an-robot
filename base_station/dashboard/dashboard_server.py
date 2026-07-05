@@ -308,6 +308,7 @@ def _build_runtime_state(
 def load_dashboard_state(
     data_dir: str | Path = DEFAULT_DATA_DIR,
     runtime_dir: str | Path = DEFAULT_RUNTIME_DIR,
+    openclaw_workspace: str | Path | None = DEFAULT_OPENCLAW_WORKSPACE,
 ) -> dict[str, Any]:
     """Load dashboard health, pipeline, and recent trigger state."""
 
@@ -320,12 +321,13 @@ def load_dashboard_state(
     state["triggers"] = _normalize_triggers(raw)
     state["voice"] = _load_demo1_voice_state(runtime_path)
     state["assistant_capture"] = _load_assistant_capture_state(runtime_path)
+    state["openclaw_dashboard"] = (
+        load_openclaw_dashboard(openclaw_workspace) if openclaw_workspace else {}
+    ) or {}
     return state
 
 
-def load_openclaw_dashboard_today(
-    openclaw_workspace: str | Path,
-) -> dict[str, Any] | None:
+def load_openclaw_dashboard(openclaw_workspace: str | Path) -> dict[str, Any] | None:
     dashboard_path = Path(openclaw_workspace) / "state" / "dashboard.json"
     try:
         raw = dashboard_path.read_text(encoding="utf-8")
@@ -335,6 +337,15 @@ def load_openclaw_dashboard_today(
     if not isinstance(data, dict):
         return None
     if data.get("schema") != OPENCLAW_DASHBOARD_SCHEMA:
+        return None
+    return data
+
+
+def load_openclaw_dashboard_today(
+    openclaw_workspace: str | Path,
+) -> dict[str, Any] | None:
+    data = load_openclaw_dashboard(openclaw_workspace)
+    if data is None:
         return None
 
     schedules = data.get("schedules")
@@ -405,7 +416,9 @@ def make_handler(
                 self._write_file(static_dir / "dashboard.html")
                 return
             if path == "/api/dashboard/state":
-                self._write_json(load_dashboard_state(data_dir, runtime_dir))
+                self._write_json(
+                    load_dashboard_state(data_dir, runtime_dir, openclaw_workspace)
+                )
                 return
             if path == "/api/dashboard/today":
                 self._write_json(load_today_data(data_dir, openclaw_workspace))

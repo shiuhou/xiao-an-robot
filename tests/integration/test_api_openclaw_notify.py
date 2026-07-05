@@ -39,6 +39,7 @@ class ApiOpenClawNotifyIntegrationTest(unittest.TestCase):
         self.runtime = ApiRuntime(
             db_path=str(db_path),
             robot_ws_url="ws://127.0.0.1:65534/agent",
+            openclaw_workspace=Path(self.temp_dir.name) / "openclaw-workspace",
         )
         self.robot_motion = FakeRobotMotionSkill()
         self.runtime.robot_motion = self.robot_motion

@@ -15,10 +15,12 @@ from urllib.parse import unquote, urlsplit
 DEFAULT_DATA_DIR = Path(__file__).with_name("data")
 DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
 DEFAULT_RUNTIME_DIR = Path("runtime")
+DEFAULT_OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace-xiaoan-runtime"
 TRIGGER_LIMIT = 3
 RECENT_SECONDS = 10
 DEMO1_TRANSCRIPT_FILE = "demo1_transcript.json"
 ASSISTANT_CAPTURE_FILE = "assistant_capture_result.json"
+OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
 
 PIPELINE_DEFAULTS = {
     "current_state": "idle",
@@ -321,7 +323,39 @@ def load_dashboard_state(
     return state
 
 
-def load_today_data(data_dir: str | Path = DEFAULT_DATA_DIR) -> dict[str, Any]:
+def load_openclaw_dashboard_today(
+    openclaw_workspace: str | Path,
+) -> dict[str, Any] | None:
+    dashboard_path = Path(openclaw_workspace) / "state" / "dashboard.json"
+    try:
+        raw = dashboard_path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("schema") != OPENCLAW_DASHBOARD_SCHEMA:
+        return None
+
+    schedules = data.get("schedules")
+    todos = data.get("todos")
+    reminders = data.get("reminders")
+    return {
+        "schedules": schedules if isinstance(schedules, list) else [],
+        "todos": todos if isinstance(todos, list) else [],
+        "alarms": reminders if isinstance(reminders, list) else [],
+    }
+
+
+def load_today_data(
+    data_dir: str | Path = DEFAULT_DATA_DIR,
+    openclaw_workspace: str | Path | None = DEFAULT_OPENCLAW_WORKSPACE,
+) -> dict[str, Any]:
+    if openclaw_workspace is not None:
+        openclaw_today = load_openclaw_dashboard_today(openclaw_workspace)
+        if openclaw_today is not None:
+            return openclaw_today
+
     return _load_json_file(
         Path(data_dir) / "today.json",
         {"schedules": [], "todos": [], "alarms": []},
@@ -359,6 +393,7 @@ def make_handler(
     data_dir: Path,
     static_dir: Path,
     runtime_dir: Path,
+    openclaw_workspace: Path | None,
     verbose: bool = False,
 ):
     class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -373,7 +408,7 @@ def make_handler(
                 self._write_json(load_dashboard_state(data_dir, runtime_dir))
                 return
             if path == "/api/dashboard/today":
-                self._write_json(load_today_data(data_dir))
+                self._write_json(load_today_data(data_dir, openclaw_workspace))
                 return
             if path == "/api/health":
                 self._write_json({"status": "ok"})
@@ -423,12 +458,14 @@ def create_server(
     data_dir: str | Path = DEFAULT_DATA_DIR,
     static_dir: str | Path = DEFAULT_STATIC_DIR,
     runtime_dir: str | Path = DEFAULT_RUNTIME_DIR,
+    openclaw_workspace: str | Path | None = DEFAULT_OPENCLAW_WORKSPACE,
     verbose: bool = False,
 ) -> ThreadingHTTPServer:
     handler = make_handler(
         data_dir=Path(data_dir),
         static_dir=Path(static_dir),
         runtime_dir=Path(runtime_dir),
+        openclaw_workspace=Path(openclaw_workspace) if openclaw_workspace else None,
         verbose=verbose,
     )
     return ThreadingHTTPServer((host, int(port)), handler)
@@ -441,6 +478,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR))
     parser.add_argument("--static-dir", default=str(DEFAULT_STATIC_DIR))
     parser.add_argument("--runtime-dir", default=str(DEFAULT_RUNTIME_DIR))
+    parser.add_argument("--openclaw-workspace", default=str(DEFAULT_OPENCLAW_WORKSPACE))
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -453,6 +491,7 @@ def main(argv: list[str] | None = None) -> int:
         data_dir=args.data_dir,
         static_dir=args.static_dir,
         runtime_dir=args.runtime_dir,
+        openclaw_workspace=args.openclaw_workspace,
         verbose=args.verbose,
     )
     try:

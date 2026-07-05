@@ -13,6 +13,9 @@ from base_station.dashboard.dashboard_server import (
     DEFAULT_STATIC_DIR,
     create_server,
     load_dashboard_state,
+    load_openclaw_dashboard_today,
+    load_today_data,
+    parse_args,
 )
 
 
@@ -156,6 +159,115 @@ class DashboardStateTest(unittest.TestCase):
             state["assistant_capture"]["source_of_truth"],
             "openclaw_xiaoan_runtime",
         )
+
+
+class DashboardTodayDataTest(unittest.TestCase):
+    def _write_today_fallback(self, data_dir: Path) -> None:
+        (data_dir / "today.json").write_text(
+            json.dumps(
+                {
+                    "schedules": [{"title": "fallback schedule"}],
+                    "todos": [{"title": "fallback todo"}],
+                    "alarms": [{"title": "fallback alarm"}],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def _write_runtime_dashboard(
+        self,
+        workspace: Path,
+        payload: dict[str, object] | str,
+    ) -> None:
+        dashboard_path = workspace / "state" / "dashboard.json"
+        dashboard_path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(payload, str):
+            dashboard_path.write_text(payload, encoding="utf-8")
+        else:
+            dashboard_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def test_today_data_prefers_valid_openclaw_dashboard(self) -> None:
+        with tempfile.TemporaryDirectory() as data_temp, tempfile.TemporaryDirectory() as workspace_temp:
+            data_dir = Path(data_temp)
+            workspace = Path(workspace_temp)
+            self._write_today_fallback(data_dir)
+            self._write_runtime_dashboard(
+                workspace,
+                {
+                    "schema": "xiaoan.dashboard.v1",
+                    "schedules": [{"title": "runtime schedule"}],
+                    "todos": [{"title": "runtime todo"}],
+                    "reminders": [{"title": "runtime reminder"}],
+                },
+            )
+
+            today = load_today_data(data_dir, openclaw_workspace=workspace)
+
+        self.assertEqual(today["schedules"], [{"title": "runtime schedule"}])
+        self.assertEqual(today["todos"], [{"title": "runtime todo"}])
+        self.assertEqual(today["alarms"], [{"title": "runtime reminder"}])
+
+    def test_today_data_falls_back_when_openclaw_dashboard_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as data_temp, tempfile.TemporaryDirectory() as workspace_temp:
+            data_dir = Path(data_temp)
+            workspace = Path(workspace_temp)
+            self._write_today_fallback(data_dir)
+
+            today = load_today_data(data_dir, openclaw_workspace=workspace)
+
+        self.assertEqual(today["todos"], [{"title": "fallback todo"}])
+
+    def test_today_data_falls_back_when_openclaw_dashboard_is_invalid_json(self) -> None:
+        with tempfile.TemporaryDirectory() as data_temp, tempfile.TemporaryDirectory() as workspace_temp:
+            data_dir = Path(data_temp)
+            workspace = Path(workspace_temp)
+            self._write_today_fallback(data_dir)
+            self._write_runtime_dashboard(workspace, "{invalid")
+
+            today = load_today_data(data_dir, openclaw_workspace=workspace)
+
+        self.assertEqual(today["alarms"], [{"title": "fallback alarm"}])
+
+    def test_today_data_falls_back_when_openclaw_schema_is_wrong(self) -> None:
+        with tempfile.TemporaryDirectory() as data_temp, tempfile.TemporaryDirectory() as workspace_temp:
+            data_dir = Path(data_temp)
+            workspace = Path(workspace_temp)
+            self._write_today_fallback(data_dir)
+            self._write_runtime_dashboard(
+                workspace,
+                {
+                    "schema": "other.schema",
+                    "todos": [{"title": "runtime todo"}],
+                },
+            )
+
+            today = load_today_data(data_dir, openclaw_workspace=workspace)
+
+        self.assertEqual(today["schedules"], [{"title": "fallback schedule"}])
+
+    def test_openclaw_dashboard_maps_reminders_to_alarms(self) -> None:
+        with tempfile.TemporaryDirectory() as workspace_temp:
+            workspace = Path(workspace_temp)
+            self._write_runtime_dashboard(
+                workspace,
+                {
+                    "schema": "xiaoan.dashboard.v1",
+                    "schedules": [],
+                    "todos": [],
+                    "reminders": [{"title": "drink water"}],
+                },
+            )
+
+            today = load_openclaw_dashboard_today(workspace)
+
+        self.assertIsNotNone(today)
+        assert today is not None
+        self.assertEqual(today["alarms"], [{"title": "drink water"}])
+
+    def test_parse_args_accepts_openclaw_workspace(self) -> None:
+        args = parse_args(["--openclaw-workspace", "/tmp/xiaoan-runtime"])
+
+        self.assertEqual(args.openclaw_workspace, "/tmp/xiaoan-runtime")
 
 
 class DashboardHttpTest(unittest.TestCase):

@@ -113,11 +113,46 @@ class ApiOpenClawNotifyIntegrationTest(unittest.TestCase):
             "display_text": "喝水提醒",
             "spoken_text": "该喝水了",
         })
+        status, latest = self.get_json("/api/replies/latest")
 
+        self.assertEqual(status, 200)
         self.assertEqual(self.robot_motion.say_calls, ["该喝水了"])
+        self.assertEqual(latest["data"]["latest"]["display_text"], "喝水提醒")
+        self.assertEqual(latest["data"]["latest"]["spoken_text"], "该喝水了")
         self.assertEqual(
             result["execution_result"]["executed_actions"][0]["name"],
             "robot.say",
+        )
+        self.assertEqual(
+            result["execution_result"]["executed_actions"][0]["source"],
+            "spoken_text",
+        )
+
+    def test_suppress_auto_tts_keeps_latest_without_tts(self) -> None:
+        result = self.notify({
+            "type": "generic.notify",
+            "display_text": "只显示",
+            "spoken_text": "不要播报",
+            "suppress_auto_tts": True,
+        })
+        status, latest = self.get_json("/api/replies/latest")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(self.robot_motion.say_calls, [])
+        self.assertEqual(result["execution_result"]["executed_actions"], [])
+        self.assertTrue(latest["data"]["latest"]["suppress_auto_tts"])
+        self.assertEqual(latest["data"]["latest"]["spoken_text"], "不要播报")
+
+    def test_reply_text_legacy_still_triggers_tts(self) -> None:
+        result = self.notify({
+            "type": "generic.notify",
+            "reply_text": "旧字段仍然播报",
+        })
+
+        self.assertEqual(self.robot_motion.say_calls, ["旧字段仍然播报"])
+        self.assertEqual(
+            result["execution_result"]["executed_actions"][0]["source"],
+            "reply_text",
         )
 
     def test_expression_tool_call_reaches_robot_motion(self) -> None:

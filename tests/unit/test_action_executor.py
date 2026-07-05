@@ -300,6 +300,52 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
             "arguments": {"text": "hello"},
         }])
 
+    async def test_display_text_does_not_trigger_auto_tts(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+
+        result = await executor.execute(OpenClawDecision(
+            handled=True,
+            display_text="show only",
+        ))
+
+        self.assertEqual(robot_motion.say_calls, [])
+        self.assertEqual(result["display_text"], "show only")
+        self.assertEqual(result["executed_actions"], [])
+
+    async def test_spoken_text_calls_say_and_takes_priority_over_reply_text(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+
+        result = await executor.execute(OpenClawDecision(
+            handled=True,
+            spoken_text="spoken",
+            reply_text="legacy reply",
+        ))
+
+        self.assertEqual(robot_motion.say_calls, ["spoken"])
+        self.assertEqual(result["spoken_text"], "spoken")
+        self.assertEqual(result["reply_text"], "legacy reply")
+        self.assertEqual(result["executed_actions"], [{
+            "name": "robot.say",
+            "source": "spoken_text",
+            "arguments": {"text": "spoken"},
+        }])
+
+    async def test_suppress_auto_tts_disables_spoken_text_auto_say(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+
+        result = await executor.execute(OpenClawDecision(
+            handled=True,
+            spoken_text="do not say",
+            suppress_auto_tts=True,
+        ))
+
+        self.assertEqual(robot_motion.say_calls, [])
+        self.assertTrue(result["suppress_auto_tts"])
+        self.assertEqual(result["executed_actions"], [])
+
     async def test_robot_say_tool_call_calls_say(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -708,6 +754,26 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         decision = OpenClawDecision(
             handled=True,
             reply_text="hello from reply",
+            tool_calls=[
+                OpenClawToolCall(
+                    name="xiaoan.robot.say",
+                    arguments={"text": "hello from tool"},
+                ),
+            ],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.say_calls, ["hello from tool"])
+        self.assertEqual(len(result["executed_actions"]), 1)
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.say")
+
+    async def test_robot_say_tool_call_prevents_spoken_text_double_say(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            spoken_text="hello from spoken",
             tool_calls=[
                 OpenClawToolCall(
                     name="xiaoan.robot.say",

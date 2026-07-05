@@ -123,6 +123,8 @@ class ApiRouterTest(unittest.TestCase):
             body_json={
                 "type": "generic.notify",
                 "display_text": "显示给基站",
+                "spoken_text": "播报",
+                "suppress_auto_tts": True,
                 "metadata": {"source": "test"},
                 "session_id": "notify-session",
             },
@@ -132,6 +134,8 @@ class ApiRouterTest(unittest.TestCase):
         notification = response.body["data"]["notification"]
         self.assertEqual(notification["notification_type"], "generic.notify")
         self.assertEqual(notification["display_text"], "显示给基站")
+        self.assertEqual(notification["spoken_text"], "播报")
+        self.assertTrue(notification["suppress_auto_tts"])
         self.assertEqual(notification["session_id"], "notify-session")
 
     def test_openclaw_notify_requires_type(self) -> None:

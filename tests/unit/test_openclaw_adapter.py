@@ -72,14 +72,20 @@ class OpenClawAdapterTest(unittest.TestCase):
         decision = OpenClawDecision(handled=True)
 
         self.assertTrue(decision.handled)
+        self.assertEqual(decision.display_text, "")
+        self.assertEqual(decision.spoken_text, "")
         self.assertEqual(decision.reply_text, "")
+        self.assertFalse(decision.suppress_auto_tts)
         self.assertEqual(decision.tool_calls, [])
         self.assertIsNone(decision.raw)
 
-    def test_openclaw_decision_to_dict_outputs_reply_text_and_tool_calls(self) -> None:
+    def test_openclaw_decision_to_dict_outputs_text_fields_and_tool_calls(self) -> None:
         decision = OpenClawDecision(
             handled=True,
+            display_text="显示",
+            spoken_text="播报",
             reply_text="你好",
+            suppress_auto_tts=True,
             tool_calls=[
                 OpenClawToolCall(name="robot.say", arguments={"text": "你好"}),
             ],
@@ -88,7 +94,10 @@ class OpenClawAdapterTest(unittest.TestCase):
 
         self.assertEqual(decision.to_dict(), {
             "handled": True,
+            "display_text": "显示",
+            "spoken_text": "播报",
             "reply_text": "你好",
+            "suppress_auto_tts": True,
             "tool_calls": [
                 {"name": "robot.say", "arguments": {"text": "你好"}},
             ],
@@ -98,7 +107,10 @@ class OpenClawAdapterTest(unittest.TestCase):
     def test_openclaw_decision_from_dict_parses_tool_calls(self) -> None:
         data = {
             "handled": True,
+            "display_text": "显示在基站",
+            "spoken_text": "播报给机器人",
             "reply_text": "你好",
+            "suppress_auto_tts": True,
             "tool_calls": [
                 {"name": "robot.say", "arguments": {"text": "你好"}},
             ],
@@ -107,7 +119,10 @@ class OpenClawAdapterTest(unittest.TestCase):
         decision = OpenClawDecision.from_dict(data)
 
         self.assertTrue(decision.handled)
+        self.assertEqual(decision.display_text, "显示在基站")
+        self.assertEqual(decision.spoken_text, "播报给机器人")
         self.assertEqual(decision.reply_text, "你好")
+        self.assertTrue(decision.suppress_auto_tts)
         self.assertEqual(len(decision.tool_calls), 1)
         self.assertEqual(decision.tool_calls[0].name, "robot.say")
         self.assertEqual(decision.tool_calls[0].arguments, {"text": "你好"})
@@ -117,7 +132,10 @@ class OpenClawAdapterTest(unittest.TestCase):
         decision = OpenClawDecision.from_dict("not a dict")
 
         self.assertFalse(decision.handled)
+        self.assertEqual(decision.display_text, "")
+        self.assertEqual(decision.spoken_text, "")
         self.assertEqual(decision.reply_text, "")
+        self.assertFalse(decision.suppress_auto_tts)
         self.assertEqual(decision.tool_calls, [])
         self.assertIsNone(decision.raw)
 

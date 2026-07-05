@@ -168,19 +168,27 @@ class ApiRuntime:
         }
         with self._operation_lock:
             result = self.run_async(self.brain.handle_event(event))
-            reply_text = result.get("reply_text", "") if isinstance(result, dict) else ""
-            if reply_text:
+            if isinstance(result, dict):
+                display_text = self._text_or_empty(result.get("display_text", ""))
+                spoken_text = self._text_or_empty(result.get("spoken_text", ""))
+                reply_text = self._text_or_empty(result.get("reply_text", ""))
+            else:
+                display_text = ""
+                spoken_text = ""
+                reply_text = ""
+            if display_text or spoken_text or reply_text:
                 self._set_latest_reply(
                     notification_type="frontend.message",
-                    display_text=reply_text,
-                    spoken_text="",
+                    display_text=display_text or reply_text,
+                    spoken_text=spoken_text,
                     reply_text=reply_text,
-                    tool_calls=[],
-                    metadata=dict(metadata or {}),
-                    session_id=session_id,
-                    source="api.chat",
-                    execution_result=result,
-                )
+                tool_calls=[],
+                metadata=dict(metadata or {}),
+                session_id=session_id,
+                source="api.chat",
+                suppress_auto_tts=False,
+                execution_result=result,
+            )
             return result
 
     def preview_context(
@@ -240,6 +248,7 @@ class ApiRuntime:
         display_text: str = "",
         spoken_text: str = "",
         reply_text: str = "",
+        suppress_auto_tts: bool = False,
         tool_calls: list[Any] | None = None,
         metadata: dict[str, Any] | None = None,
         session_id: str = "default",
@@ -252,7 +261,6 @@ class ApiRuntime:
         active_display_text = self._text_or_empty(display_text)
         active_spoken_text = self._text_or_empty(spoken_text)
         active_reply_text = self._text_or_empty(reply_text)
-        robot_reply_text = active_spoken_text or active_reply_text
         active_metadata = dict(metadata or {})
         tool_call_payloads = [
             tool_call.to_dict()
@@ -263,13 +271,17 @@ class ApiRuntime:
             "display_text": active_display_text,
             "spoken_text": active_spoken_text,
             "reply_text": active_reply_text,
+            "suppress_auto_tts": bool(suppress_auto_tts),
             "tool_calls": tool_call_payloads,
             "metadata": active_metadata,
             "session_id": session_id,
         }
         decision = OpenClawDecision(
             handled=True,
-            reply_text=robot_reply_text,
+            display_text=active_display_text,
+            spoken_text=active_spoken_text,
+            reply_text=active_reply_text,
+            suppress_auto_tts=bool(suppress_auto_tts),
             tool_calls=parsed_tool_calls,
             raw={
                 "source": "api.openclaw.notify",
@@ -298,6 +310,7 @@ class ApiRuntime:
                 metadata=active_metadata,
                 session_id=session_id,
                 source="api.openclaw.notify",
+                suppress_auto_tts=bool(suppress_auto_tts),
                 execution_result=execution_result,
             )
 
@@ -671,6 +684,7 @@ class ApiRuntime:
         metadata: dict[str, Any],
         session_id: str,
         source: str,
+        suppress_auto_tts: bool = False,
         execution_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         output_text = (
@@ -684,6 +698,7 @@ class ApiRuntime:
             "display_text": self._text_or_empty(display_text),
             "spoken_text": self._text_or_empty(spoken_text),
             "reply_text": self._text_or_empty(reply_text),
+            "suppress_auto_tts": bool(suppress_auto_tts),
             "output_text": output_text,
             "tool_calls": self._copy_jsonish(tool_calls),
             "metadata": self._copy_jsonish(metadata),

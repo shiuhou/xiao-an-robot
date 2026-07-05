@@ -202,12 +202,20 @@ class ApiRouter:
                     message="metadata must be an object",
                     status=400,
                 )
+            suppress_auto_tts = active_body.get("suppress_auto_tts", False)
+            if not isinstance(suppress_auto_tts, bool):
+                return error(
+                    code="invalid_suppress_auto_tts",
+                    message="suppress_auto_tts must be a boolean",
+                    status=400,
+                )
             session_id = self._session_id(active_body)
             return success(self.runtime.notify_from_openclaw(
                 notification_type=notification_type.strip(),
                 display_text=active_body.get("display_text", ""),
                 spoken_text=active_body.get("spoken_text", ""),
                 reply_text=active_body.get("reply_text", ""),
+                suppress_auto_tts=suppress_auto_tts,
                 tool_calls=tool_calls,
                 metadata=metadata,
                 session_id=session_id,

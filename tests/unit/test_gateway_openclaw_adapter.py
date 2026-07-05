@@ -141,7 +141,10 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
     def test_gateway_reply_text_response(self) -> None:
         gateway = FakeOpenClawGateway({
             "handled": True,
+            "display_text": "显示给前端",
+            "spoken_text": "播报给机器人",
             "reply_text": "你好，我在。",
+            "suppress_auto_tts": True,
         })
         url = gateway.start()
         try:
@@ -159,7 +162,10 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
             gateway.stop()
 
         self.assertTrue(decision.handled)
+        self.assertEqual(decision.display_text, "显示给前端")
+        self.assertEqual(decision.spoken_text, "播报给机器人")
         self.assertEqual(decision.reply_text, "你好，我在。")
+        self.assertTrue(decision.suppress_auto_tts)
         self.assertEqual(gateway.requests[0]["type"], "xiaoan.event")
         self.assertEqual(gateway.requests[0]["agent"], "xiaoan-runtime")
         tool_names = {item["name"] for item in gateway.requests[0]["tools"]}

@@ -219,11 +219,11 @@ class GatewayOpenClawAdapter:
             }
         return decision
 
-    @staticmethod
-    def _decision_payload(response: dict[str, Any]) -> dict[str, Any]:
-        agent_text = GatewayOpenClawAdapter._agent_response_text(response)
+    @classmethod
+    def _decision_payload(cls, response: dict[str, Any]) -> dict[str, Any]:
+        agent_text = cls._agent_response_text(response)
         if agent_text:
-            parsed_text = GatewayOpenClawAdapter._json_object_from_text(agent_text)
+            parsed_text = cls._json_object_from_text(agent_text)
             if parsed_text is not None:
                 return parsed_text
             return {
@@ -242,16 +242,30 @@ class GatewayOpenClawAdapter:
                 value = payload.get(key)
                 if isinstance(value, dict):
                     return value
-            if any(key in payload for key in ("handled", "reply_text", "tool_calls")):
+            if cls._looks_like_decision(payload):
                 return payload
 
-        if any(key in response for key in ("handled", "reply_text", "tool_calls")):
+        if cls._looks_like_decision(response):
             return response
 
         return {
             "handled": False,
             "raw": response,
         }
+
+    @staticmethod
+    def _looks_like_decision(value: dict[str, Any]) -> bool:
+        return any(
+            key in value
+            for key in (
+                "handled",
+                "display_text",
+                "spoken_text",
+                "reply_text",
+                "suppress_auto_tts",
+                "tool_calls",
+            )
+        )
 
     @staticmethod
     def _agent_response_text(response: dict[str, Any]) -> str:

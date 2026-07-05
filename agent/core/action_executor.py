@@ -80,7 +80,10 @@ class ActionExecutor:
         if not decision.handled:
             result = {
                 "handled": False,
+                "display_text": decision.display_text,
+                "spoken_text": decision.spoken_text,
                 "reply_text": decision.reply_text,
+                "suppress_auto_tts": decision.suppress_auto_tts,
                 "executed_actions": executed_actions,
                 "skipped_actions": skipped_actions,
             }
@@ -91,15 +94,21 @@ class ActionExecutor:
                     result["openclaw_error"] = str(error)
             return result
 
-        if decision.reply_text and not self._tool_calls_handle_reply(decision.tool_calls):
-            arguments = {"text": decision.reply_text}
+        auto_tts_text = decision.spoken_text or decision.reply_text
+        auto_tts_source = "spoken_text" if decision.spoken_text else "reply_text"
+        if (
+            auto_tts_text
+            and not decision.suppress_auto_tts
+            and not self._tool_calls_handle_reply(decision.tool_calls)
+        ):
+            arguments = {"text": auto_tts_text}
             try:
-                result = await self._call(self.robot_motion_skill.say, decision.reply_text)
+                result = await self._call(self.robot_motion_skill.say, auto_tts_text)
             except Exception as exc:
                 error = str(exc) or "robot_action_failed"
                 skipped_action = {
                     "name": "robot.say",
-                    "source": "reply_text",
+                    "source": auto_tts_source,
                     "reason": "robot_action_failed",
                     "arguments": arguments,
                     "result": {
@@ -120,7 +129,7 @@ class ActionExecutor:
             else:
                 executed_actions.append({
                     "name": "robot.say",
-                    "source": "reply_text",
+                    "source": auto_tts_source,
                     "arguments": arguments,
                 })
                 self._record_tool_run(
@@ -141,7 +150,10 @@ class ActionExecutor:
 
         return {
             "handled": True,
+            "display_text": decision.display_text,
+            "spoken_text": decision.spoken_text,
             "reply_text": decision.reply_text,
+            "suppress_auto_tts": decision.suppress_auto_tts,
             "executed_actions": executed_actions,
             "skipped_actions": skipped_actions,
         }

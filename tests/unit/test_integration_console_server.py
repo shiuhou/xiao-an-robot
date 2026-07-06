@@ -8,6 +8,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from base_station.integration_console.console_server import (
@@ -15,6 +16,13 @@ from base_station.integration_console.console_server import (
     create_server,
     read_ws_state,
 )
+
+
+class FakeRunningProcess:
+    pid = 12345
+
+    def poll(self) -> None:
+        return None
 
 
 class IntegrationConsoleHttpTest(unittest.TestCase):
@@ -33,6 +41,13 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
                 thread.join(timeout=5)
 
         for element_id in (
+            "cameraLatestImage",
+            "link1RunSwitch",
+            "link1Steps",
+            "link2RunSwitch",
+            "link2Steps",
+            "link3RunSwitch",
+            "link3Steps",
             "visualLatestImage",
             "visualFreshness",
             "visualCvMetrics",
@@ -71,6 +86,149 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertFalse(state["ws_server"]["ok"])
         self.assertFalse(state["robot"]["online"])
         self.assertIn("latest_image", state["media"])
+        self.assertIn("links", state)
+        self.assertIn("processes", state)
+        self.assertIn("link1", state["links"])
+        self.assertIn("link2", state["links"])
+        self.assertIn("link3", state["links"])
+        self.assertFalse(state["processes"]["link2"]["running"])
+
+    def test_state_ignores_stale_demo_files_for_link_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, tempfile.TemporaryDirectory() as workspace_dir:
+            runtime = Path(temp_dir)
+            workspace = Path(workspace_dir)
+            state_dir = workspace / "state"
+            state_dir.mkdir(parents=True)
+            (state_dir / "dashboard.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "xiaoan.dashboard.v1",
+                        "updated_at": "2026-07-06T12:00:00",
+                        "mode": "speaking",
+                        "status_text": "屏幕显示内容",
+                        "latest_reply": {
+                            "display_text": "屏幕显示内容",
+                            "spoken_text": "后续关怀语音",
+                            "source": "unit-test",
+                            "received_at": "2026-07-06T12:00:00",
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (runtime / "latest_audio.pcm").write_bytes(b"\0" * 32)
+            (runtime / "demo1_transcript.json").write_text(
+                json.dumps({"transcript": "我有点累"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (runtime / "assistant_capture_result.json").write_text(
+                json.dumps({"reply_text": "我在这里。"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (runtime / "ws_state.json").write_text(
+                json.dumps(
+                    {
+                        "selected_device_id": "robot-1",
+                        "sessions": {},
+                        "devices": {},
+                        "last_command_ack": {
+                            "received_at": "2026-07-06T12:00:01+00:00",
+                            "payload": {"status": "accepted"},
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(
+                runtime_dir=runtime,
+                openclaw_workspace=workspace,
+            )
+            state = app.state()
+
+        self.assertTrue(state["openclaw_dashboard"]["ok"])
+        self.assertEqual(
+            state["openclaw_dashboard"]["dashboard"]["latest_reply"]["display_text"],
+            "屏幕显示内容",
+        )
+        self.assertNotEqual(state["links"]["link1"]["status"], "complete")
+        self.assertNotEqual(state["links"]["link3"]["status"], "complete")
+        self.assertEqual(state["links"]["link1"]["asr_text"], "我有点累")
+
+    def test_link_completion_uses_current_managed_voice_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, tempfile.TemporaryDirectory() as workspace_dir:
+            runtime = Path(temp_dir)
+            workspace = Path(workspace_dir)
+            state_dir = workspace / "state"
+            state_dir.mkdir(parents=True)
+            (state_dir / "dashboard.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "xiaoan.dashboard.v1",
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                        "mode": "speaking",
+                        "status_text": "提醒创建完成",
+                        "latest_reply": {
+                            "display_text": "提醒创建完成",
+                            "spoken_text": "一分钟后提醒你喝水",
+                            "source": "unit-test",
+                            "received_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            audio_path = runtime / "voice.wav"
+            audio_path.write_bytes(b"RIFF")
+            latest_dir = runtime / "integration_console" / "link1"
+            latest_dir.mkdir(parents=True)
+            (latest_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "text": "小安一分钟后提醒我喝水",
+                        "reply_text": "一分钟后提醒你喝水。",
+                        "event": {
+                            "type": "asr.transcript",
+                            "payload": {
+                                "audio": {
+                                    "audio_path": str(audio_path),
+                                    "sample_rate": 16000,
+                                    "duration_ms": 6000,
+                                }
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (runtime / "ws_state.json").write_text(
+                json.dumps(
+                    {
+                        "selected_device_id": "robot-1",
+                        "sessions": {},
+                        "devices": {},
+                        "last_command_ack": {
+                            "received_at": datetime.now(timezone.utc).isoformat(),
+                            "payload": {"status": "accepted"},
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(
+                runtime_dir=runtime,
+                openclaw_workspace=workspace,
+            )
+            app.link_processes["link1"] = FakeRunningProcess()
+            state = app.state()
+
+        self.assertEqual(state["links"]["link1"]["status"], "complete")
+        self.assertEqual(state["links"]["link1"]["asr_text"], "小安一分钟后提醒我喝水")
+        self.assertEqual(state["links"]["link1"]["openclaw_text"], "一分钟后提醒你喝水。")
 
     def test_latest_image_missing_returns_structured_404(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -128,6 +286,63 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
 
 
 class IntegrationConsoleCommandTest(unittest.TestCase):
+    def test_link_commands_are_fixed_runtime_entrypoints(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            link1 = app.link_command("link1")
+            link2 = app.link_command("link2")
+            link3 = app.link_command("link3")
+
+        self.assertIn("base_station.monitor.voice_runtime", link1)
+        self.assertIn("--source", link1)
+        self.assertIn("local_mic", link1)
+        self.assertIn("base_station.monitor.emotion_runtime", link2)
+        self.assertIn("ws_video_observer", link2)
+        self.assertIn("--enable-vlm-gate", link2)
+        self.assertIn("--latest-output", link1)
+        self.assertIn("--asr-language", link1)
+        self.assertIn("--disable-companion-fast-path", link1)
+        self.assertNotIn("--disable-companion-fast-path", link3)
+        self.assertIn("openface_ov", link2)
+        self.assertNotIn("--force-vlm", link2)
+        self.assertIn("base_station.monitor.voice_runtime", link3)
+
+    def test_link_state_displays_previous_voice_result_while_recording(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            latest_dir = runtime / "integration_console" / "link1"
+            latest_dir.mkdir(parents=True)
+            (latest_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "voice.recording",
+                        "reason": "recording",
+                        "text": "",
+                        "previous_output": {
+                            "text": "小安一分钟后提醒我喝水",
+                            "reply_text": "一分钟后提醒你喝水。",
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+            app.link_processes["link1"] = FakeRunningProcess()
+
+            state = app.state()
+
+        self.assertEqual(state["links"]["link1"]["asr_text"], "小安一分钟后提醒我喝水")
+        self.assertEqual(state["links"]["link1"]["openclaw_text"], "一分钟后提醒你喝水。")
+
+    def test_start_link_rejects_unknown_link_without_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            result = app.start_link({"link": "echo hacked"})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("unsupported_link", result["error"])
+
     def test_robot_expression_payload_is_agent_command(self) -> None:
         sent: list[dict] = []
 

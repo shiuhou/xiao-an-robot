@@ -71,9 +71,17 @@ class SenseVoiceASRBackend:
     by this class. Callers must provide a populated local model directory.
     """
 
-    def __init__(self, model_dir: str | None = None, device: str = "cpu"):
+    def __init__(
+        self,
+        model_dir: str | None = None,
+        device: str = "cpu",
+        language: str | None = None,
+        use_itn: bool = True,
+    ):
         self.model_dir = model_dir
         self.device = device
+        self.language = language
+        self.use_itn = bool(use_itn)
         self._model = None
 
     def transcribe(self, audio_clip: dict) -> dict:
@@ -84,7 +92,14 @@ class SenseVoiceASRBackend:
         if not audio_path:
             raise RuntimeError("SenseVoice ASR requires audio_clip['audio_path'] for file transcription.")
 
-        result = model.generate(input=str(audio_path))
+        generate_kwargs = {
+            "input": str(audio_path),
+            "use_itn": self.use_itn,
+        }
+        if self.language:
+            generate_kwargs["language"] = self.language
+            generate_kwargs["cache"] = {}
+        result = model.generate(**generate_kwargs)
         text, language, confidence = self._parse_result(result)
         duration_ms = int((time.monotonic() - started) * 1000)
         return {

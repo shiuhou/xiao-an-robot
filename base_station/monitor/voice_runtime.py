@@ -45,17 +45,58 @@ def build_voice_output(text: str, event: dict, result: dict) -> dict:
     return output
 
 
+def _write_latest_output(path: str | None, output: dict) -> None:
+    if not path:
+        return
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(output)
+    payload["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(target)
+
+
+def _recording_status(
+    *,
+    session_id: str,
+    wav_path: Path,
+    sample_rate: int,
+    duration_seconds: float,
+    previous_output: dict | None,
+) -> dict:
+    status = {
+        "event_type": "voice.recording",
+        "handled": False,
+        "reason": "recording",
+        "text": "",
+        "session_id": session_id,
+        "audio": {
+            "audio_path": str(wav_path),
+            "sample_rate": sample_rate,
+            "duration_ms": int(duration_seconds * 1000),
+            "channels": 1,
+        },
+    }
+    if previous_output:
+        status["previous_output"] = previous_output
+    return status
+
+
 async def process_text(
     runtime: Any,
     text: str,
     *,
     session_id: str = "voice-runtime",
+    disable_companion_fast_path: bool = False,
 ) -> dict:
     """Send one terminal transcript through link 1 using an existing runtime."""
 
     transcript = text.strip()
     event = build_asr_event(transcript, source="text_loop")
     event["payload"]["session_id"] = session_id
+    if disable_companion_fast_path:
+        event["payload"]["disable_companion_fast_path"] = True
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
     _publish_latest_reply(
@@ -78,6 +119,8 @@ async def process_audio_file(
     asr_backend: str = "sensevoice",
     asr_model_path: str | None = "base_station/models/sensevoice-small",
     device: str = "cpu",
+    asr_language: str | None = None,
+    asr_use_itn: bool = True,
     trim_speech: bool = True,
     speech_trim_path: str | None = None,
     speech_trim_threshold: float = 0.003,
@@ -85,6 +128,7 @@ async def process_audio_file(
     speech_trim_min_speech_ms: int = 350,
     speech_trim_start_padding_ms: int | None = 250,
     speech_trim_end_padding_ms: int | None = 800,
+    disable_companion_fast_path: bool = False,
 ) -> dict:
     """Run one microphone WAV through VAD/ASR and then link-1 OpenClaw routing."""
 
@@ -95,6 +139,8 @@ async def process_audio_file(
         asr_backend=asr_backend,
         asr_model_path=asr_model_path,
         device=device,
+        asr_language=asr_language,
+        asr_use_itn=asr_use_itn,
         trim_speech=trim_speech,
         speech_trim_path=speech_trim_path,
         speech_trim_threshold=speech_trim_threshold,
@@ -109,6 +155,8 @@ async def process_audio_file(
     transcript = str(prepared["text"])
     event["payload"]["source"] = "local_mic"
     event["payload"]["session_id"] = session_id
+    if disable_companion_fast_path:
+        event["payload"]["disable_companion_fast_path"] = True
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
     _publish_latest_reply(
@@ -132,6 +180,8 @@ async def run_text_loop(
     session_id: str = "voice-runtime",
     verbose: bool = False,
     prompt: bool = True,
+    latest_output_path: str | None = None,
+    disable_companion_fast_path: bool = False,
 ) -> int:
     """Run the resident text loop until EOF or Ctrl+C.
 
@@ -165,12 +215,14 @@ async def run_text_loop(
                 runtime,
                 text,
                 session_id=session_id,
+                disable_companion_fast_path=disable_companion_fast_path,
             )
             handled_count += 1
             if verbose:
                 print(json.dumps(output, ensure_ascii=False, indent=2), file=output_stream, flush=True)
             else:
                 print(json.dumps(_compact_output(output), ensure_ascii=False), file=output_stream, flush=True)
+            _write_latest_output(latest_output_path, output)
     finally:
         close = getattr(runtime, "close", None)
         if callable(close):
@@ -193,6 +245,8 @@ async def run_local_mic_loop(
     asr_backend: str = "sensevoice",
     asr_model_path: str | None = "base_station/models/sensevoice-small",
     asr_device: str = "cpu",
+    asr_language: str | None = None,
+    asr_use_itn: bool = True,
     vad_backend: str = "energy",
     vad_threshold: float = 0.003,
     trim_speech: bool = True,
@@ -202,6 +256,8 @@ async def run_local_mic_loop(
     speech_trim_start_padding_ms: int | None = 250,
     speech_trim_end_padding_ms: int | None = 800,
     once: bool = False,
+    latest_output_path: str | None = None,
+    disable_companion_fast_path: bool = False,
 ) -> int:
     """Run fixed-window local microphone capture through ASR and link 1."""
 
@@ -218,6 +274,7 @@ async def run_local_mic_loop(
         verbose=verbose,
     )
     handled_count = 0
+    last_output: dict | None = None
 
     print(
         "voice_runtime local_mic "
@@ -226,12 +283,39 @@ async def run_local_mic_loop(
         file=error_stream,
         flush=True,
     )
+    _write_latest_output(
+        latest_output_path,
+        {
+            "event_type": "voice.runtime_started",
+            "handled": False,
+            "reason": "starting",
+            "text": "",
+            "session_id": session_id,
+            "device": {
+                "index": selected_device.get("index"),
+                "name": selected_device.get("name"),
+                "backend": selected_device.get("backend"),
+                "sample_rate": active_sample_rate,
+            },
+            "window_seconds": duration_seconds,
+        },
+    )
 
     try:
         while True:
             stamp = time.strftime("%Y%m%d_%H%M%S")
             wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.wav"
             trim_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.trim.wav"
+            _write_latest_output(
+                latest_output_path,
+                _recording_status(
+                    session_id=session_id,
+                    wav_path=wav_path,
+                    sample_rate=active_sample_rate,
+                    duration_seconds=duration_seconds,
+                    previous_output=last_output,
+                ),
+            )
             record_wav(
                 device=selected_device,
                 output_path=wav_path,
@@ -248,6 +332,8 @@ async def run_local_mic_loop(
                 asr_backend=asr_backend,
                 asr_model_path=asr_model_path,
                 device=asr_device,
+                asr_language=asr_language,
+                asr_use_itn=asr_use_itn,
                 trim_speech=trim_speech,
                 speech_trim_path=str(trim_path) if trim_speech else None,
                 speech_trim_threshold=speech_trim_threshold,
@@ -255,6 +341,7 @@ async def run_local_mic_loop(
                 speech_trim_min_speech_ms=speech_trim_min_speech_ms,
                 speech_trim_start_padding_ms=speech_trim_start_padding_ms,
                 speech_trim_end_padding_ms=speech_trim_end_padding_ms,
+                disable_companion_fast_path=disable_companion_fast_path,
             )
             if output.get("event_type") == "asr.transcript":
                 handled_count += 1
@@ -262,6 +349,8 @@ async def run_local_mic_loop(
                 print(json.dumps(output, ensure_ascii=False, indent=2), file=output_stream, flush=True)
             else:
                 print(json.dumps(_compact_output(output), ensure_ascii=False), file=output_stream, flush=True)
+            _write_latest_output(latest_output_path, output)
+            last_output = output
             if once:
                 return handled_count
     except KeyboardInterrupt:
@@ -379,6 +468,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--asr-backend", choices=["fake", "sensevoice"], default="sensevoice")
     parser.add_argument("--asr-model-path", default="base_station/models/sensevoice-small")
     parser.add_argument("--asr-device", default="cpu")
+    parser.add_argument("--asr-language", default=None, help="Optional SenseVoice language hint, e.g. zh or auto.")
+    parser.add_argument("--no-asr-itn", dest="asr_use_itn", action="store_false", help="Disable SenseVoice ITN.")
     parser.add_argument("--vad-backend", choices=["fake", "energy", "silero"], default="energy")
     parser.add_argument("--vad-threshold", type=float, default=0.003)
     parser.add_argument("--trim-speech", action="store_true", default=True)
@@ -388,6 +479,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--speech-trim-min-speech-ms", type=int, default=350)
     parser.add_argument("--speech-trim-start-padding-ms", type=int, default=250)
     parser.add_argument("--speech-trim-end-padding-ms", type=int, default=800)
+    parser.add_argument("--latest-output", default=None, help="Write the latest loop output JSON to this path.")
+    parser.add_argument(
+        "--disable-companion-fast-path",
+        action="store_true",
+        help="Route ASR transcripts to OpenClaw without local companion care pre-response.",
+    )
     return parser.parse_args(argv)
 
 
@@ -417,6 +514,8 @@ async def main(args: argparse.Namespace | None = None) -> int:
             asr_backend=args.asr_backend,
             asr_model_path=args.asr_model_path,
             asr_device=args.asr_device,
+            asr_language=args.asr_language,
+            asr_use_itn=args.asr_use_itn,
             vad_backend=args.vad_backend,
             vad_threshold=args.vad_threshold,
             trim_speech=args.trim_speech,
@@ -426,6 +525,8 @@ async def main(args: argparse.Namespace | None = None) -> int:
             speech_trim_start_padding_ms=args.speech_trim_start_padding_ms,
             speech_trim_end_padding_ms=args.speech_trim_end_padding_ms,
             once=args.once,
+            latest_output_path=args.latest_output,
+            disable_companion_fast_path=args.disable_companion_fast_path,
         )
         return 0
     await run_text_loop(
@@ -434,6 +535,8 @@ async def main(args: argparse.Namespace | None = None) -> int:
         session_id=args.session_id,
         verbose=args.verbose,
         prompt=not args.no_prompt,
+        latest_output_path=args.latest_output,
+        disable_companion_fast_path=args.disable_companion_fast_path,
     )
     return 0
 

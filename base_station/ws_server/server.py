@@ -51,6 +51,7 @@ logger = logging.getLogger("ws_server")
 sessions: Dict[str, dict] = {}
 recent_robot_events: Deque[dict] = deque(maxlen=200)
 video_frame_source = None
+video_observer_queues: set[asyncio.Queue[bytes]] = set()
 audio_runtime_dir = Path("runtime")
 ws_runtime_dir = Path("runtime")
 server_started_at = time.time()
@@ -247,6 +248,7 @@ def reset_state_for_tests() -> None:
     sessions.clear()
     recent_robot_events.clear()
     set_video_frame_source(None)
+    video_observer_queues.clear()
     reset_audio_runtime_stats()
     ws_state = _empty_ws_state()
 
@@ -438,6 +440,29 @@ def record_robot_event(event_type: str, payload: dict, device_id: Optional[str] 
         "recorded_at": time.time(),
         "payload": event_payload,
     })
+
+
+def _is_local_observer_client(websocket: ServerConnection) -> bool:
+    remote = getattr(websocket, "remote_address", None)
+    if remote is None:
+        return True
+    host = remote[0] if isinstance(remote, tuple) and remote else remote
+    return str(host) in {"127.0.0.1", "::1", "localhost"}
+
+
+def publish_video_observer_packet(packet: bytes) -> None:
+    """Fan out one validated /video packet to local observer queues."""
+
+    for queue in list(video_observer_queues):
+        while queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        try:
+            queue.put_nowait(packet)
+        except asyncio.QueueFull:
+            logger.debug("Dropped /video observer frame for a slow subscriber")
 
 
 def session_snapshot(now: Optional[float] = None) -> list[dict]:
@@ -904,6 +929,7 @@ async def handle_video(websocket: ServerConnection):
             return
 
         logger.debug("Video frame: %s bytes, ts=%s", length, timestamp)
+        publish_video_observer_packet(packet)
 
         if latest_path and jpeg_data:
             try:
@@ -965,6 +991,37 @@ async def handle_video(websocket: ServerConnection):
         logger.info("Video stream disconnected")
 
 
+async def handle_video_observer(websocket: ServerConnection):
+    """Local-only observer stream for decoded runtime consumers."""
+
+    if not _is_local_observer_client(websocket):
+        logger.warning("Rejected non-local /video-observer client: %s", getattr(websocket, "remote_address", None))
+        await websocket.close(1008, "Local observer only")
+        return
+
+    queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
+    video_observer_queues.add(queue)
+    logger.info("Video observer connected")
+    try:
+        while True:
+            packet_task = asyncio.create_task(queue.get())
+            closed_task = asyncio.create_task(websocket.wait_closed())
+            done, pending = await asyncio.wait(
+                {packet_task, closed_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if closed_task in done:
+                break
+            packet = packet_task.result()
+            await websocket.send(packet)
+    except ConnectionClosed:
+        logger.info("Video observer disconnected")
+    finally:
+        video_observer_queues.discard(queue)
+
+
 async def router(websocket: ServerConnection):
     """Route incoming connections to the correct handler by path."""
     path = websocket.request.path
@@ -978,6 +1035,8 @@ async def router(websocket: ServerConnection):
         await handle_audio(websocket)
     elif path == "/video":
         await handle_video(websocket)
+    elif path == "/video-observer":
+        await handle_video_observer(websocket)
     else:
         logger.warning(f"Unknown path: {path}, closing")
         await websocket.close(1008, "Unknown path")

@@ -117,6 +117,34 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(runtime.latest_replies[0]["display_text"], "display:帮我查一下天气")
         self.assertEqual(runtime.latest_replies[0]["source"], "voice_runtime.text_loop")
 
+    async def test_process_text_can_disable_companion_fast_path(self) -> None:
+        runtime = FakeRuntime(
+            db_path=":memory:",
+            robot_ws_url="ws://example.invalid/agent",
+        )
+
+        await voice_runtime.process_text(
+            runtime,
+            "我有点累",
+            session_id="voice-test",
+            disable_companion_fast_path=True,
+        )
+
+        event = runtime.brain.events[0]
+        self.assertTrue(event["payload"]["disable_companion_fast_path"])
+
+    def test_recording_status_preserves_previous_output(self) -> None:
+        status = voice_runtime._recording_status(
+            session_id="voice-test",
+            wav_path=Path("runtime/test.wav"),
+            sample_rate=16000,
+            duration_seconds=6.0,
+            previous_output={"text": "上一句", "reply_text": "上一条回复"},
+        )
+
+        self.assertEqual(status["event_type"], "voice.recording")
+        self.assertEqual(status["previous_output"]["text"], "上一句")
+
     async def test_process_text_publishes_native_openclaw_reply_to_dashboard(self) -> None:
         runtime = NativeReplyRuntime(
             db_path=":memory:",
@@ -141,17 +169,22 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         input_stream = io.StringIO("\n第一句\n第二句\n")
         output_stream = io.StringIO()
         error_stream = io.StringIO()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            latest_path = Path(temp_dir) / "latest_voice.json"
 
-        count = await voice_runtime.run_text_loop(
-            runtime_factory=FakeRuntime,
-            input_stream=input_stream,
-            output_stream=output_stream,
-            error_stream=error_stream,
-            db_path="test.db",
-            gateway_url="ws://127.0.0.1:8765/agent",
-            session_id="loop-test",
-            prompt=False,
-        )
+            count = await voice_runtime.run_text_loop(
+                runtime_factory=FakeRuntime,
+                input_stream=input_stream,
+                output_stream=output_stream,
+                error_stream=error_stream,
+                db_path="test.db",
+                gateway_url="ws://127.0.0.1:8765/agent",
+                session_id="loop-test",
+                prompt=False,
+                latest_output_path=str(latest_path),
+            )
+
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
 
         self.assertEqual(count, 2)
         self.assertEqual(len(FakeRuntime.instances), 1)
@@ -166,6 +199,9 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(lines[0]["spoken_text"], "spoken:第一句")
         self.assertEqual(lines[0]["executed_actions"][0]["name"], "robot.say")
         self.assertEqual(error_stream.getvalue(), "")
+        self.assertEqual(latest["text"], "第二句")
+        self.assertEqual(latest["display_text"], "display:第二句")
+        self.assertIn("updated_at", latest)
 
     async def test_text_loop_ctrl_c_exits_and_closes_runtime(self) -> None:
         output_stream = io.StringIO()

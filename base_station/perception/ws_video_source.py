@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 
@@ -10,6 +11,8 @@ import cv2
 import numpy as np
 
 from base_station.perception.frame_source import FrameSource
+
+logger = logging.getLogger(__name__)
 
 
 class VideoFrameDecodeError(ValueError):
@@ -73,3 +76,48 @@ class WebSocketVideoFrameSource(FrameSource):
     async def frames(self) -> AsyncIterator[dict]:
         while True:
             yield await self._queue.get()
+
+
+class WebSocketVideoObserverSource(FrameSource):
+    """Frame source that subscribes to the base-station /video-observer stream."""
+
+    def __init__(
+        self,
+        url: str = "ws://127.0.0.1:8765/video-observer",
+        *,
+        reconnect_delay_seconds: float = 1.0,
+        open_timeout_seconds: float = 3.0,
+    ):
+        self.url = url
+        self.reconnect_delay_seconds = reconnect_delay_seconds
+        self.open_timeout_seconds = open_timeout_seconds
+        self._next_frame_id = 1
+
+    async def frames(self) -> AsyncIterator[dict]:
+        try:
+            import websockets
+        except ImportError as exc:  # pragma: no cover - environment dependent
+            raise RuntimeError(f"missing websockets dependency: {exc}") from exc
+
+        while True:
+            try:
+                async with websockets.connect(
+                    self.url,
+                    open_timeout=self.open_timeout_seconds,
+                ) as websocket:
+                    async for message in websocket:
+                        if not isinstance(message, bytes):
+                            continue
+                        try:
+                            frame = decode_video_packet(message, self._next_frame_id)
+                        except VideoFrameDecodeError as exc:
+                            logger.warning("Invalid /video-observer frame: %s", exc)
+                            continue
+                        self._next_frame_id += 1
+                        frame["source"] = "ws_video_observer"
+                        yield frame
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Video observer disconnected from %s: %s", self.url, exc)
+                await asyncio.sleep(self.reconnect_delay_seconds)

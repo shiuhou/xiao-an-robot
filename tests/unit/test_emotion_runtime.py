@@ -89,6 +89,16 @@ class FakeWebSocketVideoFrameSource:
             yield {}
 
 
+class FakeWebSocketVideoObserverSource:
+    def __init__(self, url: str, reconnect_delay_seconds: float = 1.0) -> None:
+        self.url = url
+        self.reconnect_delay_seconds = reconnect_delay_seconds
+
+    async def frames(self):
+        if False:
+            yield {}
+
+
 class FakeVisualTracePublisher:
     def __init__(self, output_dir: str, max_fps: float = 1.0) -> None:
         self.output_dir = output_dir
@@ -189,6 +199,30 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(source, VLMGatedCameraEmotionSource)
         self.assertIsInstance(source.frame_source, FakeWebSocketVideoFrameSource)
         self.assertEqual(source.frame_source.maxsize, 4)
+        self.assertIs(source.visual_observer, observer)
+
+    async def test_ws_video_observer_source_uses_configured_host_port(self) -> None:
+        observer = object()
+        with patch(
+            "base_station.monitor.emotion_runtime._load_ws_video_observer_source",
+            return_value=FakeWebSocketVideoObserverSource,
+        ):
+            source = create_emotion_source(
+                source="ws_video_observer",
+                pattern="tired",
+                count=None,
+                interval_seconds=0,
+                host="192.168.1.20",
+                port=9876,
+                model_backend="mock",
+                enable_vlm_gate=True,
+                vlm_backend="fake",
+                visual_observer=observer,
+            )
+
+        self.assertIsInstance(source, VLMGatedCameraEmotionSource)
+        self.assertIsInstance(source.frame_source, FakeWebSocketVideoObserverSource)
+        self.assertEqual(source.frame_source.url, "ws://192.168.1.20:9876/video-observer")
         self.assertIs(source.visual_observer, observer)
 
     async def test_ws_video_source_requires_vlm_gate(self) -> None:

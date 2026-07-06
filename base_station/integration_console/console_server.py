@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -25,9 +26,14 @@ DEFAULT_RUNTIME_DIR = Path("runtime")
 DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
 DEFAULT_WS_URL = "ws://127.0.0.1:8765/agent"
 DEFAULT_OPENCLAW_URL = "ws://127.0.0.1:18789"
+DEFAULT_OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace-xiaoan-runtime"
+OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
 EVENT_LIMIT = 200
 STATE_EVENT_LIMIT = 50
 AUDIO_COOLDOWN_SECONDS = 2.5
+FRESH_IMAGE_MS = 3000
+FRESH_AUDIO_MS = 5000
+FRESH_VISUAL_MS = 3000
 MOTION_ACTIONS = {"move_out_of_dock", "move_back_to_dock", "turn", "stop"}
 EXPRESSIONS = {
     "happy",
@@ -128,6 +134,38 @@ def _parse_received_at(item: Any) -> float | None:
         return None
 
 
+def _parse_iso_timestamp(value: Any) -> float | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _timestamp_age_ms(value: Any) -> int | None:
+    timestamp = _parse_iso_timestamp(value)
+    if timestamp is None:
+        return None
+    return int(max(0.0, time.time() - timestamp) * 1000)
+
+
+def _fresh(info: dict[str, Any], max_age_ms: int) -> bool:
+    return bool(
+        info.get("exists")
+        and info.get("age_ms") is not None
+        and int(info.get("age_ms") or 0) <= max_age_ms
+    )
+
+
+def _step(label: str, ok: bool, detail: Any = None) -> dict[str, Any]:
+    return {
+        "label": label,
+        "ok": bool(ok),
+        "detail": detail,
+    }
+
+
 def _tail_lines(text: str, limit: int = 200) -> str:
     lines = text.splitlines()
     return "\n".join(lines[-limit:])
@@ -169,6 +207,7 @@ class IntegrationConsoleApp:
         runtime_dir: str | Path = DEFAULT_RUNTIME_DIR,
         static_dir: str | Path = DEFAULT_STATIC_DIR,
         openclaw_url: str = DEFAULT_OPENCLAW_URL,
+        openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
         command_sender: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ):
         self.host = host
@@ -177,9 +216,11 @@ class IntegrationConsoleApp:
         self.runtime_dir = Path(runtime_dir)
         self.static_dir = Path(static_dir)
         self.openclaw_url = openclaw_url
+        self.openclaw_workspace = Path(openclaw_workspace).expanduser()
         self.started_at = time.time()
         self.last_audio_sent_at = 0.0
         self.command_sender = command_sender
+        self.link_processes: dict[str, subprocess.Popen[Any]] = {}
 
     @property
     def event_dir(self) -> Path:
@@ -192,6 +233,20 @@ class IntegrationConsoleApp:
     @property
     def visual_dir(self) -> Path:
         return self.event_dir / "visual"
+
+    @property
+    def process_log_dir(self) -> Path:
+        return self.event_dir / "process_logs"
+
+    def link_runtime_dir(self, link: str) -> Path:
+        return self.event_dir / link
+
+    def link_voice_output_path(self, link: str) -> Path:
+        return self.link_runtime_dir(link) / "latest_voice.json"
+
+    @property
+    def openclaw_dashboard_path(self) -> Path:
+        return self.openclaw_workspace / "state" / "dashboard.json"
 
     def health(self) -> dict[str, Any]:
         return {
@@ -246,6 +301,35 @@ class IntegrationConsoleApp:
             },
         }
 
+    def openclaw_dashboard(self) -> dict[str, Any]:
+        path = self.openclaw_dashboard_path
+        data, error = _load_json_file(path)
+        info = _file_info(path)
+        if data is None:
+            return {
+                "ok": False,
+                "path": str(path),
+                "reason": error or "not_found",
+                "age_ms": info["age_ms"],
+                "dashboard": {},
+            }
+        if data.get("schema") != OPENCLAW_DASHBOARD_SCHEMA:
+            return {
+                "ok": False,
+                "path": str(path),
+                "reason": "unsupported_schema",
+                "age_ms": info["age_ms"],
+                "dashboard": data,
+            }
+        updated_age_ms = _timestamp_age_ms(data.get("updated_at"))
+        return {
+            "ok": True,
+            "path": str(path),
+            "reason": None,
+            "age_ms": updated_age_ms if updated_age_ms is not None else info["age_ms"],
+            "dashboard": data,
+        }
+
     def openclaw_status(self) -> dict[str, Any]:
         parsed = urlparse(self.openclaw_url)
         host = parsed.hostname
@@ -269,8 +353,184 @@ class IntegrationConsoleApp:
             "latency_ms": int((time.time() - started) * 1000),
         }
 
+    def link_process_states(self) -> dict[str, Any]:
+        return {
+            link: self.link_process_state(link)
+            for link in ("link1", "link2", "link3")
+        }
+
+    def link_process_state(self, link: str) -> dict[str, Any]:
+        process = self.link_processes.get(link)
+        log_path = self.process_log_dir / f"{link}.log"
+        if process is None:
+            return {
+                "managed": False,
+                "running": False,
+                "status": "stopped",
+                "pid": None,
+                "returncode": None,
+                "log_path": str(log_path),
+            }
+        returncode = process.poll()
+        return {
+            "managed": True,
+            "running": returncode is None,
+            "status": "running" if returncode is None else "exited",
+            "pid": process.pid,
+            "returncode": returncode,
+            "log_path": str(log_path),
+        }
+
+    def _ws_host_port(self) -> tuple[str, int]:
+        parsed = urlparse(self.ws_url)
+        host = parsed.hostname or "127.0.0.1"
+        if host == "0.0.0.0":
+            host = "127.0.0.1"
+        return host, int(parsed.port or 8765)
+
+    @staticmethod
+    def _env_text(name: str, default: str) -> str:
+        value = os.environ.get(name)
+        return value.strip() if isinstance(value, str) and value.strip() else default
+
+    @staticmethod
+    def _env_truthy(name: str, default: bool = False) -> bool:
+        value = os.environ.get(name)
+        if value is None:
+            return default
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+
+    def link_command(self, link: str) -> list[str]:
+        if link in {"link1", "link3"}:
+            duration = self._env_text(f"XIAOAN_{link.upper()}_MIC_WINDOW", "6.0")
+            return [
+                sys.executable,
+                "-m",
+                "base_station.monitor.voice_runtime",
+                "--source",
+                "local_mic",
+                "--gateway-url",
+                self.ws_url,
+                "--session-id",
+                f"integration-console-{link}",
+                "--duration",
+                duration,
+                "--asr-language",
+                self._env_text(f"XIAOAN_{link.upper()}_ASR_LANGUAGE", "zh"),
+                "--latest-output",
+                str(self.link_voice_output_path(link)),
+                *(["--disable-companion-fast-path"] if link == "link1" else []),
+                "--verbose",
+            ]
+        if link == "link2":
+            host, port = self._ws_host_port()
+            command = [
+                sys.executable,
+                "-m",
+                "base_station.monitor.emotion_runtime",
+                "--source",
+                "ws_video_observer",
+                "--host",
+                host,
+                "--port",
+                str(port),
+                "--count",
+                "None",
+                "--enable-vlm-gate",
+                "--model-backend",
+                self._env_text("XIAOAN_LINK2_MODEL_BACKEND", "openface_ov"),
+                "--vlm-backend",
+                self._env_text("XIAOAN_LINK2_VLM_BACKEND", "fake"),
+                "--visual-trace-dir",
+                str(self.visual_dir),
+                "--visual-trace-fps",
+                self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "1.0"),
+                "--verbose",
+            ]
+            if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
+                command.append("--force-vlm")
+            return command
+        raise ValueError(f"unsupported_link:{link}")
+
+    def start_link(self, body: dict[str, Any]) -> dict[str, Any]:
+        link = str(body.get("link") or "").strip()
+        try:
+            command = self.link_command(link)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        state = self.link_process_state(link)
+        if state["running"]:
+            return {"ok": True, "link": link, "state": state, "already_running": True}
+
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / f"{link}.log"
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            process = subprocess.Popen(
+                command,
+                cwd=_repo_root(),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        self.link_processes[link] = process
+        request_id = uuid.uuid4().hex[:12]
+        self.log_event(
+            event_type="link.start",
+            request_id=request_id,
+            action=link,
+            payload_summary={"link": link},
+            raw_response_summary={"pid": process.pid, "command": command, "log_path": str(log_path)},
+        )
+        time.sleep(0.1)
+        return {
+            "ok": True,
+            "link": link,
+            "request_id": request_id,
+            "state": self.link_process_state(link),
+            "command_preview": " ".join(command),
+        }
+
+    def stop_link(self, body: dict[str, Any]) -> dict[str, Any]:
+        link = str(body.get("link") or "").strip()
+        if link not in {"link1", "link2", "link3"}:
+            return {"ok": False, "error": f"unsupported_link:{link}"}
+        process = self.link_processes.get(link)
+        if process is None:
+            return {"ok": True, "link": link, "state": self.link_process_state(link), "already_stopped": True}
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        self.link_processes.pop(link, None)
+        request_id = uuid.uuid4().hex[:12]
+        self.log_event(
+            event_type="link.stop",
+            request_id=request_id,
+            action=link,
+            payload_summary={"link": link},
+            raw_response_summary={"pid": process.pid, "returncode": process.returncode},
+        )
+        return {
+            "ok": True,
+            "link": link,
+            "request_id": request_id,
+                "state": self.link_process_state(link),
+        }
+
     def state(self) -> dict[str, Any]:
         ws_state = read_ws_state(self.runtime_dir)
+        visual_state = self.visual_state()
+        dashboard_state = self.openclaw_dashboard()
+        process_states = self.link_process_states()
         raw_state = ws_state.get("state") if isinstance(ws_state.get("state"), dict) else {}
         devices = raw_state.get("devices") if isinstance(raw_state.get("devices"), dict) else {}
         sessions = raw_state.get("sessions") if isinstance(raw_state.get("sessions"), dict) else {}
@@ -288,6 +548,10 @@ class IntegrationConsoleApp:
         audio_stats, audio_stats_error = _load_json_file(self.runtime_dir / "audio_stats.json")
         demo1, _ = _load_json_file(self.runtime_dir / "demo1_transcript.json")
         assistant, _ = _load_json_file(self.runtime_dir / "assistant_capture_result.json")
+        link_voice = {
+            link: self.link_voice_state(link)
+            for link in ("link1", "link3")
+        }
         status_payload = {}
         if isinstance(selected_device.get("last_status"), dict):
             status_payload = selected_device["last_status"].get("payload") or {}
@@ -298,43 +562,291 @@ class IntegrationConsoleApp:
             if isinstance(source, dict):
                 merged_robot.update(source)
 
+        robot = {
+            "online": robot_online,
+            "selected_device_id": selected_device_id,
+            "last_hello": selected_device.get("last_hello"),
+            "last_heartbeat": last_heartbeat or None,
+            "last_heartbeat_age_ms": heartbeat_age_ms,
+            "last_status": selected_device.get("last_status"),
+            "battery": merged_robot.get("battery"),
+            "charging": merged_robot.get("charging"),
+            "dock": merged_robot.get("dock") or merged_robot.get("docked"),
+            "wifi_rssi": merged_robot.get("wifi_rssi"),
+            "free_heap": merged_robot.get("free_heap"),
+            "reset_reason": merged_robot.get("reset_reason"),
+            "last_command_ack": raw_state.get("last_command_ack"),
+            "last_motion_completed": raw_state.get("last_motion_completed"),
+            "last_audio_playback_done": raw_state.get("last_audio_playback_done"),
+            "last_error": raw_state.get("last_error"),
+        }
+        media = {
+            "latest_image": latest_image,
+            "latest_audio": latest_audio,
+            "audio_stats": audio_stats,
+            "audio_stats_error": audio_stats_error,
+        }
+        asr = {
+            "demo1_transcript": demo1,
+            "assistant_capture_result": assistant,
+        }
+        links = self.link_state(
+            media=media,
+            asr=asr,
+            robot=robot,
+            visual=visual_state,
+            dashboard=dashboard_state,
+            processes=process_states,
+            link_voice=link_voice,
+        )
+
         return {
             "ok": True,
             "current_time": _now_iso(),
             "console": self.health(),
             "ws_server": ws_state,
-            "robot": {
-                "online": robot_online,
-                "selected_device_id": selected_device_id,
-                "last_hello": selected_device.get("last_hello"),
-                "last_heartbeat": last_heartbeat or None,
-                "last_heartbeat_age_ms": heartbeat_age_ms,
-                "last_status": selected_device.get("last_status"),
-                "battery": merged_robot.get("battery"),
-                "charging": merged_robot.get("charging"),
-                "dock": merged_robot.get("dock") or merged_robot.get("docked"),
-                "wifi_rssi": merged_robot.get("wifi_rssi"),
-                "free_heap": merged_robot.get("free_heap"),
-                "reset_reason": merged_robot.get("reset_reason"),
-                "last_command_ack": raw_state.get("last_command_ack"),
-                "last_motion_completed": raw_state.get("last_motion_completed"),
-                "last_audio_playback_done": raw_state.get("last_audio_playback_done"),
-                "last_error": raw_state.get("last_error"),
-            },
-            "media": {
-                "latest_image": latest_image,
-                "latest_audio": latest_audio,
-                "audio_stats": audio_stats,
-                "audio_stats_error": audio_stats_error,
-            },
-            "asr": {
-                "demo1_transcript": demo1,
-                "assistant_capture_result": assistant,
-            },
+            "robot": robot,
+            "media": media,
+            "asr": asr,
+            "link_voice": link_voice,
             "openclaw": self.openclaw_status(),
+            "openclaw_dashboard": dashboard_state,
+            "visual": visual_state,
+            "links": links,
+            "processes": process_states,
             "tools": self.tool_catalog(),
             "recent_events": self.recent_events(limit=STATE_EVENT_LIMIT),
         }
+
+    def link_state(
+        self,
+        *,
+        media: dict[str, Any],
+        asr: dict[str, Any],
+        robot: dict[str, Any],
+        visual: dict[str, Any],
+        dashboard: dict[str, Any],
+        processes: dict[str, Any] | None = None,
+        link_voice: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        latest_image = media.get("latest_image") if isinstance(media.get("latest_image"), dict) else {}
+        latest_audio = media.get("latest_audio") if isinstance(media.get("latest_audio"), dict) else {}
+        audio_stats = media.get("audio_stats") if isinstance(media.get("audio_stats"), dict) else {}
+        demo1 = asr.get("demo1_transcript") if isinstance(asr.get("demo1_transcript"), dict) else {}
+        assistant = asr.get("assistant_capture_result") if isinstance(asr.get("assistant_capture_result"), dict) else {}
+        processes = processes or {}
+        link_voice = link_voice or {}
+        link1_voice = link_voice.get("link1") if isinstance(link_voice.get("link1"), dict) else {}
+        link3_voice = link_voice.get("link3") if isinstance(link_voice.get("link3"), dict) else {}
+        dashboard_payload = dashboard.get("dashboard") if isinstance(dashboard.get("dashboard"), dict) else {}
+        latest_reply = dashboard_payload.get("latest_reply") if isinstance(dashboard_payload.get("latest_reply"), dict) else {}
+        dashboard_age = dashboard.get("age_ms")
+        dashboard_fresh = bool(
+            dashboard.get("ok")
+            and dashboard_age is not None
+            and int(dashboard_age) <= 30000
+        )
+        execution = assistant.get("execution_result") if isinstance(assistant.get("execution_result"), dict) else {}
+        if not execution and isinstance(assistant.get("openclaw_result"), dict):
+            execution = assistant["openclaw_result"].get("execution_result") or {}
+
+        link1_output = self._display_voice_output(
+            link1_voice.get("output") if isinstance(link1_voice.get("output"), dict) else {}
+        )
+        link3_output = self._display_voice_output(
+            link3_voice.get("output") if isinstance(link3_voice.get("output"), dict) else {}
+        )
+        link1_asr_text = self._voice_text(link1_output) or str(demo1.get("transcript") or "").strip()
+        link3_asr_text = self._voice_text(link3_output)
+        link1_openclaw_text = self._voice_reply_text(link1_output)
+        link3_openclaw_text = self._voice_reply_text(link3_output)
+        openclaw_text = (
+            link1_openclaw_text
+            or str(
+                assistant.get("reply_text")
+                or assistant.get("display_text")
+                or assistant.get("spoken_text")
+                or latest_reply.get("display_text")
+                or dashboard_payload.get("status_text")
+                or ""
+            ).strip()
+        )
+        dashboard_text = ""
+        if dashboard_fresh:
+            dashboard_text = str(
+                latest_reply.get("display_text")
+                or dashboard_payload.get("status_text")
+                or ""
+            ).strip()
+        spoken_text = str(
+            link3_output.get("spoken_text")
+            or latest_reply.get("spoken_text")
+            or assistant.get("spoken_text")
+            or ""
+        ).strip()
+        robot_ack = robot.get("last_command_ack")
+        robot_motion = robot.get("last_motion_completed")
+        robot_audio = robot.get("last_audio_playback_done")
+        robot_execution_ok = self._recent_robot_execution_ok(robot)
+        link1_running = bool((processes.get("link1") or {}).get("running"))
+        link2_running = bool((processes.get("link2") or {}).get("running"))
+        link3_running = bool((processes.get("link3") or {}).get("running"))
+        link1_voice_age = link1_voice.get("age_ms")
+        link3_voice_age = link3_voice.get("age_ms")
+        link1_voice_fresh = bool(
+            link1_voice.get("ok")
+            and link1_voice_age is not None
+            and int(link1_voice_age) <= 30000
+        )
+        link3_voice_fresh = bool(
+            link3_voice.get("ok")
+            and link3_voice_age is not None
+            and int(link3_voice_age) <= 30000
+        )
+        link1_audio = self._voice_audio_info(link1_output)
+        link3_audio = self._voice_audio_info(link3_output)
+        link1_audio_fresh = link1_running and (link1_voice_fresh or _fresh(link1_audio, 30000))
+        link3_audio_fresh = link3_running and (link3_voice_fresh or _fresh(link3_audio, 30000))
+        camera_fresh = _fresh(latest_image, FRESH_IMAGE_MS)
+        visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
+        executed_actions = execution.get("executed_actions") if isinstance(execution.get("executed_actions"), list) else []
+
+        link1_steps = [
+            _step("voice runtime", link1_running, (processes.get("link1") or {}).get("pid")),
+            _step("麦克风", link1_audio_fresh, link1_audio.get("updated_at") or link1_voice.get("updated_at")),
+            _step("ASR 文本", bool(link1_asr_text), link1_asr_text),
+            _step("OpenClaw 回复", bool(link1_openclaw_text), link1_openclaw_text),
+            _step("基站屏幕更新", bool(dashboard_text), dashboard_text),
+            _step("机器人执行提醒", robot_execution_ok, self._robot_execution_summary(robot)),
+        ]
+        link2_steps = [
+            _step("emotion runtime", link2_running, (processes.get("link2") or {}).get("pid")),
+            _step("相机连接", camera_fresh, latest_image.get("updated_at")),
+            _step("ws_video 分析快照", visual_fresh, visual.get("freshness")),
+            _step("视觉状态文件", bool(visual.get("ok")), visual.get("reason")),
+        ]
+        link3_steps = [
+            _step("voice runtime", link3_running, (processes.get("link3") or {}).get("pid")),
+            _step("麦克风", link3_audio_fresh, link3_audio.get("updated_at") or link3_voice.get("updated_at")),
+            _step("ASR 文本", bool(link3_asr_text), link3_asr_text),
+            _step("秒级机器人动作/语音", robot_execution_ok or bool(executed_actions), self._robot_execution_summary(robot)),
+            _step("OpenClaw 后续关怀语音", bool(spoken_text or link3_openclaw_text), spoken_text or link3_openclaw_text),
+        ]
+
+        return {
+            "camera": {
+                "status": "live" if camera_fresh else ("stale" if latest_image.get("exists") else "missing"),
+                "done": camera_fresh,
+                "latest_image": latest_image,
+            },
+            "link1": {
+                "status": self._status_from_steps(link1_steps) if link1_running else "idle",
+                "done": all(step["ok"] for step in link1_steps),
+                "steps": link1_steps,
+                "asr_text": link1_asr_text,
+                "openclaw_text": link1_openclaw_text,
+                "dashboard_text": dashboard_text,
+                "robot_execution": self._robot_execution_summary(robot),
+                "voice": link1_voice,
+            },
+            "link2": {
+                "status": self._status_from_steps(link2_steps) if link2_running else "idle",
+                "done": all(step["ok"] for step in link2_steps),
+                "steps": link2_steps,
+                "visual_freshness": visual.get("freshness"),
+            },
+            "link3": {
+                "status": self._status_from_steps(link3_steps) if link3_running else "idle",
+                "done": all(step["ok"] for step in link3_steps),
+                "steps": link3_steps,
+                "asr_text": link3_asr_text,
+                "fast_response": self._robot_execution_summary(robot),
+                "follow_up_text": spoken_text or link3_openclaw_text,
+                "voice": link3_voice,
+            },
+        }
+
+    def link_voice_state(self, link: str) -> dict[str, Any]:
+        path = self.link_voice_output_path(link)
+        data, error = _load_json_file(path)
+        info = _file_info(path)
+        if data is None:
+            return {
+                "ok": False,
+                "reason": error or "not_found",
+                "path": str(path),
+                "age_ms": info.get("age_ms"),
+                "updated_at": info.get("updated_at"),
+                "output": {},
+            }
+        return {
+            "ok": True,
+            "reason": None,
+            "path": str(path),
+            "age_ms": info.get("age_ms"),
+            "updated_at": info.get("updated_at"),
+            "output": data,
+        }
+
+    @staticmethod
+    def _voice_text(output: dict[str, Any]) -> str:
+        return str(output.get("text") or "").strip()
+
+    @staticmethod
+    def _display_voice_output(output: dict[str, Any]) -> dict[str, Any]:
+        if output.get("event_type") in {"voice.recording", "voice.runtime_started"}:
+            previous = output.get("previous_output")
+            if isinstance(previous, dict):
+                return previous
+        return output
+
+    @staticmethod
+    def _voice_reply_text(output: dict[str, Any]) -> str:
+        latest = output.get("latest_reply") if isinstance(output.get("latest_reply"), dict) else {}
+        return str(
+            output.get("reply_text")
+            or output.get("display_text")
+            or output.get("spoken_text")
+            or latest.get("reply_text")
+            or latest.get("display_text")
+            or latest.get("spoken_text")
+            or ""
+        ).strip()
+
+    @staticmethod
+    def _voice_audio_info(output: dict[str, Any]) -> dict[str, Any]:
+        event = output.get("event") if isinstance(output.get("event"), dict) else {}
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        audio = payload.get("audio") if isinstance(payload.get("audio"), dict) else {}
+        if not audio and isinstance(output.get("audio"), dict):
+            audio = output["audio"]
+        path = audio.get("audio_path") or audio.get("original_audio_path")
+        return _file_info(Path(path)) if path else {"exists": False, "age_ms": None, "updated_at": None}
+
+    @staticmethod
+    def _status_from_steps(steps: list[dict[str, Any]]) -> str:
+        if all(step.get("ok") for step in steps):
+            return "complete"
+        if any(step.get("ok") for step in steps):
+            return "running"
+        return "idle"
+
+    @staticmethod
+    def _robot_execution_summary(robot: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "last_command_ack": robot.get("last_command_ack"),
+            "last_motion_completed": robot.get("last_motion_completed"),
+            "last_audio_playback_done": robot.get("last_audio_playback_done"),
+        }
+
+    @staticmethod
+    def _recent_robot_execution_ok(robot: dict[str, Any], max_age_ms: int = 30000) -> bool:
+        for key in ("last_command_ack", "last_motion_completed", "last_audio_playback_done"):
+            item = robot.get(key)
+            timestamp = _parse_received_at(item)
+            if timestamp is not None and int(max(0.0, time.time() - timestamp) * 1000) <= max_age_ms:
+                return True
+        return False
 
     def log_event(
         self,
@@ -873,6 +1385,10 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.send_tts(body))
                 elif path == "/api/scenario/run":
                     self._write_json(app.run_scenario(body))
+                elif path == "/api/links/start":
+                    self._write_json(app.start_link(body))
+                elif path == "/api/links/stop":
+                    self._write_json(app.stop_link(body))
                 elif path == "/api/tools/run":
                     self._write_json(app.run_tool(body))
                 elif path == "/api/logs/export":
@@ -935,6 +1451,7 @@ def create_server(
     runtime_dir: str | Path = DEFAULT_RUNTIME_DIR,
     static_dir: str | Path = DEFAULT_STATIC_DIR,
     openclaw_url: str = DEFAULT_OPENCLAW_URL,
+    openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
     verbose: bool = False,
 ) -> ThreadingHTTPServer:
     app = IntegrationConsoleApp(
@@ -944,6 +1461,7 @@ def create_server(
         runtime_dir=runtime_dir,
         static_dir=static_dir,
         openclaw_url=openclaw_url,
+        openclaw_workspace=openclaw_workspace,
     )
     handler = make_handler(app, verbose=verbose)
     return ThreadingHTTPServer((host, int(port)), handler)
@@ -957,6 +1475,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--runtime-dir", default=str(DEFAULT_RUNTIME_DIR))
     parser.add_argument("--static-dir", default=str(DEFAULT_STATIC_DIR))
     parser.add_argument("--openclaw-url", default=DEFAULT_OPENCLAW_URL)
+    parser.add_argument("--openclaw-workspace", default=str(DEFAULT_OPENCLAW_WORKSPACE))
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -970,6 +1489,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_dir=args.runtime_dir,
         static_dir=args.static_dir,
         openclaw_url=args.openclaw_url,
+        openclaw_workspace=args.openclaw_workspace,
         verbose=args.verbose,
     )
     try:

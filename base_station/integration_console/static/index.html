@@ -26,11 +26,10 @@
   <main class="shell">
     <nav class="tabs" aria-label="联调面板">
       <button class="tab active" data-tab="health">连接</button>
-      <button class="tab" data-tab="robot">机器人</button>
       <button class="tab" data-tab="camera">相机</button>
-      <button class="tab" data-tab="audio">音频</button>
-      <button class="tab" data-tab="agent">Agent</button>
-      <button class="tab" data-tab="scenario">场景</button>
+      <button class="tab" data-tab="link1">链路一</button>
+      <button class="tab" data-tab="link2">链路二</button>
+      <button class="tab" data-tab="link3">链路三</button>
       <button class="tab" data-tab="logs">日志</button>
     </nav>
 
@@ -97,11 +96,81 @@
     </section>
 
     <section class="panel" id="tab-camera">
+      <div class="grid two">
+        <article class="card preview-card">
+          <div class="visual-heading">
+            <div>
+              <div class="section-label">CAMERA CONNECTION</div>
+              <h2>latest.jpg</h2>
+            </div>
+            <span class="status-pill unavailable" id="cameraFreshness">UNAVAILABLE</span>
+          </div>
+          <div class="image-wrap">
+            <img id="cameraLatestImage" alt="Latest camera frame">
+            <div class="empty" id="cameraImageEmpty">等待 runtime/latest.jpg</div>
+          </div>
+          <div class="actions">
+            <button id="refreshCameraBtn">刷新相机</button>
+          </div>
+        </article>
+        <article class="card">
+          <h2>相机连接状态</h2>
+          <div class="kv" id="cameraKv"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-link1">
+      <div class="chain-header">
+        <div>
+          <div class="section-label">LINK 1</div>
+          <h2>麦克风 → ASR → OpenClaw → 屏幕/机器人</h2>
+        </div>
+        <label class="run-switch"><input id="link1RunSwitch" type="checkbox"> 运行模式</label>
+        <span class="status-pill unavailable" id="link1Status">IDLE</span>
+      </div>
+      <div class="chain-flow" id="link1Steps"></div>
+      <div class="grid three">
+        <article class="card">
+          <h2>麦克风运行状态</h2>
+          <div class="kv" id="link1MicKv"></div>
+        </article>
+        <article class="card">
+          <h2>ASR 文本</h2>
+          <pre class="textbox" id="link1AsrText">-</pre>
+        </article>
+        <article class="card">
+          <h2>OpenClaw 回复</h2>
+          <pre class="textbox" id="link1OpenclawText">-</pre>
+        </article>
+      </div>
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>基站屏幕更新提醒</h2>
+          <pre class="jsonbox compact-json" id="link1DashboardJson">{}</pre>
+        </article>
+        <article class="card">
+          <h2>机器人执行提醒</h2>
+          <pre class="jsonbox compact-json" id="link1RobotJson">{}</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-link2">
+      <div class="chain-header">
+        <div>
+          <div class="section-label">LINK 2</div>
+          <h2>ws_video → emotion_runtime → 视觉分析</h2>
+        </div>
+        <label class="run-switch"><input id="link2RunSwitch" type="checkbox"> 运行模式</label>
+        <span class="status-pill unavailable" id="link2Status">IDLE</span>
+      </div>
+      <div class="chain-flow" id="link2Steps"></div>
       <div class="visual-layout">
         <article class="card visual-preview-card">
           <div class="visual-heading">
             <div>
-              <div class="section-label">ROUTE A / OPENFACE</div>
+              <div class="section-label">EMOTION RUNTIME / WS_VIDEO</div>
               <h2>视觉分析快照</h2>
             </div>
             <span class="status-pill unavailable" id="visualFreshness">UNAVAILABLE</span>
@@ -147,6 +216,38 @@
             <div class="fusion-box" id="visualFusion">Fusion: -</div>
           </article>
         </div>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-link3">
+      <div class="chain-header">
+        <div>
+          <div class="section-label">LINK 3</div>
+          <h2>麦克风 → ASR → 秒级机器人响应 → OpenClaw 后续关怀</h2>
+        </div>
+        <label class="run-switch"><input id="link3RunSwitch" type="checkbox"> 运行模式</label>
+        <span class="status-pill unavailable" id="link3Status">IDLE</span>
+      </div>
+      <div class="chain-flow" id="link3Steps"></div>
+      <div class="grid two">
+        <article class="card">
+          <h2>麦克风运行状态</h2>
+          <div class="kv" id="link3MicKv"></div>
+        </article>
+        <article class="card">
+          <h2>ASR 文本</h2>
+          <pre class="textbox" id="link3AsrText">-</pre>
+        </article>
+      </div>
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>机器人秒级响应</h2>
+          <pre class="jsonbox compact-json" id="link3FastJson">{}</pre>
+        </article>
+        <article class="card">
+          <h2>OpenClaw 追加关怀语音</h2>
+          <pre class="textbox" id="link3FollowUpText">-</pre>
+        </article>
       </div>
     </section>
 

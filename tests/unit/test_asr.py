@@ -119,6 +119,7 @@ class ASRTranscriptSourceTest(unittest.TestCase):
         self.assertEqual(result["backend"], "sensevoice")
         self.assertEqual(calls["init"], 1)
         self.assertEqual(calls["generate"], 1)
+        self.assertTrue(calls["generate_kwargs"]["use_itn"])
 
     def test_sensevoice_backend_parses_dict_result(self) -> None:
         with fake_funasr_module({"text": "你好小安", "language": "zh"}) as _calls:
@@ -166,6 +167,21 @@ class ASRTranscriptSourceTest(unittest.TestCase):
         self.assertEqual(calls["init_kwargs"]["device"], "cpu")
         self.assertTrue(calls["init_kwargs"]["disable_update"])
 
+    def test_sensevoice_backend_passes_optional_language_hint(self) -> None:
+        with fake_funasr_module({"text": "<|zh|>一分钟后提醒我喝水"}) as calls:
+            backend = SenseVoiceASRBackend(
+                model_dir=populated_temp_model_dir(),
+                language="zh",
+                use_itn=True,
+            )
+
+            result = backend.transcribe({"audio_path": "sample.wav"})
+
+        self.assertEqual(result["text"], "一分钟后提醒我喝水")
+        self.assertEqual(calls["generate_kwargs"]["language"], "zh")
+        self.assertEqual(calls["generate_kwargs"]["cache"], {})
+        self.assertTrue(calls["generate_kwargs"]["use_itn"])
+
 
 def populated_temp_model_dir() -> str:
     temp_dir = tempfile.TemporaryDirectory()
@@ -181,7 +197,7 @@ _TEMP_DIRS: list[tempfile.TemporaryDirectory] = []
 class fake_funasr_module:
     def __init__(self, generate_result):
         self.generate_result = generate_result
-        self.calls = {"init": 0, "generate": 0, "init_kwargs": {}}
+        self.calls = {"init": 0, "generate": 0, "init_kwargs": {}, "generate_kwargs": {}}
         self.previous = sys.modules.get("funasr", _MISSING)
 
     def __enter__(self):
@@ -193,8 +209,9 @@ class fake_funasr_module:
                 calls["init"] += 1
                 calls["init_kwargs"] = kwargs
 
-            def generate(self, **_kwargs):
+            def generate(self, **kwargs):
                 calls["generate"] += 1
+                calls["generate_kwargs"] = kwargs
                 return generate_result
 
         sys.modules["funasr"] = types.SimpleNamespace(AutoModel=FakeAutoModel)

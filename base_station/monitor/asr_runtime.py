@@ -134,11 +134,18 @@ def create_asr_backend(
     pattern: str | None = None,
     model_path: str | None = None,
     device: str = "cpu",
+    language: str | None = None,
+    use_itn: bool = True,
 ):
     if backend == "fake":
         return FakeASRBackend(transcript=fake_transcript, pattern=pattern)
     if backend == "sensevoice":
-        return SenseVoiceASRBackend(model_dir=model_path, device=device)
+        return SenseVoiceASRBackend(
+            model_dir=model_path,
+            device=device,
+            language=language,
+            use_itn=use_itn,
+        )
     raise ValueError(f"Unsupported ASR backend: {backend}")
 
 
@@ -154,6 +161,8 @@ def build_audio_file_event(
     pattern: str | None = None,
     asr_model_path: str | None = None,
     device: str = "cpu",
+    asr_language: str | None = None,
+    asr_use_itn: bool = True,
     trim_speech: bool = False,
     speech_trim_path: str | None = None,
     speech_trim_threshold: float = 0.01,
@@ -211,6 +220,8 @@ def build_audio_file_event(
         pattern=pattern,
         model_path=asr_model_path,
         device=device,
+        language=asr_language,
+        use_itn=asr_use_itn,
     ).transcribe(audio_clip)
     text = str(asr.get("text") or "").strip()
     if not text:

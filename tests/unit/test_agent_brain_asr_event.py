@@ -157,6 +157,29 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["route"], "link_3_companion_fast_path")
         self.assertEqual(result["openclaw_event_type"], "companion.request")
 
+    async def test_asr_transcript_can_disable_companion_fast_path(self) -> None:
+        gateway = FakeGateway()
+        openclaw_adapter = FakeOpenClawAdapter()
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        result = await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {
+                "text": "我有点累",
+                "disable_companion_fast_path": True,
+            },
+        })
+
+        self.assertEqual(result["route"], "link_1_openclaw")
+        self.assertEqual(result["companion_result"]["reason"], "companion_fast_path_disabled")
+        self.assertNotIn(("expression", "caring", 3000, False), gateway.calls)
+        self.assertFalse(any(call[0] == "move" for call in gateway.calls))
+        self.assertEqual(openclaw_adapter.events[0].type, "asr.transcript")
+
     async def test_asr_transcript_companion_fast_path_records_memory_event(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = str(Path(temp_dir) / "brain_companion_memory.db")

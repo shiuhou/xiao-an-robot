@@ -35,6 +35,7 @@ QwenVLOpenVINORunner = None
 VLMFaceAnalyzer = None
 _build_openface_cv_pipeline = None
 WebSocketVideoFrameSource = None
+WebSocketVideoObserverSource = None
 VisualTracePublisher = None
 ws_server = None
 
@@ -697,6 +698,16 @@ def _load_ws_video_frame_source():
     return WebSocketVideoFrameSource
 
 
+def _load_ws_video_observer_source():
+    """Lazy import for observing frames from an existing ws_server."""
+    global WebSocketVideoObserverSource
+    if WebSocketVideoObserverSource is None:
+        from base_station.perception.ws_video_source import WebSocketVideoObserverSource as loaded
+
+        WebSocketVideoObserverSource = loaded
+    return WebSocketVideoObserverSource
+
+
 def _load_visual_trace_publisher():
     """Lazy import for Integration Console visual snapshots."""
     global VisualTracePublisher
@@ -774,6 +785,8 @@ def create_emotion_source(
     history_memory: Any | None = None,
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8765,
     verbose: bool = False,
     visual_observer: Any | None = None,
     video_queue_size: int = 2,
@@ -888,6 +901,38 @@ def create_emotion_source(
             visual_observer=visual_observer,
         )
 
+    if source == "ws_video_observer":
+        if not enable_vlm_gate:
+            raise ValueError("--enable-vlm-gate is required when --source ws_video_observer")
+        frame_source_class = _load_ws_video_observer_source()
+        frame_source = frame_source_class(url=f"ws://{host}:{port}/video-observer")
+        pipeline = build_cv_pipeline(
+            model_backend=model_backend,
+            pattern=pattern,
+            model_path=model_path,
+            device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
+        )
+        vlm_model = create_vlm_emotion_model(
+            vlm_backend=vlm_backend,
+            pattern=pattern,
+            vlm_model_path=vlm_model_path,
+            device=device,
+        )
+        return VLMGatedCameraEmotionSource(
+            frame_source=frame_source,
+            cv_pipeline=pipeline,
+            gate=VLMTriggerGate(),
+            context_builder=EmotionContextBuilder(),
+            vlm_model=vlm_model,
+            memory=history_memory,
+            force_vlm=force_vlm,
+            verbose=verbose,
+            backend_name=vlm_backend,
+            visual_observer=visual_observer,
+        )
+
     if source == "opencv_camera":
         frame_source = OpenCVCameraFrameSource(
             camera_index=camera_index,
@@ -928,7 +973,7 @@ def create_emotion_source(
 
     raise ValueError(
         "Unsupported emotion source: "
-        f"{source}. Currently supported sources: fake_face, fake_camera, image_file, opencv_camera, ws_video."
+        f"{source}. Currently supported sources: fake_face, fake_camera, image_file, opencv_camera, ws_video, ws_video_observer."
     )
 
 
@@ -997,6 +1042,8 @@ def create_runtime(
         history_memory=history_memory,
         openface_repo=openface_repo,
         openface_models_dir=openface_models_dir,
+        host=host,
+        port=port,
         verbose=verbose,
         visual_observer=visual_observer,
         video_queue_size=video_queue_size,
@@ -1048,7 +1095,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument(
         "--source",
         default="fake_face",
-        choices=["fake_face", "fake_camera", "image_file", "opencv_camera", "ws_video"],
+        choices=["fake_face", "fake_camera", "image_file", "opencv_camera", "ws_video", "ws_video_observer"],
         help="Emotion source.",
     )
     parser.add_argument(

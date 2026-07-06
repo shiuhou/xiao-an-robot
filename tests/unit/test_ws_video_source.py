@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 
 import cv2
@@ -10,8 +11,14 @@ import numpy as np
 from base_station.perception.ws_video_source import (
     VideoFrameDecodeError,
     WebSocketVideoFrameSource,
+    WebSocketVideoObserverSource,
     decode_video_packet,
 )
+
+try:
+    import websockets
+except ImportError:  # pragma: no cover - depends on local dev environment
+    websockets = None
 
 
 def make_packet(width: int = 320, height: int = 240, device_ts: int = 42) -> bytes:
@@ -57,6 +64,30 @@ class WebSocketVideoFrameSourceTest(unittest.IsolatedAsyncioTestCase):
         frame = await frames.__anext__()
 
         self.assertEqual(frame["device_timestamp"], 2)
+
+    @unittest.skipIf(websockets is None, "websockets dependency is not installed")
+    async def test_observer_source_decodes_binary_packets(self) -> None:
+        packet = make_packet(device_ts=88)
+
+        async def handler(websocket):
+            await websocket.send(packet)
+            await websocket.close()
+
+        server = await websockets.serve(handler, "127.0.0.1", 0)
+        host, port = server.sockets[0].getsockname()[:2]
+        try:
+            source = WebSocketVideoObserverSource(
+                url=f"ws://{host}:{port}/video-observer",
+                reconnect_delay_seconds=0.01,
+            )
+            frames = source.frames()
+            frame = await asyncio.wait_for(frames.__anext__(), timeout=1.0)
+        finally:
+            server.close()
+            await server.wait_closed()
+
+        self.assertEqual(frame["source"], "ws_video_observer")
+        self.assertEqual(frame["device_timestamp"], 88)
 
 
 if __name__ == "__main__":

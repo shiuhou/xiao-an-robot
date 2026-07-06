@@ -158,6 +158,21 @@ class WebSocketServerVideoSourceTest(unittest.IsolatedAsyncioTestCase):
 
         await ws_server.handle_video(websocket)
 
+    async def test_video_observer_receives_validated_video_packet(self) -> None:
+        packet = make_video_packet(device_ts=4321)
+        server = await ws_server.start_server("127.0.0.1", 0)
+        host, port = server.sockets[0].getsockname()[:2]
+        try:
+            async with websockets.connect(f"ws://{host}:{port}/video-observer") as observer:
+                async with websockets.connect(f"ws://{host}:{port}/video") as video:
+                    await video.send(packet)
+                    observed = await asyncio.wait_for(observer.recv(), timeout=1.0)
+        finally:
+            server.close()
+            await server.wait_closed()
+
+        self.assertEqual(observed, packet)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,9 +29,19 @@ http://<DK2500-IP>:8090/console
 | `/api/audio-stats` | 返回 `runtime/audio_stats.json`，不存在时结构化失败。 |
 | `/api/robot/*` | 通过 `/agent` 发已有机器人命令：表情、运动、本地音效、TTS。 |
 | `/api/scenario/run` | step-by-step 安全场景脚本。 |
+| `/api/links/start`, `/api/links/stop` | 启动/停止固定白名单链路 runtime。 |
 | `/api/tools/run` | 固定白名单工具，不接受浏览器 raw shell。 |
 | `/api/logs/recent` | 最近 JSONL 联调日志。 |
 | `/api/logs/export` | 导出当前状态和日志到 `runtime/integration_console/export_*.json`。 |
+
+## Link Pages
+
+- `相机`：只显示 `runtime/latest.jpg`，用于确认机器人相机连接和图像更新时间。
+- `链路一`：启动/停止固定的 `voice_runtime --source local_mic`，观察基站麦克风、ASR 文本、OpenClaw 回复、基站屏幕更新和机器人执行提醒。运行时最新输出写到 `runtime/integration_console/link1/latest_voice.json`。
+- `链路二`：启动/停止固定的 `emotion_runtime --source ws_video_observer`，默认使用 `openface_ov` CV 后端，展示 ws_video 画面、OpenFace/Gate/VLM/Fusion 状态。
+- `链路三`：启动/停止固定的 `voice_runtime --source local_mic`，观察基站麦克风、ASR 文本、机器人秒级动作/语音响应，以及后续 OpenClaw 关怀语音。运行时最新输出写到 `runtime/integration_console/link3/latest_voice.json`。
+
+每个链路页的“运行模式”开关只启动/停止控制台白名单里的固定 runtime，不接受浏览器传入 shell 或任意命令。关闭链路只停止控制台自己启动的 runtime，不停止 `base_station.ws_server.server`，也不清空 runtime 文件。
 
 ## Safety
 
@@ -46,7 +56,7 @@ http://<DK2500-IP>:8090/console
 
 ## Visual Trace
 
-`tools/ops/run_ws_video_runtime.py` 默认以最多 2 FPS 发布控制台观测文件：
+链路二的托管 `emotion_runtime --source ws_video_observer` 默认以 1 FPS 发布控制台观测文件：
 
 ```text
 runtime/integration_console/visual/latest_annotated.jpg
@@ -57,14 +67,18 @@ runtime/integration_console/visual/vlm_state.json
 
 这些文件是有界的运行期快照，不是历史记录。页面只展示正式 Route A 已经产生的 OpenFace、Gate 和 VLM 状态，不会再次执行 Gate。VLM 结果通过 `request_id` 和 `trigger_frame_id` 绑定触发画面。
 
-本地模拟 `/video`：
+本地模拟 `/video`，或临时绕开控制台 runner 手动验证：
 
 ```powershell
-python tools/ops/run_ws_video_runtime.py --host 127.0.0.1 --port 8765 --no-agent --model-backend mock --vlm-backend fake --force-vlm --visual-trace-fps 1
+python -m base_station.monitor.emotion_runtime --source ws_video_observer --host 127.0.0.1 --port 8765 --count None --enable-vlm-gate --model-backend openface_ov --vlm-backend fake --visual-trace-dir runtime/integration_console/visual --visual-trace-fps 1 --verbose
 python tools/probes/send_test_video_frame.py --url ws://127.0.0.1:8765/video --frames 3 --fps 1 --width 320 --height 240
 ```
 
 模拟包会经过正式 WebSocket 解码路径，但不能证明 ESP32 摄像头、机器人网络或真实模型正常。
+
+### 8765 Owner
+
+`base_station.ws_server.server` 是 `8765` 的唯一 owner。机器人仍连接 `/control`、`/audio`、`/video` 和 `/agent`。链路二不再用会抢端口的 `emotion_runtime --source ws_video`，而是用 `emotion_runtime --source ws_video_observer` 连接本机只读 `ws://127.0.0.1:8765/video-observer`。`ws_server` 收到机器人 `/video` frame 后会继续写 `runtime/latest.jpg`，并把同一个 packet 投递给本机 observer；慢 observer 只保留最新帧，不会阻塞机器人视频通道。
 
 ## Related
 

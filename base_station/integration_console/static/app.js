@@ -5,6 +5,7 @@ let lastPayload = null;
 let hiddenLogs = false;
 let visualSnapshotId = null;
 let visualRequestId = null;
+let cameraMtime = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -157,7 +158,127 @@ function renderState() {
     last_motion_completed: robot.last_motion_completed,
     last_audio_playback_done: robot.last_audio_playback_done,
   });
+  renderCameraConnection();
+  renderLinks();
   renderLogs();
+}
+
+function renderCameraConnection() {
+  const image = state?.media?.latest_image || {};
+  const camera = state?.links?.camera || {};
+  const pill = $("cameraFreshness");
+  const latestImage = $("cameraLatestImage");
+  const empty = $("cameraImageEmpty");
+  const live = camera.done || (!!image.exists && (image.age_ms || 999999) <= 3000);
+  statusPill(pill, live ? "live" : (image.exists ? "stale" : "unavailable"), live ? `LIVE · ${msAge(image.age_ms)}` : (image.exists ? `STALE · ${msAge(image.age_ms)}` : "UNAVAILABLE"));
+  if (image.exists) {
+    if (image.mtime !== cameraMtime) {
+      cameraMtime = image.mtime;
+      latestImage.src = `/api/latest-image?mtime=${encodeURIComponent(cameraMtime || Date.now())}`;
+    }
+    latestImage.style.display = "block";
+    empty.style.display = "none";
+  } else {
+    latestImage.style.display = "none";
+    empty.style.display = "grid";
+  }
+  kv("cameraKv", [
+    ["文件", image.path],
+    ["存在", image.exists],
+    ["大小", image.size],
+    ["更新时间", image.updated_at],
+    ["age", msAge(image.age_ms)],
+    ["状态", camera.status],
+  ]);
+}
+
+function chainStatusClass(status, runMode) {
+  if (!runMode) return "idle";
+  if (status === "complete") return "done";
+  if (status === "running") return "running";
+  return "unavailable";
+}
+
+function renderChainSteps(targetId, steps = []) {
+  const node = $(targetId);
+  node.innerHTML = steps.map((step) => `
+    <div class="chain-step ${step.ok ? "ok" : "wait"}">
+      <span class="step-dot" aria-hidden="true"></span>
+      <strong>${escapeHtml(step.label || "-")}</strong>
+      <span>${step.ok ? "OK" : "WAIT"}</span>
+    </div>
+  `).join("");
+}
+
+function renderRunStatus(key, link) {
+  const process = state?.processes?.[key] || {};
+  const running = !!process.running;
+  const status = link?.status || "idle";
+  const text = running
+    ? (status === "complete" ? "COMPLETE" : status.toUpperCase())
+    : (process.status === "exited" ? "EXITED" : "OFF");
+  const switchNode = $(`${key}RunSwitch`);
+  if (switchNode) switchNode.checked = running;
+  statusPill(
+    $(`${key}Status`),
+    process.status === "exited" ? "error" : chainStatusClass(status, running),
+    text,
+  );
+}
+
+function renderLinks() {
+  const links = state?.links || {};
+  const media = state?.media || {};
+  const audio = media.latest_audio || {};
+  const audioStats = media.audio_stats || {};
+  const windowStats = audioStats.latest_window || {};
+  const dashboard = state?.openclaw_dashboard?.dashboard || {};
+  const link1 = links.link1 || {};
+  const link2 = links.link2 || {};
+  const link3 = links.link3 || {};
+  const link1Voice = link1.voice || {};
+  const link3Voice = link3.voice || {};
+  const link1Audio = link1Voice.output?.event?.payload?.audio || {};
+  const link3Audio = link3Voice.output?.event?.payload?.audio || {};
+
+  renderRunStatus("link1", link1);
+  renderRunStatus("link2", link2);
+  renderRunStatus("link3", link3);
+  renderChainSteps("link1Steps", link1.steps || []);
+  renderChainSteps("link2Steps", link2.steps || []);
+  renderChainSteps("link3Steps", link3.steps || []);
+
+  kv("link1MicKv", [
+    ["runtime", state?.processes?.link1?.running ? "running" : "off"],
+    ["latest output", link1Voice.ok],
+    ["output age", msAge(link1Voice.age_ms)],
+    ["audio", link1Audio.audio_path || "-"],
+    ["sample_rate", link1Audio.sample_rate],
+    ["duration_ms", link1Audio.duration_ms],
+    ["状态", (link1.steps || [])[0]?.ok ? "active" : "waiting"],
+  ]);
+  $("link1AsrText").textContent = link1.asr_text || "-";
+  $("link1OpenclawText").textContent = link1.openclaw_text || "-";
+  $("link1DashboardJson").textContent = pretty({
+    ok: state?.openclaw_dashboard?.ok,
+    status_text: dashboard.status_text,
+    mode: dashboard.mode,
+    latest_reply: dashboard.latest_reply,
+  });
+  $("link1RobotJson").textContent = pretty(link1.robot_execution);
+
+  kv("link3MicKv", [
+    ["runtime", state?.processes?.link3?.running ? "running" : "off"],
+    ["latest output", link3Voice.ok],
+    ["output age", msAge(link3Voice.age_ms)],
+    ["audio", link3Audio.audio_path || "-"],
+    ["sample_rate", link3Audio.sample_rate],
+    ["duration_ms", link3Audio.duration_ms],
+    ["状态", (link3.steps || [])[0]?.ok ? "active" : "waiting"],
+  ]);
+  $("link3AsrText").textContent = link3.asr_text || "-";
+  $("link3FastJson").textContent = pretty(link3.fast_response);
+  $("link3FollowUpText").textContent = link3.follow_up_text || "-";
 }
 
 function statusPill(node, status, text) {
@@ -345,6 +466,7 @@ function bindEvents() {
 
   $("stopAllBtn").addEventListener("click", () => post("/api/robot/motion", motionBody("stop")));
   $("refreshBtn").addEventListener("click", refreshState);
+  $("refreshCameraBtn").addEventListener("click", refreshState);
   $("refreshVisualBtn").addEventListener("click", refreshVisualTrace);
   $("exportBtn").addEventListener("click", () => post("/api/logs/export", {}));
   $("exportBtn2").addEventListener("click", () => post("/api/logs/export", {}));
@@ -403,6 +525,20 @@ function bindEvents() {
   $("copyPayloadBtn").addEventListener("click", async () => {
     await navigator.clipboard.writeText(pretty(lastPayload || {}));
     toast("已复制 last command payload");
+  });
+  ["link1", "link2", "link3"].forEach((key) => {
+    const node = $(`${key}RunSwitch`);
+    node.addEventListener("change", async () => {
+      const start = node.checked;
+      const result = await post(start ? "/api/links/start" : "/api/links/stop", { link: key });
+      if (!result.ok) {
+        node.checked = !start;
+        toast(`失败: ${result.error || "unknown"}`);
+      } else {
+        toast(start ? `${key} runtime 已启动` : `${key} runtime 已停止`);
+      }
+      await refreshState();
+    });
   });
 }
 

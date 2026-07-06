@@ -142,7 +142,16 @@ class XiaoAnBrain:
         if event_type == ASR_TRANSCRIPT_EVENT:
             payload = event.get("payload") or {}
             text = payload.get("text")
-            companion_result = await self.companion_request.handle_text(text)
+            companion_disabled = bool(payload.get("disable_companion_fast_path"))
+            companion_result = (
+                {
+                    "handled": False,
+                    "reason": "companion_fast_path_disabled",
+                    "trigger_result": None,
+                }
+                if companion_disabled
+                else await self.companion_request.handle_text(text)
+            )
             if companion_result.get("handled", False):
                 return await self._handle_companion_fast_path(
                     payload=payload,

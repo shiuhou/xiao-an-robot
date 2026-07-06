@@ -412,6 +412,8 @@ token = self._observe_visual(
 
 On trigger, call `vlm_started`; on success or error, call `vlm_finished`. Observer exceptions are logged when verbose and otherwise ignored. Do not wrap or alter the existing OpenFace, Gate, or VLM exceptions.
 
+Run VLM as one background `asyncio.Task` and wait on that task and the next frame task with `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)`. Continue OpenFace/Gate/observer processing while the VLM task is active. If another frame triggers during that interval, retain its Gate diagnostics but do not start or queue another VLM request; only `vlm_started()` may create a request ID and freeze a trigger image.
+
 - [ ] **Step 6: Run focused regressions and commit**
 
 Run:

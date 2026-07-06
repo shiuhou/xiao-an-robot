@@ -34,6 +34,7 @@
 - 每次调用绑定唯一 `request_id` 和 `trigger_frame_id`。
 - VLM 运行期间，主 OpenFace 画面继续更新。
 - 页面保留 VLM 触发帧，VLM 结果只显示在对应触发帧旁边。
+- VLM 使用 single-flight 后台任务：同一时间只执行一个请求；VLM 忙碌时继续处理 CV/Gate 帧，但不排队或覆盖当前请求。
 
 ## 3. 非目标
 

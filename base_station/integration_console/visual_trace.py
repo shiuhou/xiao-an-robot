@@ -168,19 +168,15 @@ class VisualTracePublisher:
             "frame_id": frame_id,
             "jpeg": jpeg,
         }
-        if triggered:
-            request_id = f"vlm-{uuid.uuid4().hex[:12]}"
-            token["request_id"] = request_id
-            self._atomic_write_bytes(self.output_dir / "vlm_trigger.jpg", jpeg)
-            self._write_vlm_state(request_id, token, status="queued")
         return token
 
     def vlm_started(self, token: dict[str, Any] | None, reason: str) -> str | None:
-        request_id = token.get("request_id") if isinstance(token, dict) else None
-        if not request_id:
+        if not isinstance(token, dict) or not token.get("jpeg"):
             return None
-        self._write_vlm_state(str(request_id), token, status="running", reason=reason)
-        return str(request_id)
+        request_id = f"vlm-{uuid.uuid4().hex[:12]}"
+        self._atomic_write_bytes(self.output_dir / "vlm_trigger.jpg", token["jpeg"])
+        self._write_vlm_state(request_id, token, status="running", reason=reason)
+        return request_id
 
     def vlm_finished(
         self,

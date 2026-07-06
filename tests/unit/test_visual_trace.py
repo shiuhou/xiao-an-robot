@@ -184,7 +184,9 @@ class VisualTracePublisherTest(unittest.TestCase):
             self.assertIsNotNone(first)
             self.assertIsNone(skipped)
             self.assertEqual(triggered["frame_id"], 3)
-            self.assertIn("request_id", triggered)
+            self.assertNotIn("request_id", triggered)
+            request_id = publisher.vlm_started(triggered, "force")
+            self.assertTrue(request_id.startswith("vlm-"))
             self.assertEqual(
                 sorted(path.name for path in Path(temp_dir).iterdir()),
                 [

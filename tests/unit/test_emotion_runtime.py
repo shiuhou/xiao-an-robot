@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import tempfile
+import threading
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -423,6 +425,13 @@ class _OneFrameSource:
         yield self._frame
 
 
+class _TwoFrameSource:
+    async def frames(self):
+        yield {"frame_id": 1, "timestamp_ms": 100, "payload": None}
+        await asyncio.sleep(0)
+        yield {"frame_id": 2, "timestamp_ms": 200, "payload": None}
+
+
 class _FixedCvPipeline:
     def __init__(self, cv_sample):
         self._cv = cv_sample
@@ -484,6 +493,19 @@ class _FixedVlm:
 class _FailingVlm:
     def predict(self, frame, context=None):
         raise RuntimeError("generation failed with a long stack that should not escape")
+
+
+class _BlockingVlm:
+    def __init__(self):
+        self.started = threading.Event()
+        self.release = threading.Event()
+        self.calls = 0
+
+    def predict(self, frame, context=None):
+        self.calls += 1
+        self.started.set()
+        self.release.wait(timeout=2)
+        return {"expression_label": "tired"}
 
 
 class FusionPolicyTest(unittest.TestCase):
@@ -779,6 +801,42 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(samples[0]["vlm_triggered"])
         self.assertEqual(gate.evaluate_calls, 1)
         self.assertEqual([name for name, _payload in observer.calls], ["observe_frame"])
+
+    async def test_openface_continues_while_single_vlm_request_runs(self):
+        gate = _AlwaysTriggerGate()
+        observer = _RecordingObserver()
+        vlm = _BlockingVlm()
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_TwoFrameSource(),
+            cv_pipeline=_FixedCvPipeline({
+                "emotion_tag": "tired",
+                "confidence": 0.8,
+                "fatigue_score": 80.0,
+            }),
+            gate=gate,
+            context_builder=_FixedContextBuilder(),
+            vlm_model=vlm,
+            visual_observer=observer,
+        )
+
+        collect_task = asyncio.create_task(self._collect_samples(source))
+        await asyncio.wait_for(asyncio.to_thread(vlm.started.wait, 1), timeout=1.5)
+        for _ in range(20):
+            if sum(name == "observe_frame" for name, _ in observer.calls) >= 2:
+                break
+            await asyncio.sleep(0.01)
+        observed_while_running = sum(name == "observe_frame" for name, _ in observer.calls)
+        vlm.release.set()
+        samples = await asyncio.wait_for(collect_task, timeout=2)
+
+        self.assertEqual(observed_while_running, 2)
+        self.assertEqual(gate.evaluate_calls, 2)
+        self.assertEqual(vlm.calls, 1)
+        self.assertEqual(len(samples), 1)
+
+    @staticmethod
+    async def _collect_samples(source):
+        return [item async for item in source.samples()]
 
 
 if __name__ == "__main__":

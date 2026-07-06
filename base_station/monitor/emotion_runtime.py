@@ -376,103 +376,155 @@ class VLMGatedCameraEmotionSource:
         self.visual_observer = visual_observer
 
     async def samples(self):
-        async for frame in self.frame_source.frames():
-            cv_sample = self.cv_pipeline.process_frame(frame)
-            gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
-            reason = str(gate_result.get("reason", "normal"))
-            diagnostics = getattr(self.gate, "diagnostics", None)
-            gate_diagnostics = (
-                diagnostics(cv_sample, gate_result)
-                if callable(diagnostics)
-                else {"result": dict(gate_result)}
-            )
-            visual_token = self._notify_visual_observer(
-                "observe_frame",
-                frame=frame,
-                observation=getattr(self.cv_pipeline, "last_observation", None),
-                cv_sample=cv_sample,
-                gate_diagnostics=gate_diagnostics,
-            )
-
-            if not gate_result.get("should_trigger", False):
-                frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
-                print(f"[gate.skip] frame_id={frame_id} reason={reason}")
-                continue
-
-            context = self.context_builder.build(
-                cv_sample=cv_sample,
-                vlm_sample=None,
-                asr_text=None,
-                history_summary=self._history_summary(),
-            )
-            vlm_frame = _frame_with_synthetic_payload_when_missing(frame)
-            frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
-            request_id = None
-            if visual_token is not None:
-                request_id = self._notify_visual_observer(
-                    "vlm_started",
-                    visual_token,
-                    reason,
+        frame_iterator = self.frame_source.frames().__aiter__()
+        next_frame_task = asyncio.create_task(anext(frame_iterator))
+        vlm_task = None
+        try:
+            while next_frame_task is not None or vlm_task is not None:
+                active_tasks = {
+                    task for task in (next_frame_task, vlm_task) if task is not None
+                }
+                done, _pending = await asyncio.wait(
+                    active_tasks,
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
-            if self.verbose:
-                print(f"[vlm.start] frame_id={frame_id} backend={self.backend_name}")
-            started = time.perf_counter()
-            visual_status = "done"
-            try:
-                prediction = await asyncio.to_thread(self.vlm_model.predict, vlm_frame, context)
-                vlm_result = normalize_vlm_result(
-                    prediction,
-                    executed=True,
-                    status=(
-                        str(prediction.get("status", "ok"))
-                        if isinstance(prediction, dict)
-                        else "ok"
-                    ),
-                )
-                if self.verbose:
-                    seconds = time.perf_counter() - started
-                    print(
-                        "[vlm.done] "
-                        f"frame_id={frame_id} "
-                        f"status={vlm_result.get('status')} "
-                        f"emotion_tag={vlm_result.get('emotion_tag')} "
-                        f"confidence={vlm_result.get('confidence')} "
-                        f"fatigue_score={vlm_result.get('fatigue_score')} "
-                        f"seconds={seconds:.3f}"
+
+                if vlm_task is not None and vlm_task in done:
+                    final_sample = vlm_task.result()
+                    vlm_task = None
+                    yield final_sample
+
+                if next_frame_task is not None and next_frame_task in done:
+                    try:
+                        frame = next_frame_task.result()
+                    except StopAsyncIteration:
+                        next_frame_task = None
+                        continue
+
+                    next_frame_task = asyncio.create_task(anext(frame_iterator))
+                    cv_sample, gate_result, reason, visual_token = self._process_cv_frame(frame)
+                    frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
+                    if not gate_result.get("should_trigger", False):
+                        print(f"[gate.skip] frame_id={frame_id} reason={reason}")
+                        continue
+                    if vlm_task is not None:
+                        if self.verbose:
+                            print(f"[gate.skip] frame_id={frame_id} reason=vlm_busy")
+                        continue
+
+                    request_id = None
+                    if visual_token is not None:
+                        request_id = self._notify_visual_observer(
+                            "vlm_started",
+                            visual_token,
+                            reason,
+                        )
+                    vlm_task = asyncio.create_task(
+                        self._run_vlm(frame, cv_sample, reason, request_id)
                     )
-            except Exception as exc:
-                visual_status = "error"
-                error = _short_error(exc)
-                vlm_result = normalize_vlm_result(
-                    {"error": error},
-                    executed=False,
-                    status="error",
-                )
-                if self.verbose:
-                    print(f"[vlm.error] frame_id={frame_id} error={error}")
+        finally:
+            tasks = [task for task in (next_frame_task, vlm_task) if task is not None]
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            close = getattr(frame_iterator, "aclose", None)
+            if callable(close):
+                await close()
 
-            final_sample = fuse_cv_vlm_sample(cv_sample, vlm_result)
-            final_sample["vlm_triggered"] = True
-            final_sample["vlm_trigger_reason"] = reason
-            if request_id is not None:
-                self._notify_visual_observer(
-                    "vlm_finished",
-                    request_id,
-                    status=visual_status,
-                    vlm_result=vlm_result,
-                    final_sample=final_sample,
-                    latency_ms=(time.perf_counter() - started) * 1000.0,
-                )
+    def _process_cv_frame(self, frame: dict) -> tuple[dict, dict, str, Any]:
+        cv_sample = self.cv_pipeline.process_frame(frame)
+        gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
+        reason = str(gate_result.get("reason", "normal"))
+        diagnostics = getattr(self.gate, "diagnostics", None)
+        gate_diagnostics = (
+            diagnostics(cv_sample, gate_result)
+            if callable(diagnostics)
+            else {"result": dict(gate_result)}
+        )
+        visual_token = self._notify_visual_observer(
+            "observe_frame",
+            frame=frame,
+            observation=getattr(self.cv_pipeline, "last_observation", None),
+            cv_sample=cv_sample,
+            gate_diagnostics=gate_diagnostics,
+        )
+        return cv_sample, gate_result, reason, visual_token
+
+    async def _run_vlm(
+        self,
+        frame: dict,
+        cv_sample: dict,
+        reason: str,
+        request_id: str | None,
+    ) -> dict:
+        context = self.context_builder.build(
+            cv_sample=cv_sample,
+            vlm_sample=None,
+            asr_text=None,
+            history_summary=self._history_summary(),
+        )
+        vlm_frame = _frame_with_synthetic_payload_when_missing(frame)
+        frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
+        if self.verbose:
+            print(f"[vlm.start] frame_id={frame_id} backend={self.backend_name}")
+        started = time.perf_counter()
+        visual_status = "done"
+        try:
+            prediction = await asyncio.to_thread(self.vlm_model.predict, vlm_frame, context)
+            vlm_result = normalize_vlm_result(
+                prediction,
+                executed=True,
+                status=(
+                    str(prediction.get("status", "ok"))
+                    if isinstance(prediction, dict)
+                    else "ok"
+                ),
+            )
             if self.verbose:
+                seconds = time.perf_counter() - started
                 print(
-                    "[fusion] "
+                    "[vlm.done] "
                     f"frame_id={frame_id} "
-                    f"decision={final_sample['fusion'].get('decision')} "
-                    f"top_emotion={final_sample.get('emotion_tag')} "
-                    f"top_fatigue={final_sample.get('fatigue_score')}"
+                    f"status={vlm_result.get('status')} "
+                    f"emotion_tag={vlm_result.get('emotion_tag')} "
+                    f"confidence={vlm_result.get('confidence')} "
+                    f"fatigue_score={vlm_result.get('fatigue_score')} "
+                    f"seconds={seconds:.3f}"
                 )
+        except Exception as exc:
+            visual_status = "error"
+            error = _short_error(exc)
+            vlm_result = normalize_vlm_result(
+                {"error": error},
+                executed=False,
+                status="error",
+            )
+            if self.verbose:
+                print(f"[vlm.error] frame_id={frame_id} error={error}")
 
-            yield final_sample
+        final_sample = fuse_cv_vlm_sample(cv_sample, vlm_result)
+        final_sample["vlm_triggered"] = True
+        final_sample["vlm_trigger_reason"] = reason
+        if request_id is not None:
+            self._notify_visual_observer(
+                "vlm_finished",
+                request_id,
+                status=visual_status,
+                vlm_result=vlm_result,
+                final_sample=final_sample,
+                latency_ms=(time.perf_counter() - started) * 1000.0,
+            )
+        if self.verbose:
+            print(
+                "[fusion] "
+                f"frame_id={frame_id} "
+                f"decision={final_sample['fusion'].get('decision')} "
+                f"top_emotion={final_sample.get('emotion_tag')} "
+                f"top_fatigue={final_sample.get('fatigue_score')}"
+            )
+        return final_sample
 
     def _history_summary(self) -> dict | None:
         get_recent_summary = getattr(self.memory, "get_recent_summary", None)

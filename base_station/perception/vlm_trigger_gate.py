@@ -60,3 +60,36 @@ class VLMTriggerGate:
             return {"should_trigger": True, "reason": "negative_emotion_window"}
 
         return {"should_trigger": False, "reason": "normal"}
+
+    def diagnostics(self, sample: dict, result: dict) -> dict:
+        """Return display-only state from the completed Gate evaluation."""
+
+        emotion_tag = str(
+            sample.get("emotion_tag", sample.get("emotion", "neutral")) or "neutral"
+        )
+        confidence = float(sample.get("confidence", 0.0) or 0.0)
+        fatigue_score = float(sample.get("fatigue_score", 0.0) or 0.0)
+        reason = result.get("reason")
+        return {
+            "force": {"fired": reason == "force"},
+            "fatigue": {
+                "value": fatigue_score,
+                "threshold": self.fatigue_threshold,
+                "fired": reason == "high_fatigue",
+            },
+            "single_negative": {
+                "emotion": emotion_tag,
+                "confidence": confidence,
+                "confidence_threshold": self.negative_confidence_threshold,
+                "fired": reason == "negative_emotion",
+            },
+            "negative_window": {
+                "size": self.window_size,
+                "count": sum(self._recent_negative_flags),
+                "count_threshold": self.negative_count_threshold,
+                "confidence_sum": round(sum(self._recent_negative_confidences), 4),
+                "confidence_sum_threshold": self.negative_conf_sum_threshold,
+                "fired": reason == "negative_emotion_window",
+            },
+            "result": dict(result),
+        }

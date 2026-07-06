@@ -164,6 +164,33 @@ class VLMTriggerGateTest(unittest.TestCase):
         self.assertEqual(fatigue_result, {"should_trigger": True, "reason": "high_fatigue"})
         self.assertEqual(emotion_result, {"should_trigger": True, "reason": "negative_emotion"})
 
+    def test_diagnostics_report_actual_thresholds_and_window_state(self) -> None:
+        gate = VLMTriggerGate(
+            fatigue_threshold=67.0,
+            negative_confidence_threshold=0.75,
+            window_size=10,
+            negative_count_threshold=4,
+            negative_conf_sum_threshold=2.0,
+        )
+        sample = {
+            "emotion_tag": "sad",
+            "confidence": 0.4,
+            "fatigue_score": 20.0,
+        }
+
+        result = gate.evaluate(sample)
+        diagnostics = gate.diagnostics(sample, result)
+
+        self.assertFalse(result["should_trigger"])
+        self.assertEqual(diagnostics["negative_window"]["count"], 1)
+        self.assertEqual(diagnostics["negative_window"]["count_threshold"], 4)
+        self.assertAlmostEqual(diagnostics["negative_window"]["confidence_sum"], 0.4)
+        self.assertEqual(diagnostics["single_negative"]["emotion"], "sad")
+        self.assertAlmostEqual(diagnostics["single_negative"]["confidence"], 0.4)
+        self.assertEqual(diagnostics["fatigue"]["value"], 20.0)
+        self.assertEqual(diagnostics["fatigue"]["threshold"], 67.0)
+        self.assertEqual(diagnostics["result"], result)
+
 
 if __name__ == "__main__":
     unittest.main()

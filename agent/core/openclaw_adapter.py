@@ -43,7 +43,7 @@ class OpenClawToolCall:
     def from_dict(cls, data: dict) -> "OpenClawToolCall":
         if not isinstance(data, dict):
             return cls(name="")
-        arguments = data.get("arguments", {})
+        arguments = data.get("arguments") if "arguments" in data else data.get("parameters", {})
         if not isinstance(arguments, dict):
             arguments = {}
         return cls(

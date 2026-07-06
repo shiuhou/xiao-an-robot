@@ -68,6 +68,17 @@ class OpenClawAdapterTest(unittest.TestCase):
         self.assertEqual(tool_call.name, "robot.say")
         self.assertEqual(tool_call.arguments, {})
 
+    def test_openclaw_tool_call_from_dict_accepts_parameters_alias(self) -> None:
+        tool_call = OpenClawToolCall.from_dict(
+            {
+                "name": "robot.say",
+                "parameters": {"text": "你好"},
+            }
+        )
+
+        self.assertEqual(tool_call.name, "robot.say")
+        self.assertEqual(tool_call.arguments, {"text": "你好"})
+
     def test_openclaw_decision_default_tool_calls_is_empty_list(self) -> None:
         decision = OpenClawDecision(handled=True)
 

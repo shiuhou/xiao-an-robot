@@ -34,6 +34,9 @@ OpenVINOQwenVLEmotionModel = None
 QwenVLOpenVINORunner = None
 VLMFaceAnalyzer = None
 _build_openface_cv_pipeline = None
+WebSocketVideoFrameSource = None
+VisualTracePublisher = None
+ws_server = None
 
 
 class BaseStationEmotionRuntime:
@@ -684,6 +687,36 @@ def _load_openface_ov_adapter():
     return _build_openface_cv_pipeline
 
 
+def _load_ws_video_frame_source():
+    """Lazy import for the /video frame bridge (pulls in cv2 only for this source)."""
+    global WebSocketVideoFrameSource
+    if WebSocketVideoFrameSource is None:
+        from base_station.perception.ws_video_source import WebSocketVideoFrameSource as loaded
+
+        WebSocketVideoFrameSource = loaded
+    return WebSocketVideoFrameSource
+
+
+def _load_visual_trace_publisher():
+    """Lazy import for Integration Console visual snapshots."""
+    global VisualTracePublisher
+    if VisualTracePublisher is None:
+        from base_station.integration_console.visual_trace import VisualTracePublisher as loaded
+
+        VisualTracePublisher = loaded
+    return VisualTracePublisher
+
+
+def _load_ws_server():
+    """Lazy import the DK-2500 WebSocket server only when binding /video."""
+    global ws_server
+    if ws_server is None:
+        from base_station.ws_server import server as loaded
+
+        ws_server = loaded
+    return ws_server
+
+
 def create_emotion_pipeline(model_backend: str, model: Any, pattern: str):
     if model_backend in {"qwen_vl", "openvino_qwen_vl"}:
         return DirectModelEmotionPipeline(model=model)
@@ -742,6 +775,8 @@ def create_emotion_source(
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
     verbose: bool = False,
+    visual_observer: Any | None = None,
+    video_queue_size: int = 2,
 ):
     if source == "fake_face":
         return FakeFaceEmotionSource(
@@ -780,6 +815,7 @@ def create_emotion_source(
                 force_vlm=force_vlm,
                 verbose=verbose,
                 backend_name=vlm_backend,
+                visual_observer=visual_observer,
             )
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
 
@@ -816,8 +852,41 @@ def create_emotion_source(
                 force_vlm=force_vlm,
                 verbose=verbose,
                 backend_name=vlm_backend,
+                visual_observer=visual_observer,
             )
         return CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
+
+    if source == "ws_video":
+        if not enable_vlm_gate:
+            raise ValueError("--enable-vlm-gate is required when --source ws_video")
+        frame_source_class = _load_ws_video_frame_source()
+        frame_source = frame_source_class(maxsize=video_queue_size)
+        pipeline = build_cv_pipeline(
+            model_backend=model_backend,
+            pattern=pattern,
+            model_path=model_path,
+            device=device,
+            openface_repo=openface_repo,
+            openface_models_dir=openface_models_dir,
+        )
+        vlm_model = create_vlm_emotion_model(
+            vlm_backend=vlm_backend,
+            pattern=pattern,
+            vlm_model_path=vlm_model_path,
+            device=device,
+        )
+        return VLMGatedCameraEmotionSource(
+            frame_source=frame_source,
+            cv_pipeline=pipeline,
+            gate=VLMTriggerGate(),
+            context_builder=EmotionContextBuilder(),
+            vlm_model=vlm_model,
+            memory=history_memory,
+            force_vlm=force_vlm,
+            verbose=verbose,
+            backend_name=vlm_backend,
+            visual_observer=visual_observer,
+        )
 
     if source == "opencv_camera":
         frame_source = OpenCVCameraFrameSource(
@@ -850,6 +919,7 @@ def create_emotion_source(
                 force_vlm=force_vlm,
                 verbose=verbose,
                 backend_name=vlm_backend,
+                visual_observer=visual_observer,
             )
         else:
             camera_source = CameraEmotionSource(frame_source=frame_source, pipeline=pipeline)
@@ -858,7 +928,7 @@ def create_emotion_source(
 
     raise ValueError(
         "Unsupported emotion source: "
-        f"{source}. Currently supported sources: fake_face, fake_camera, image_file, opencv_camera."
+        f"{source}. Currently supported sources: fake_face, fake_camera, image_file, opencv_camera, ws_video."
     )
 
 
@@ -885,6 +955,10 @@ def create_runtime(
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
     no_agent: bool = False,
+    visual_trace_dir: str | None = None,
+    visual_trace_fps: float = 1.0,
+    no_visual_trace: bool = False,
+    video_queue_size: int = 2,
 ) -> BaseStationEmotionRuntime:
     gateway_url = f"ws://{host}:{port}/agent"
     brain = None
@@ -897,6 +971,13 @@ def create_runtime(
             db_path=db_path,
         )
         history_memory = brain.memory
+    visual_observer = None
+    if enable_vlm_gate and not no_visual_trace and visual_trace_dir:
+        publisher_class = _load_visual_trace_publisher()
+        visual_observer = publisher_class(
+            visual_trace_dir,
+            max_fps=visual_trace_fps,
+        )
     source = create_emotion_source(
         source=source_name,
         pattern=pattern,
@@ -917,6 +998,8 @@ def create_runtime(
         openface_repo=openface_repo,
         openface_models_dir=openface_models_dir,
         verbose=verbose,
+        visual_observer=visual_observer,
+        video_queue_size=video_queue_size,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return BaseStationEmotionRuntime(
@@ -965,7 +1048,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument(
         "--source",
         default="fake_face",
-        choices=["fake_face", "fake_camera", "image_file", "opencv_camera"],
+        choices=["fake_face", "fake_camera", "image_file", "opencv_camera", "ws_video"],
         help="Emotion source.",
     )
     parser.add_argument(
@@ -977,8 +1060,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument("--count", type=parse_count, default=5, help="Number of samples, or None for infinite.")
     parser.add_argument("--interval", type=float, default=1.0, help="Seconds between samples.")
     parser.add_argument("--host", default="127.0.0.1", help="Base station host.")
+    parser.add_argument("--listen-host", default="0.0.0.0", help="WebSocket bind host for --source ws_video.")
     parser.add_argument("--port", type=int, default=8765, help="Base station /agent port.")
     parser.add_argument("--db-path", default="agent/data/xiao_an.db", help="SQLite database path.")
+    parser.add_argument("--video-queue-size", type=int, default=2, help="Decoded /video frame queue size.")
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index.")
     parser.add_argument("--camera-width", type=int, default=None, help="Optional OpenCV camera width.")
     parser.add_argument("--camera-height", type=int, default=None, help="Optional OpenCV camera height.")
@@ -1017,12 +1102,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
     parser.add_argument("--verbose", action="store_true", help="Print each sample and result.")
     parser.add_argument("--no-agent", action="store_true", help="Run perception and emotion.sample output without Agent.")
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--visual-trace-dir",
+        default="runtime/integration_console/visual",
+        help="Directory for Integration Console visual trace snapshots.",
+    )
+    parser.add_argument(
+        "--visual-trace-fps",
+        type=float,
+        default=1.0,
+        help="Visual trace publication rate from 0.1 to 2.0 FPS.",
+    )
+    parser.add_argument(
+        "--no-visual-trace",
+        action="store_true",
+        help="Disable Integration Console visual trace publication.",
+    )
+    args = parser.parse_args(argv)
+    if not 0.1 <= args.visual_trace_fps <= 2.0:
+        parser.error("--visual-trace-fps must be between 0.1 and 2.0")
+    if args.video_queue_size <= 0:
+        parser.error("--video-queue-size must be positive")
+    return args
 
 
 async def main(args: argparse.Namespace | None = None) -> None:
     if args is None:
         args = parse_args()
+    server_module = None
+    websocket_server = None
+    heartbeat_task = None
+    brain = None
     with runtime_db_path(args.db_path, args.fresh_db) as active_db_path:
         runtime = create_runtime(
             source_name=args.source,
@@ -1047,11 +1157,36 @@ async def main(args: argparse.Namespace | None = None) -> None:
             openface_repo=args.openface_repo,
             openface_models_dir=args.openface_models_dir,
             no_agent=args.no_agent,
+            visual_trace_dir=args.visual_trace_dir,
+            visual_trace_fps=args.visual_trace_fps,
+            no_visual_trace=args.no_visual_trace,
+            video_queue_size=args.video_queue_size,
         )
+        brain = runtime.event_loop.brain
         try:
+            if args.source == "ws_video":
+                frame_source = getattr(runtime.source, "frame_source", None)
+                if frame_source is None:
+                    raise RuntimeError("ws_video runtime source does not expose a frame_source")
+                server_module = _load_ws_server()
+                server_module.set_video_frame_source(frame_source)
+                websocket_server = await server_module.start_server(args.listen_host, args.port)
+                heartbeat_task = asyncio.create_task(server_module.heartbeat_monitor())
+                print(f"[emotion_runtime] listening on ws://{args.listen_host}:{args.port}/video")
+                print("[emotion_runtime] waiting for robot JPEG frames...")
             await runtime.run()
         finally:
-            brain = runtime.event_loop.brain
+            if server_module is not None:
+                server_module.set_video_frame_source(None)
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+            if websocket_server is not None:
+                websocket_server.close()
+                await websocket_server.wait_closed()
             if brain is not None:
                 brain.close()
 

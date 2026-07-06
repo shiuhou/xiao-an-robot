@@ -56,11 +56,25 @@ runtime/ws_state.json
 
 ### 4.1 Route A 视觉链路页面
 
-启动 `/video` 视觉运行时：
+启动正式视觉主链路，并把主链路中的 OpenFace/Gate/VLM 观察结果旁路发布给 Integration Console：
 
 ```powershell
-python tools/ops/run_ws_video_runtime.py --host 0.0.0.0 --port 8765 --no-agent --model-backend openface_ov --vlm-backend openvino_qwen_vl --vlm-model-path base_station/models/Qwen2.5-VL-3B-OV-int4 --visual-trace-fps 1
+python -m base_station.monitor.emotion_runtime `
+  --source ws_video `
+  --listen-host 0.0.0.0 `
+  --host 127.0.0.1 `
+  --port 8765 `
+  --count None `
+  --interval 0 `
+  --model-backend openface_ov `
+  --enable-vlm-gate `
+  --vlm-backend openvino_qwen_vl `
+  --vlm-model-path base_station/models/Qwen2.5-VL-3B-OV-int4 `
+  --visual-trace-dir runtime/integration_console/visual `
+  --visual-trace-fps 1
 ```
+
+最终联调不要加 `--no-agent`，否则主链路只会打印 `emotion.sample`，不会继续进入 `XiaoAnBrain -> OpenClaw/ActionExecutor -> /agent -> /control`。本地排查时可以临时加 `--no-agent`，但它不是最终 demo 验收命令。
 
 相机页面应分别显示：
 
@@ -72,12 +86,26 @@ python tools/ops/run_ws_video_runtime.py --host 0.0.0.0 --port 8765 --no-agent -
 
 `LIVE` 表示状态文件在 3 秒内更新；超过 3 秒显示 `STALE`。`STALE` 不等于历史结果错误，只表示视觉 runtime 当前没有继续发布。
 
-### 4.2 不连接机器人的模拟 `/video` 验证
+### 4.2 可选本地接线烟测，不作为最终验收
 
-终端一启动模型无关 runtime：
+没有机器人网络时，可以只用它检查 `/video` packet、ws_server 注入、frame queue、Gate/fake VLM 和 visual trace 文件发布是否接线正常。它不验证真实机器人 `/video`、OpenFace landmarks 或真实 VLM，不得标记为硬件通过。
+
+终端一启动模型无关正式入口：
 
 ```powershell
-python tools/ops/run_ws_video_runtime.py --host 127.0.0.1 --port 8765 --no-agent --model-backend mock --vlm-backend fake --force-vlm --visual-trace-fps 1
+python -m base_station.monitor.emotion_runtime `
+  --source ws_video `
+  --listen-host 127.0.0.1 `
+  --host 127.0.0.1 `
+  --port 8765 `
+  --count None `
+  --interval 0 `
+  --model-backend mock `
+  --enable-vlm-gate `
+  --vlm-backend fake `
+  --force-vlm `
+  --no-agent `
+  --visual-trace-fps 1
 ```
 
 终端二发送三帧：
@@ -100,7 +128,7 @@ python tools/probes/send_test_video_frame.py --url ws://127.0.0.1:8765/video --f
 2. 在基站 PowerShell 运行 `ipconfig`，找到机器人可访问网卡的 IPv4，例如 `192.168.137.1`。
 3. 将机器人固件的 Base Station host 配置为该 IPv4，控制端口使用 `8765`。机器人最终连接的是 `ws://<base-ip>:8765/control`、`/video` 和需要的其他通道。
 4. Windows 防火墙允许当前 Python 解释器或入站 TCP `8765`。只允许当前局域网配置文件，不要暴露到公网。
-5. 先启动本节 4.1 的 `run_ws_video_runtime.py`，再启动机器人。
+5. 先启动本节 4.1 的正式 `base_station.monitor.emotion_runtime --source ws_video`，再启动机器人。
 6. 观察服务日志中 `/control` 的 `device.hello` 和 `/video` frame；检查 `runtime/ws_state.json` 的机器人 ID 和 heartbeat。
 7. 启动控制台：
 
@@ -173,7 +201,7 @@ runtime/integration_console/export_<timestamp>.json
 
 ## 8.1 Visual Trace 精确清理
 
-先停止 `run_ws_video_runtime.py` 和 Integration Console，避免文件仍被写入。只检查：
+先停止 `base_station.monitor.emotion_runtime --source ws_video` 和 Integration Console，避免文件仍被写入。只检查：
 
 ```powershell
 Get-ChildItem -Force runtime/integration_console/visual

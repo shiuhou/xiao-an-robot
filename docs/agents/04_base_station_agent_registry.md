@@ -67,7 +67,7 @@
 
 | 文件 | 状态 | 说明 |
 |------|------|------|
-| `emotion_runtime.py` | ✅ | 情绪运行时 |
+| `emotion_runtime.py` | ✅ | 情绪运行时；2026-07-06 支持正式 `/video` 主链路 `--source ws_video`，可通过 `VisualTracePublisher` 旁路发布 OpenFace/Gate/VLM 状态给 Integration Console |
 | `emotion_event_loop.py` | ✅ | 事件循环 |
 | `emotion_db.py` | ✅ | SQLite 情绪记录 |
 | `asr_runtime.py` | 🟡 | ASR 运行时；支持 audio-file path、SenseVoice backend、`--trim-speech`；base-station mic capture should feed this path |
@@ -128,7 +128,7 @@
 | `demo/demo_assistant_capture.py` | DK-2500/base mic or mock text -> ASR transcript -> `assistant_capture_context.v1` -> OpenClaw Gateway `xiaoan-runtime` capture result -> dashboard state and optional robot expression/local-sound/TTS feedback; OpenClaw remains source of truth for notes/ideas/reminders/tasks/meeting capture | P: 2026-07-03 `.venv/bin/python -m unittest tests.unit.test_demo_assistant_capture tests.unit.test_dashboard_server tests.unit.test_prepare_visual_chain_preflight`; mock context-only writes `ignored` with `source_of_truth=openclaw_xiaoan_runtime`; empty mock text now fails before capture context; OpenClaw offline smoke exits 1 with `failed` and does not use local SQLite fallback |
 | `prepare_visual_chain_preflight.py` | Camera-free Demo 1 visual-chain preflight: static image decode, mock `emotion_runtime`, OpenFace OV dependency/model readiness including Git LFS pointer detection, Qwen OpenVINO dependency/model readiness, optional OpenClaw socket, optional real OpenFace/Qwen runtime checks | P: 2026-07-03 `tests.unit.test_prepare_visual_chain_preflight`; timeout output is JSON-safe, bad Qwen manifest reports readiness failure, and relative model paths resolve from repo root; current local preflight passes image decode + mock image runtime; after `git lfs pull --include="base_station/models/openface_ov/**"`, OpenFace readiness and `--run-openface` pass; Qwen remains partial after interrupted download with 3 large `.bin` files missing |
 | `run_integration_loop.py` | 联调 loop 编排 | 🟡 |
-| `run_ws_video_runtime.py` | WS `/video` 运行时探测 | 🟡 |
+| `run_ws_video_runtime.py` | WS `/video` 运行时探测/兼容入口；正式视觉主链路使用 `python -m base_station.monitor.emotion_runtime --source ws_video` | 🟡 |
 | `send_test_video_frame.py` | 注入测试 JPEG 帧 | 🧪 |
 | `check_runtime_env.py` | Python/模型/runtime 环境检查 | ✅ |
 | `generate_agent_registry.py` | 刷新 `_generated/file_inventory.md` | ✅ |

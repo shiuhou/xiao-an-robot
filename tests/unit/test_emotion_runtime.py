@@ -13,10 +13,12 @@ from unittest.mock import patch
 from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     VLMGatedCameraEmotionSource,
+    create_runtime,
     create_emotion_source,
     create_face_emotion_model,
     create_vlm_emotion_model,
     fuse_cv_vlm_sample,
+    main,
     parse_args,
 )
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
@@ -78,7 +80,187 @@ class FakeOpenCVCameraFrameSource:
         self.closed = True
 
 
+class FakeWebSocketVideoFrameSource:
+    def __init__(self, maxsize: int = 2) -> None:
+        self.maxsize = maxsize
+
+    async def frames(self):
+        if False:
+            yield {}
+
+
+class FakeVisualTracePublisher:
+    def __init__(self, output_dir: str, max_fps: float = 1.0) -> None:
+        self.output_dir = output_dir
+        self.max_fps = max_fps
+
+
+class FakeRuntimeSource:
+    def __init__(self) -> None:
+        self.frame_source = object()
+
+
+class FakeRuntime:
+    def __init__(self) -> None:
+        self.source = FakeRuntimeSource()
+        self.event_loop = type("EventLoop", (), {"brain": None})()
+        self.ran = False
+
+    async def run(self) -> list[dict]:
+        self.ran = True
+        return []
+
+
+class FakeWebSocketServer:
+    def __init__(self) -> None:
+        self.closed = False
+        self.waited = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        self.waited = True
+
+
+class FakeWsServerModule:
+    def __init__(self) -> None:
+        self.video_sources = []
+        self.start_calls = []
+        self.server = FakeWebSocketServer()
+
+    def set_video_frame_source(self, source) -> None:
+        self.video_sources.append(source)
+
+    async def start_server(self, host: str, port: int):
+        self.start_calls.append((host, port))
+        return self.server
+
+    async def heartbeat_monitor(self):
+        while True:
+            await asyncio.sleep(3600)
+
+
 class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
+    async def test_ws_video_visual_trace_args_are_available(self) -> None:
+        args = parse_args([
+            "--source",
+            "ws_video",
+            "--listen-host",
+            "0.0.0.0",
+            "--video-queue-size",
+            "4",
+            "--enable-vlm-gate",
+            "--visual-trace-dir",
+            "runtime/integration_console/visual",
+            "--visual-trace-fps",
+            "1.5",
+        ])
+
+        self.assertEqual(args.source, "ws_video")
+        self.assertEqual(args.listen_host, "0.0.0.0")
+        self.assertEqual(args.video_queue_size, 4)
+        self.assertEqual(args.visual_trace_dir, "runtime/integration_console/visual")
+        self.assertEqual(args.visual_trace_fps, 1.5)
+        self.assertFalse(args.no_visual_trace)
+
+    async def test_visual_trace_fps_is_bounded(self) -> None:
+        with self.assertRaises(SystemExit):
+            parse_args(["--source", "ws_video", "--visual-trace-fps", "3.0"])
+
+    async def test_ws_video_source_uses_websocket_frame_source_and_visual_observer(self) -> None:
+        observer = object()
+        with patch(
+            "base_station.monitor.emotion_runtime._load_ws_video_frame_source",
+            return_value=FakeWebSocketVideoFrameSource,
+        ):
+            source = create_emotion_source(
+                source="ws_video",
+                pattern="tired",
+                count=None,
+                interval_seconds=0,
+                model_backend="mock",
+                enable_vlm_gate=True,
+                vlm_backend="fake",
+                visual_observer=observer,
+                video_queue_size=4,
+            )
+
+        self.assertIsInstance(source, VLMGatedCameraEmotionSource)
+        self.assertIsInstance(source.frame_source, FakeWebSocketVideoFrameSource)
+        self.assertEqual(source.frame_source.maxsize, 4)
+        self.assertIs(source.visual_observer, observer)
+
+    async def test_ws_video_source_requires_vlm_gate(self) -> None:
+        with self.assertRaisesRegex(ValueError, "--enable-vlm-gate is required"):
+            create_emotion_source(
+                source="ws_video",
+                pattern="tired",
+                count=None,
+                interval_seconds=0,
+                model_backend="mock",
+                enable_vlm_gate=False,
+            )
+
+    async def test_create_runtime_builds_visual_trace_observer_for_gated_source(self) -> None:
+        with (
+            patch(
+                "base_station.monitor.emotion_runtime._load_ws_video_frame_source",
+                return_value=FakeWebSocketVideoFrameSource,
+            ),
+            patch(
+                "base_station.monitor.emotion_runtime._load_visual_trace_publisher",
+                return_value=FakeVisualTracePublisher,
+            ),
+        ):
+            runtime = create_runtime(
+                source_name="ws_video",
+                pattern="tired",
+                count=None,
+                interval_seconds=0,
+                model_backend="mock",
+                enable_vlm_gate=True,
+                vlm_backend="fake",
+                visual_trace_dir="runtime/integration_console/visual",
+                visual_trace_fps=1.25,
+                video_queue_size=3,
+                no_agent=True,
+            )
+
+        observer = runtime.source.visual_observer
+        self.assertIsInstance(observer, FakeVisualTracePublisher)
+        self.assertEqual(observer.output_dir, "runtime/integration_console/visual")
+        self.assertEqual(observer.max_fps, 1.25)
+
+    async def test_main_ws_video_starts_server_with_runtime_frame_source_and_cleans_up(self) -> None:
+        args = parse_args([
+            "--source",
+            "ws_video",
+            "--listen-host",
+            "127.0.0.1",
+            "--port",
+            "9876",
+            "--enable-vlm-gate",
+            "--no-agent",
+        ])
+        fake_runtime = FakeRuntime()
+        fake_ws_server = FakeWsServerModule()
+
+        with (
+            patch("base_station.monitor.emotion_runtime.create_runtime", return_value=fake_runtime),
+            patch("base_station.monitor.emotion_runtime._load_ws_server", return_value=fake_ws_server),
+        ):
+            await main(args)
+
+        self.assertTrue(fake_runtime.ran)
+        self.assertEqual(fake_ws_server.start_calls, [("127.0.0.1", 9876)])
+        self.assertEqual(
+            fake_ws_server.video_sources,
+            [fake_runtime.source.frame_source, None],
+        )
+        self.assertTrue(fake_ws_server.server.closed)
+        self.assertTrue(fake_ws_server.server.waited)
+
     async def test_vlm_gate_args_are_available(self) -> None:
         args = parse_args([
             "--enable-vlm-gate",

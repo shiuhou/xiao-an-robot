@@ -138,6 +138,31 @@ class FakeChallengeOpenClawGateway(FakeOpenClawGateway):
 
 
 class GatewayOpenClawAdapterTest(unittest.TestCase):
+    def test_agent_text_json_with_trailing_warning_is_parsed_as_decision(self) -> None:
+        response = {
+            "payload": {
+                "result": {
+                    "payloads": [
+                        {
+                            "text": (
+                                '{"handled":true,"display_text":"显示任务状态",'
+                                '"spoken_text":"","reply_text":"","suppress_auto_tts":true,'
+                                '"tool_calls":[]}\n'
+                                "⚠️ tool failed"
+                            ),
+                        },
+                    ],
+                },
+            },
+        }
+
+        decision = GatewayOpenClawAdapter._decision_from_response(response)
+
+        self.assertTrue(decision.handled)
+        self.assertEqual(decision.display_text, "显示任务状态")
+        self.assertEqual(decision.reply_text, "")
+        self.assertTrue(decision.suppress_auto_tts)
+
     def test_gateway_reply_text_response(self) -> None:
         gateway = FakeOpenClawGateway({
             "handled": True,

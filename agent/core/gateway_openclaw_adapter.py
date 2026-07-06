@@ -301,6 +301,7 @@ class GatewayOpenClawAdapter:
 
     @staticmethod
     def _json_object_from_text(text: str) -> dict[str, Any] | None:
+        decoder = json.JSONDecoder()
         candidates = [text.strip()]
         fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
         if fenced:
@@ -309,6 +310,17 @@ class GatewayOpenClawAdapter:
         for candidate in candidates:
             try:
                 parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+
+        # OpenClaw agent runs can append tool warnings after a valid JSON
+        # decision. Keep the bridge tolerant by accepting the first JSON object
+        # embedded in the assistant text.
+        for match in re.finditer(r"\{", text):
+            try:
+                parsed, _ = decoder.raw_decode(text[match.start():])
             except json.JSONDecodeError:
                 continue
             if isinstance(parsed, dict):

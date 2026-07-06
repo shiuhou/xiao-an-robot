@@ -120,8 +120,10 @@ def reminder_payload_from_summary(summary: str) -> dict[str, Any] | None:
         return None
 
     payload_type = payload.get("type")
+    metadata = payload.get("metadata")
+    metadata_type = metadata.get("type") if isinstance(metadata, dict) else None
     display_text = payload.get("display_text")
-    is_reminder = payload_type == "reminder.due" or (
+    is_reminder = payload_type == "reminder.due" or metadata_type == "reminder.due" or (
         isinstance(display_text, str) and display_text.startswith("提醒：")
     )
     if not is_reminder:
@@ -129,7 +131,7 @@ def reminder_payload_from_summary(summary: str) -> dict[str, Any] | None:
 
     result = dict(payload)
     if not isinstance(result.get("type"), str) or not result.get("type"):
-        result["type"] = "reminder.due"
+        result["type"] = metadata_type if isinstance(metadata_type, str) else "reminder.due"
 
     metadata = result.get("metadata")
     if not isinstance(metadata, dict):

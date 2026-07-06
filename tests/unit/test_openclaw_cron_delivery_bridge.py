@@ -54,6 +54,28 @@ class OpenClawCronDeliveryBridgeTests(unittest.TestCase):
 
         self.assertEqual(payload["metadata"]["source"], bridge.BRIDGE_SOURCE)
 
+    def test_metadata_type_marks_runtime_summary_as_reminder(self):
+        payload = bridge.reminder_payload_from_summary(
+            json.dumps(
+                {
+                    "handled": True,
+                    "display_text": "该喝水啦。",
+                    "spoken_text": "该喝水啦，先喝一口水吧。",
+                    "reply_text": "该喝水啦。",
+                    "metadata": {
+                        "type": "reminder.due",
+                        "title": "喝水",
+                    },
+                },
+                ensure_ascii=False,
+            )
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["type"], "reminder.due")
+        self.assertEqual(payload["display_text"], "该喝水啦。")
+        self.assertEqual(payload["metadata"]["source"], bridge.BRIDGE_SOURCE)
+
     def test_non_reminder_summary_is_skipped(self):
         self.assertIsNone(
             bridge.reminder_payload_from_summary(

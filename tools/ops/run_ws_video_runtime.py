@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from base_station.monitor.emotion_context_builder import EmotionContextBuilder
 from base_station.monitor.emotion_event_loop import EmotionEventLoop
+from base_station.integration_console.visual_trace import VisualTracePublisher
 from base_station.monitor.emotion_runtime import (
     BaseStationEmotionRuntime,
     VLMGatedCameraEmotionSource,
@@ -63,12 +64,31 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--db-path", default="agent/data/xiao_an.db", help="SQLite database path.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database.")
     parser.add_argument(
+        "--visual-trace-dir",
+        default="runtime/integration_console/visual",
+        help="Directory for Integration Console visual trace snapshots.",
+    )
+    parser.add_argument(
+        "--visual-trace-fps",
+        type=float,
+        default=2.0,
+        help="Visual trace publication rate from 0.1 to 2.0 FPS.",
+    )
+    parser.add_argument(
+        "--no-visual-trace",
+        action="store_true",
+        help="Disable Integration Console visual trace publication.",
+    )
+    parser.add_argument(
         "--pattern",
         choices=["neutral", "tired", "sad", "anxious", "mixed"],
         default="tired",
         help="Pattern for mock/fake backends.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not 0.1 <= args.visual_trace_fps <= 2.0:
+        parser.error("--visual-trace-fps must be between 0.1 and 2.0")
+    return args
 
 
 def create_ws_video_runtime(
@@ -101,6 +121,12 @@ def create_ws_video_runtime(
         vlm_model_path=args.vlm_model_path,
         device=args.device,
     )
+    visual_observer = None
+    if not args.no_visual_trace:
+        visual_observer = VisualTracePublisher(
+            args.visual_trace_dir,
+            max_fps=args.visual_trace_fps,
+        )
     source = VLMGatedCameraEmotionSource(
         frame_source=frame_source,
         cv_pipeline=cv_pipeline,
@@ -109,6 +135,7 @@ def create_ws_video_runtime(
         vlm_model=vlm_model,
         memory=history_memory,
         force_vlm=args.force_vlm,
+        visual_observer=visual_observer,
     )
     event_loop = EmotionEventLoop(brain=brain)
     return (

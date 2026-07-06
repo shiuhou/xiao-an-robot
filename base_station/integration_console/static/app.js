@@ -3,6 +3,8 @@ let state = null;
 let pending = false;
 let lastPayload = null;
 let hiddenLogs = false;
+let visualSnapshotId = null;
+let visualRequestId = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -131,15 +133,6 @@ function renderState() {
     last_error: robot.last_error,
   });
 
-  kv("imageKv", [
-    ["exists", image.exists],
-    ["size", image.size],
-    ["updated_at", image.updated_at],
-    ["age", msAge(image.age_ms)],
-  ]);
-  $("imageWarn").textContent = image.exists && image.age_ms > 3000 ? "latest.jpg 已超过 3 秒未更新" : "";
-  updateImagePreview(image.exists);
-
   const windowStats = audioStats.latest_window || {};
   kv("audioKv", [
     ["latest_audio.pcm", audio.exists],
@@ -167,17 +160,131 @@ function renderState() {
   renderLogs();
 }
 
-function updateImagePreview(exists) {
-  const img = $("latestImage");
-  const empty = $("imageEmpty");
-  if (!exists) {
-    img.style.display = "none";
-    empty.style.display = "grid";
+function statusPill(node, status, text) {
+  node.className = `status-pill ${status}`;
+  node.textContent = text;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function metricMarkup(label, value) {
+  const display = value === undefined || value === null || value === "" ? "-" : String(value);
+  return `<div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(display)}</strong></div>`;
+}
+
+function ruleMarkup(label, value, threshold, fired) {
+  return `
+    <div class="gate-rule ${fired ? "fired" : "clear"}">
+      <span class="rule-light" aria-hidden="true"></span>
+      <span class="rule-label">${escapeHtml(label)}</span>
+      <span class="rule-value">${escapeHtml(value)}</span>
+      <span class="rule-threshold">${escapeHtml(threshold)}</span>
+    </div>
+  `;
+}
+
+function renderVisualTrace(payload) {
+  const freshness = $("visualFreshness");
+  const latestImage = $("visualLatestImage");
+  const imageEmpty = $("visualImageEmpty");
+  if (!payload?.ok) {
+    statusPill(freshness, "unavailable", "UNAVAILABLE");
+    latestImage.style.display = "none";
+    imageEmpty.style.display = "grid";
+    $("visualCvMetrics").innerHTML = metricMarkup("状态", payload?.reason || "not_found");
+    $("visualGateRules").innerHTML = '<div class="empty-state">等待 Gate 数据</div>';
+    statusPill($("visualGateStatus"), "unavailable", "NO DATA");
+    statusPill($("visualVlmStatus"), "idle", "IDLE");
+    $("visualTriggerImage").style.display = "none";
+    $("visualTriggerEmpty").style.display = "grid";
+    $("visualVlmDetails").innerHTML = "";
+    $("visualFusion").textContent = "Fusion: -";
     return;
   }
-  img.src = `/api/latest-image?t=${Date.now()}`;
-  img.style.display = "block";
-  empty.style.display = "none";
+
+  const trace = payload.state || {};
+  const observation = trace.observation || {};
+  const cv = trace.cv_sample || {};
+  const gate = trace.gate || {};
+  const result = gate.result || {};
+  const vlm = trace.vlm || {};
+  statusPill(
+    freshness,
+    payload.freshness === "live" ? "live" : "stale",
+    `${String(payload.freshness || "stale").toUpperCase()} · ${msAge(payload.age_ms)}`,
+  );
+  if (trace.snapshot_id && trace.snapshot_id !== visualSnapshotId) {
+    visualSnapshotId = trace.snapshot_id;
+    latestImage.src = `/api/visual/latest-image?snapshot=${encodeURIComponent(visualSnapshotId)}`;
+  }
+  latestImage.style.display = "block";
+  imageEmpty.style.display = "none";
+  $("visualCvMetrics").innerHTML = [
+    metricMarkup("Frame", trace.frame_id),
+    metricMarkup("Face", observation.face_detected ? "detected" : "none"),
+    metricMarkup("EAR", observation.ear == null ? "-" : Number(observation.ear).toFixed(3)),
+    metricMarkup("MAR", observation.mar == null ? "-" : Number(observation.mar).toFixed(3)),
+    metricMarkup("Emotion", cv.emotion_tag),
+    metricMarkup("Confidence", cv.confidence),
+    metricMarkup("Fatigue", cv.fatigue_score),
+    metricMarkup("Quality", cv.observation_quality),
+  ].join("");
+
+  const force = gate.force || {};
+  const fatigue = gate.fatigue || {};
+  const negative = gate.single_negative || {};
+  const windowRule = gate.negative_window || {};
+  $("visualGateRules").innerHTML = [
+    ruleMarkup("Force", force.fired ? "ON" : "OFF", "manual", !!force.fired),
+    ruleMarkup("High fatigue", fatigue.value ?? "-", `>= ${fatigue.threshold ?? "-"}`, !!fatigue.fired),
+    ruleMarkup("Negative", `${negative.emotion || "-"} · ${negative.confidence ?? "-"}`, `>= ${negative.confidence_threshold ?? "-"}`, !!negative.fired),
+    ruleMarkup("Negative window", `${windowRule.count ?? 0}/${windowRule.count_threshold ?? "-"}`, `${windowRule.confidence_sum ?? 0}/${windowRule.confidence_sum_threshold ?? "-"}`, !!windowRule.fired),
+  ].join("");
+  statusPill(
+    $("visualGateStatus"),
+    result.should_trigger ? "triggered" : "normal",
+    result.should_trigger ? `TRIGGER · ${result.reason || "unknown"}` : "NORMAL",
+  );
+
+  const vlmStatus = String(vlm.status || "idle").toLowerCase();
+  statusPill($("visualVlmStatus"), vlmStatus, vlmStatus.toUpperCase());
+  $("visualVlmDetails").innerHTML = [
+    metricMarkup("Request", vlm.request_id),
+    metricMarkup("Trigger frame", vlm.trigger_frame_id),
+    metricMarkup("Reason", vlm.reason),
+    metricMarkup("Latency", vlm.latency_ms == null ? "-" : `${vlm.latency_ms} ms`),
+    metricMarkup("Result", vlm.result?.expression_label || vlm.result?.emotion_tag),
+    metricMarkup("Confidence", vlm.result?.confidence),
+  ].join("");
+  const triggerImage = $("visualTriggerImage");
+  const triggerEmpty = $("visualTriggerEmpty");
+  if (vlm.request_id) {
+    if (vlm.request_id !== visualRequestId) {
+      visualRequestId = vlm.request_id;
+      triggerImage.src = `/api/visual/trigger-image?request=${encodeURIComponent(visualRequestId)}`;
+    }
+    triggerImage.style.display = "block";
+    triggerEmpty.style.display = "none";
+  } else {
+    triggerImage.style.display = "none";
+    triggerEmpty.style.display = "grid";
+  }
+  const fusion = vlm.fusion || {};
+  $("visualFusion").textContent = fusion.decision
+    ? `Fusion · ${fusion.decision} — ${fusion.reason || ""}`
+    : "Fusion: -";
+}
+
+async function refreshVisualTrace() {
+  const payload = await api("/api/visual/state");
+  renderVisualTrace(payload);
 }
 
 function renderLogs() {
@@ -238,7 +345,7 @@ function bindEvents() {
 
   $("stopAllBtn").addEventListener("click", () => post("/api/robot/motion", motionBody("stop")));
   $("refreshBtn").addEventListener("click", refreshState);
-  $("refreshImageBtn").addEventListener("click", () => updateImagePreview(state?.media?.latest_image?.exists));
+  $("refreshVisualBtn").addEventListener("click", refreshVisualTrace);
   $("exportBtn").addEventListener("click", () => post("/api/logs/export", {}));
   $("exportBtn2").addEventListener("click", () => post("/api/logs/export", {}));
 
@@ -312,9 +419,6 @@ function renderScenario(result) {
 initExpressions();
 bindEvents();
 refreshState();
+refreshVisualTrace();
 setInterval(refreshState, 1000);
-setInterval(() => {
-  if ($("autoImageRefresh").checked && state?.media?.latest_image?.exists) {
-    updateImagePreview(true);
-  }
-}, 1000);
+setInterval(refreshVisualTrace, 1000);

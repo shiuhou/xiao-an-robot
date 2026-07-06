@@ -124,6 +124,155 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .camera-grid { grid-template-columns: minmax(420px, 1.3fr) minmax(260px, 0.7fr); }
 
+.visual-layout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1.45fr) minmax(340px, 0.8fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.visual-side {
+  display: grid;
+  gap: 10px;
+}
+
+.visual-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 45px;
+}
+
+.visual-heading.compact { min-height: 40px; }
+.visual-heading h2 { margin-bottom: 8px; }
+
+.section-label {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  min-width: 76px;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #edf1f4;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.status-pill.live, .status-pill.normal, .status-pill.done { background: #dff5e9; border-color: #8fd1b2; color: #12643f; }
+.status-pill.stale, .status-pill.running, .status-pill.queued { background: #fff1cf; border-color: #e1bd65; color: #805400; }
+.status-pill.triggered, .status-pill.error { background: #ffe1e4; border-color: #e79aa0; color: #9f1520; }
+.status-pill.idle, .status-pill.unavailable { background: #edf1f4; color: #5c6873; }
+
+.visual-image-wrap {
+  min-height: 390px;
+  aspect-ratio: 4 / 3;
+}
+
+.visual-image-wrap img {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.visual-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.metric {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f8fafb;
+}
+
+.metric span, .metric strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric span { color: var(--muted); font-size: 10px; }
+.metric strong { margin-top: 2px; font-size: 12px; }
+
+.visual-module { min-height: 0; }
+
+.gate-rules {
+  display: grid;
+  gap: 6px;
+}
+
+.gate-rule {
+  display: grid;
+  grid-template-columns: 12px minmax(95px, 1fr) minmax(70px, auto) minmax(70px, auto);
+  gap: 7px;
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #f8fafb;
+  font-size: 11px;
+}
+
+.gate-rule.fired { border-color: #e1848b; background: #fff1f2; }
+.rule-light { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #8c98a3; }
+.gate-rule.fired .rule-light { border-color: var(--red); background: var(--red); }
+.rule-label { font-weight: 800; }
+.rule-value, .rule-threshold { overflow-wrap: anywhere; text-align: right; }
+.rule-threshold { color: var(--muted); }
+
+.vlm-content {
+  display: grid;
+  grid-template-columns: 135px minmax(0, 1fr);
+  gap: 9px;
+}
+
+.trigger-wrap {
+  position: relative;
+  min-height: 118px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #1b232c;
+  overflow: hidden;
+}
+
+.trigger-wrap img { display: none; width: 100%; height: 118px; object-fit: contain; }
+.compact-empty { min-height: 118px; padding: 8px; text-align: center; font-size: 11px; }
+.vlm-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+
+.fusion-box {
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 8px;
+  border-left: 4px solid var(--teal);
+  background: #edf8f8;
+  color: #155f62;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.empty-state { min-height: 80px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+
 .card {
   min-height: 160px;
   padding: 12px;
@@ -326,7 +475,8 @@ textarea {
   .chips {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .grid.two, .grid.three, .camera-grid {
+  .grid.two, .grid.three, .camera-grid, .visual-layout {
     grid-template-columns: 1fr;
   }
+  .visual-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

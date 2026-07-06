@@ -97,24 +97,56 @@
     </section>
 
     <section class="panel" id="tab-camera">
-      <div class="grid two camera-grid">
-        <article class="card preview-card">
-          <h2>相机 / 视觉</h2>
-          <div class="image-wrap">
-            <img id="latestImage" alt="runtime latest jpg">
-            <div class="empty" id="imageEmpty">未收到 /video 帧</div>
+      <div class="visual-layout">
+        <article class="card visual-preview-card">
+          <div class="visual-heading">
+            <div>
+              <div class="section-label">ROUTE A / OPENFACE</div>
+              <h2>视觉分析快照</h2>
+            </div>
+            <span class="status-pill unavailable" id="visualFreshness">UNAVAILABLE</span>
           </div>
-        </article>
-        <article class="card">
-          <h2>图像状态</h2>
-          <div class="kv" id="imageKv"></div>
-          <label class="inline-check"><input id="autoImageRefresh" type="checkbox" checked> 自动刷新 1 秒</label>
+          <div class="image-wrap visual-image-wrap">
+            <img id="visualLatestImage" alt="OpenFace annotated video frame">
+            <div class="empty" id="visualImageEmpty">等待 Route A 分析快照</div>
+          </div>
+          <div class="visual-meta" id="visualCvMetrics"></div>
           <div class="actions">
-            <button id="refreshImageBtn">手动刷新</button>
+            <button id="refreshVisualBtn">刷新视觉状态</button>
             <button data-tool="vision-preflight">视觉 preflight</button>
           </div>
-          <div class="warn" id="imageWarn"></div>
         </article>
+
+        <div class="visual-side">
+          <article class="card visual-module">
+            <div class="visual-heading compact">
+              <div>
+                <div class="section-label">DECISION</div>
+                <h2>VLM Trigger Gate</h2>
+              </div>
+              <span class="status-pill unavailable" id="visualGateStatus">NO DATA</span>
+            </div>
+            <div class="gate-rules" id="visualGateRules"></div>
+          </article>
+
+          <article class="card visual-module vlm-module">
+            <div class="visual-heading compact">
+              <div>
+                <div class="section-label">ASYNC EXPLANATION</div>
+                <h2>VLM</h2>
+              </div>
+              <span class="status-pill idle" id="visualVlmStatus">IDLE</span>
+            </div>
+            <div class="vlm-content">
+              <div class="trigger-wrap">
+                <img id="visualTriggerImage" alt="VLM trigger frame">
+                <div class="empty compact-empty" id="visualTriggerEmpty">无触发帧</div>
+              </div>
+              <div class="vlm-details" id="visualVlmDetails"></div>
+            </div>
+            <div class="fusion-box" id="visualFusion">Fusion: -</div>
+          </article>
+        </div>
       </div>
     </section>
 

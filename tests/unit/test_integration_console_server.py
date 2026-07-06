@@ -18,6 +18,31 @@ from base_station.integration_console.console_server import (
 
 
 class IntegrationConsoleHttpTest(unittest.TestCase):
+    def test_console_html_contains_visual_trace_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server = create_server("127.0.0.1", 0, runtime_dir=temp_dir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address[:2]
+            try:
+                with urllib.request.urlopen(f"http://{host}:{port}/console", timeout=5) as response:
+                    html = response.read().decode("utf-8")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        for element_id in (
+            "visualLatestImage",
+            "visualFreshness",
+            "visualCvMetrics",
+            "visualGateRules",
+            "visualVlmStatus",
+            "visualTriggerImage",
+            "visualFusion",
+        ):
+            self.assertIn(f'id="{element_id}"', html)
+
     def test_health_and_state_work_without_runtime_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             server = create_server(

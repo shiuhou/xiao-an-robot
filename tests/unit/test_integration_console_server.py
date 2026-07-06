@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -63,6 +65,41 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertEqual(raised.exception.code, 404)
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["error"], "not_found")
+
+    def test_visual_endpoints_serve_state_and_owned_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            visual_dir = Path(temp_dir) / "integration_console" / "visual"
+            visual_dir.mkdir(parents=True)
+            (visual_dir / "latest_state.json").write_text(
+                json.dumps({"schema_version": "visual_console_v1", "snapshot_id": "frame-7"}),
+                encoding="utf-8",
+            )
+            (visual_dir / "latest_annotated.jpg").write_bytes(b"latest-jpeg")
+            (visual_dir / "vlm_trigger.jpg").write_bytes(b"trigger-jpeg")
+            server = create_server("127.0.0.1", 0, runtime_dir=temp_dir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address[:2]
+            base_url = f"http://{host}:{port}"
+            try:
+                with urllib.request.urlopen(f"{base_url}/api/visual/state", timeout=5) as response:
+                    state = json.loads(response.read().decode("utf-8"))
+                with urllib.request.urlopen(f"{base_url}/api/visual/latest-image", timeout=5) as response:
+                    latest = response.read()
+                    cache_control = response.headers["Cache-Control"]
+                with urllib.request.urlopen(f"{base_url}/api/visual/trigger-image", timeout=5) as response:
+                    trigger = response.read()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertTrue(state["ok"])
+        self.assertEqual(state["freshness"], "live")
+        self.assertEqual(state["state"]["snapshot_id"], "frame-7")
+        self.assertEqual(latest, b"latest-jpeg")
+        self.assertEqual(trigger, b"trigger-jpeg")
+        self.assertIn("no-store", cache_control)
 
 
 class IntegrationConsoleCommandTest(unittest.TestCase):
@@ -150,6 +187,33 @@ class IntegrationConsoleStateReaderTest(unittest.TestCase):
             bad = read_ws_state(runtime)
             self.assertFalse(bad["ok"])
             self.assertTrue(bad["reason"].startswith("bad_json"))
+
+    def test_visual_state_handles_missing_corrupt_and_stale_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            missing = app.visual_state()
+            self.assertFalse(missing["ok"])
+            self.assertEqual(missing["reason"], "not_found")
+
+            visual_dir = Path(temp_dir) / "integration_console" / "visual"
+            visual_dir.mkdir(parents=True)
+            state_path = visual_dir / "latest_state.json"
+            state_path.write_text("{bad", encoding="utf-8")
+            corrupt = app.visual_state()
+            self.assertFalse(corrupt["ok"])
+            self.assertTrue(corrupt["reason"].startswith("bad_json"))
+
+            state_path.write_text(
+                json.dumps({"schema_version": "visual_console_v1", "snapshot_id": "old"}),
+                encoding="utf-8",
+            )
+            old = time.time() - 5
+            os.utime(state_path, (old, old))
+            stale = app.visual_state()
+
+        self.assertTrue(stale["ok"])
+        self.assertEqual(stale["freshness"], "stale")
+        self.assertGreaterEqual(stale["age_ms"], 4900)
 
 
 if __name__ == "__main__":

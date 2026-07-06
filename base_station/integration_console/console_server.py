@@ -189,6 +189,10 @@ class IntegrationConsoleApp:
     def event_log_path(self) -> Path:
         return self.event_dir / "events.jsonl"
 
+    @property
+    def visual_dir(self) -> Path:
+        return self.event_dir / "visual"
+
     def health(self) -> dict[str, Any]:
         return {
             "ok": True,
@@ -211,6 +215,36 @@ class IntegrationConsoleApp:
         if data is None:
             return {"ok": False, "reason": error or "not_found", "path": str(path)}
         return {"ok": True, "path": str(path), "audio_stats": data}
+
+    def visual_state(self) -> dict[str, Any]:
+        path = self.visual_dir / "latest_state.json"
+        data, error = _load_json_file(path)
+        info = _file_info(path)
+        if data is None:
+            return {
+                "ok": False,
+                "reason": error or "not_found",
+                "freshness": "unavailable",
+                "age_ms": info["age_ms"],
+                "state": {},
+                "files": {
+                    "latest_image": _file_info(self.visual_dir / "latest_annotated.jpg"),
+                    "trigger_image": _file_info(self.visual_dir / "vlm_trigger.jpg"),
+                },
+            }
+        age_ms = info["age_ms"]
+        freshness = "live" if age_ms is not None and age_ms <= 3000 else "stale"
+        return {
+            "ok": True,
+            "reason": None,
+            "freshness": freshness,
+            "age_ms": age_ms,
+            "state": data,
+            "files": {
+                "latest_image": _file_info(self.visual_dir / "latest_annotated.jpg"),
+                "trigger_image": _file_info(self.visual_dir / "vlm_trigger.jpg"),
+            },
+        }
 
     def openclaw_status(self) -> dict[str, Any]:
         parsed = urlparse(self.openclaw_url)
@@ -803,6 +837,12 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.state())
                 elif path == "/api/latest-image":
                     self._write_file(app.runtime_dir / "latest.jpg", no_cache=True)
+                elif path == "/api/visual/state":
+                    self._write_json(app.visual_state())
+                elif path == "/api/visual/latest-image":
+                    self._write_file(app.visual_dir / "latest_annotated.jpg", no_cache=True)
+                elif path == "/api/visual/trigger-image":
+                    self._write_file(app.visual_dir / "vlm_trigger.jpg", no_cache=True)
                 elif path == "/api/audio-stats":
                     self._write_json(app.audio_stats())
                 elif path == "/api/logs/recent":

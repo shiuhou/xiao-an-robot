@@ -23,6 +23,9 @@ http://<DK2500-IP>:8090/console
 | `/api/health` | Console 自身状态和 runtime 文件存在性。 |
 | `/api/state` | 聚合 console、`runtime/ws_state.json`、图像、音频、OpenClaw 和最近日志。 |
 | `/api/latest-image` | 返回 `runtime/latest.jpg`，带 no-cache。 |
+| `/api/visual/state` | 返回 Route A 的 OpenFace、Gate、异步 VLM 和 fusion 快照。 |
+| `/api/visual/latest-image` | 返回带 OpenFace 标注的最新分析快照，带 no-cache。 |
+| `/api/visual/trigger-image` | 返回当前 VLM 请求对应的触发帧，带 no-cache。 |
 | `/api/audio-stats` | 返回 `runtime/audio_stats.json`，不存在时结构化失败。 |
 | `/api/robot/*` | 通过 `/agent` 发已有机器人命令：表情、运动、本地音效、TTS。 |
 | `/api/scenario/run` | step-by-step 安全场景脚本。 |
@@ -40,6 +43,28 @@ http://<DK2500-IP>:8090/console
 - 音频命令有保守 cooldown，避免 TTS 和 local sound 连续触发 speaker not ready。
 - 工具执行只接受白名单 tool id。
 - 日志不保存原始音视频、token、secret。
+
+## Visual Trace
+
+`tools/ops/run_ws_video_runtime.py` 默认以最多 2 FPS 发布控制台观测文件：
+
+```text
+runtime/integration_console/visual/latest_annotated.jpg
+runtime/integration_console/visual/latest_state.json
+runtime/integration_console/visual/vlm_trigger.jpg
+runtime/integration_console/visual/vlm_state.json
+```
+
+这些文件是有界的运行期快照，不是历史记录。页面只展示正式 Route A 已经产生的 OpenFace、Gate 和 VLM 状态，不会再次执行 Gate。VLM 结果通过 `request_id` 和 `trigger_frame_id` 绑定触发画面。
+
+本地模拟 `/video`：
+
+```powershell
+python tools/ops/run_ws_video_runtime.py --host 127.0.0.1 --port 8765 --no-agent --model-backend mock --vlm-backend fake --force-vlm --visual-trace-fps 1
+python tools/probes/send_test_video_frame.py --url ws://127.0.0.1:8765/video --frames 3 --fps 1 --width 320 --height 240
+```
+
+模拟包会经过正式 WebSocket 解码路径，但不能证明 ESP32 摄像头、机器人网络或真实模型正常。
 
 ## Related
 

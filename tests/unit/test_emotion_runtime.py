@@ -426,14 +426,44 @@ class _OneFrameSource:
 class _FixedCvPipeline:
     def __init__(self, cv_sample):
         self._cv = cv_sample
+        self.last_observation = {"face_confidence": 0.9}
 
     def process_frame(self, frame):
         return dict(self._cv)
 
 
 class _AlwaysTriggerGate:
+    def __init__(self):
+        self.evaluate_calls = 0
+
     def evaluate(self, cv_sample, force_vlm=False):
+        self.evaluate_calls += 1
         return {"should_trigger": True, "reason": "test"}
+
+    def diagnostics(self, cv_sample, result):
+        return {"result": dict(result), "fatigue": {"value": cv_sample.get("fatigue_score")}}
+
+
+class _RecordingObserver:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.calls = []
+
+    def _record(self, name, payload):
+        self.calls.append((name, payload))
+        if self.fail:
+            raise RuntimeError(f"observer {name} failed")
+
+    def observe_frame(self, **payload):
+        self._record("observe_frame", payload)
+        return {"snapshot_id": "frame-1", "frame_id": 1, "request_id": "vlm-1"}
+
+    def vlm_started(self, token, reason):
+        self._record("vlm_started", {"token": token, "reason": reason})
+        return token["request_id"]
+
+    def vlm_finished(self, request_id, **payload):
+        self._record("vlm_finished", {"request_id": request_id, **payload})
 
 
 class _FixedContextBuilder:
@@ -691,6 +721,64 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sample["vlm"]["status"], "error")
         self.assertIn("generation failed", sample["vlm"]["error"])
         self.assertEqual(sample["fusion"]["decision"], "cv_only_vlm_error")
+
+    async def test_visual_observer_receives_single_gate_evaluation_lifecycle(self):
+        gate = _AlwaysTriggerGate()
+        observer = _RecordingObserver()
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"frame_id": 1, "timestamp_ms": 123, "payload": None}),
+            cv_pipeline=_FixedCvPipeline({
+                "frame_id": 1,
+                "timestamp_ms": 123,
+                "emotion_tag": "tired",
+                "confidence": 0.8,
+                "fatigue_score": 80.0,
+            }),
+            gate=gate,
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FixedVlm({"expression_label": "tired"}),
+            visual_observer=observer,
+        )
+
+        samples = [item async for item in source.samples()]
+
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(gate.evaluate_calls, 1)
+        self.assertEqual(
+            [name for name, _payload in observer.calls],
+            ["observe_frame", "vlm_started", "vlm_finished"],
+        )
+        observed = observer.calls[0][1]
+        self.assertIs(observed["observation"], source.cv_pipeline.last_observation)
+        self.assertEqual(observed["gate_diagnostics"]["result"]["reason"], "test")
+        finished = observer.calls[-1][1]
+        self.assertEqual(finished["request_id"], "vlm-1")
+        self.assertEqual(finished["status"], "done")
+        self.assertGreaterEqual(finished["latency_ms"], 0.0)
+
+    async def test_visual_observer_failure_does_not_break_runtime_sample(self):
+        gate = _AlwaysTriggerGate()
+        observer = _RecordingObserver(fail=True)
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"frame_id": 1, "timestamp_ms": 123, "payload": None}),
+            cv_pipeline=_FixedCvPipeline({
+                "frame_id": 1,
+                "timestamp_ms": 123,
+                "emotion_tag": "tired",
+                "fatigue_score": 80.0,
+            }),
+            gate=gate,
+            context_builder=_FixedContextBuilder(),
+            vlm_model=_FixedVlm({"expression_label": "tired"}),
+            visual_observer=observer,
+        )
+
+        samples = [item async for item in source.samples()]
+
+        self.assertEqual(len(samples), 1)
+        self.assertTrue(samples[0]["vlm_triggered"])
+        self.assertEqual(gate.evaluate_calls, 1)
+        self.assertEqual([name for name, _payload in observer.calls], ["observe_frame"])
 
 
 if __name__ == "__main__":

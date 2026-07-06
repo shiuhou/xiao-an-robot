@@ -72,6 +72,15 @@ def run(pipeline, n, *, start_ms=0, step_ms=200):
 
 
 class OpenFaceCVPipelineTest(unittest.TestCase):
+    def test_process_frame_retains_exact_latest_observation(self):
+        observation = perceive_factory()({})
+        p = OpenFaceCVPipeline(lambda _frame: observation)
+
+        out = p.process_frame(object(), timestamp_ms=1000)
+
+        self.assertIs(p.last_observation, observation)
+        self.assertEqual(set(out), CONTRACT_KEYS)
+
     def test_contract_has_all_fields(self):
         p = OpenFaceCVPipeline(perceive_factory())
         out = run(p, 4)

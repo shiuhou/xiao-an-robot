@@ -362,6 +362,7 @@ class VLMGatedCameraEmotionSource:
         force_vlm: bool = False,
         verbose: bool = False,
         backend_name: str | None = None,
+        visual_observer: Any | None = None,
     ):
         self.frame_source = frame_source
         self.cv_pipeline = cv_pipeline
@@ -372,12 +373,26 @@ class VLMGatedCameraEmotionSource:
         self.force_vlm = force_vlm
         self.verbose = verbose
         self.backend_name = backend_name or type(vlm_model).__name__
+        self.visual_observer = visual_observer
 
     async def samples(self):
         async for frame in self.frame_source.frames():
             cv_sample = self.cv_pipeline.process_frame(frame)
             gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
             reason = str(gate_result.get("reason", "normal"))
+            diagnostics = getattr(self.gate, "diagnostics", None)
+            gate_diagnostics = (
+                diagnostics(cv_sample, gate_result)
+                if callable(diagnostics)
+                else {"result": dict(gate_result)}
+            )
+            visual_token = self._notify_visual_observer(
+                "observe_frame",
+                frame=frame,
+                observation=getattr(self.cv_pipeline, "last_observation", None),
+                cv_sample=cv_sample,
+                gate_diagnostics=gate_diagnostics,
+            )
 
             if not gate_result.get("should_trigger", False):
                 frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
@@ -392,9 +407,17 @@ class VLMGatedCameraEmotionSource:
             )
             vlm_frame = _frame_with_synthetic_payload_when_missing(frame)
             frame_id = cv_sample.get("frame_id") or frame.get("frame_id")
+            request_id = None
+            if visual_token is not None:
+                request_id = self._notify_visual_observer(
+                    "vlm_started",
+                    visual_token,
+                    reason,
+                )
             if self.verbose:
                 print(f"[vlm.start] frame_id={frame_id} backend={self.backend_name}")
             started = time.perf_counter()
+            visual_status = "done"
             try:
                 prediction = await asyncio.to_thread(self.vlm_model.predict, vlm_frame, context)
                 vlm_result = normalize_vlm_result(
@@ -418,6 +441,7 @@ class VLMGatedCameraEmotionSource:
                         f"seconds={seconds:.3f}"
                     )
             except Exception as exc:
+                visual_status = "error"
                 error = _short_error(exc)
                 vlm_result = normalize_vlm_result(
                     {"error": error},
@@ -430,6 +454,15 @@ class VLMGatedCameraEmotionSource:
             final_sample = fuse_cv_vlm_sample(cv_sample, vlm_result)
             final_sample["vlm_triggered"] = True
             final_sample["vlm_trigger_reason"] = reason
+            if request_id is not None:
+                self._notify_visual_observer(
+                    "vlm_finished",
+                    request_id,
+                    status=visual_status,
+                    vlm_result=vlm_result,
+                    final_sample=final_sample,
+                    latency_ms=(time.perf_counter() - started) * 1000.0,
+                )
             if self.verbose:
                 print(
                     "[fusion] "
@@ -446,6 +479,22 @@ class VLMGatedCameraEmotionSource:
         if callable(get_recent_summary):
             return get_recent_summary()
         return None
+
+    def _notify_visual_observer(self, method_name: str, *args, **kwargs):
+        if self.visual_observer is None:
+            return None
+        method = getattr(self.visual_observer, method_name, None)
+        if not callable(method):
+            return None
+        try:
+            return method(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 - diagnostics must never stop runtime.
+            if self.verbose:
+                print(
+                    f"[visual_trace.error] method={method_name} error={_short_error(exc)}",
+                    file=sys.stderr,
+                )
+            return None
 
 
 def _frame_with_synthetic_payload_when_missing(frame: dict) -> dict:

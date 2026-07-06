@@ -61,6 +61,7 @@ class OpenFaceCVPipeline:
         self._yawn_active = False
         self._yawn_onsets: deque[float] = deque()
         self._frame_id = 0
+        self.last_observation: dict[str, Any] | None = None
 
     def process_frame(self, frame: Any, timestamp_ms: int | None = None) -> dict:
         ts_ms = int(time.time() * 1000) if timestamp_ms is None else int(timestamp_ms)
@@ -68,6 +69,7 @@ class OpenFaceCVPipeline:
         self._frame_id += 1
 
         obs = self.perceive(frame) or {}
+        self.last_observation = obs
         landmarks = obs.get("landmarks")
         face_confidence = float(obs.get("face_confidence", 0.0) or 0.0)
         raw_emotion_label = obs.get("emotion_label")

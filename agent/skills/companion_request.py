@@ -6,6 +6,9 @@ from base_station.perception.asr_emotion_trigger import ASREmotionTrigger
 from agent.skills.robot_motion import RobotMotionSkill
 
 
+PRE_RESPONSE_TEXT = "辛苦啦，先靠着我慢慢喘口气，我们休息一分钟就好。"
+
+
 class CompanionRequestSkill:
     """Turn companion/fatigue text cues into an immediate robot pre-response."""
 
@@ -30,6 +33,7 @@ class CompanionRequestSkill:
 
         actions = [
             await self.robot_motion.show_expression("caring"),
+            await self.robot_motion.say(PRE_RESPONSE_TEXT),
             await self.robot_motion.move_out_of_dock(),
         ]
         return {

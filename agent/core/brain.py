@@ -422,10 +422,31 @@ class XiaoAnBrain:
     def _split_care_result(self, care_result: Any) -> tuple[Any | None, Any | None, Any | None]:
         if not isinstance(care_result, list):
             return None, None, None
-        expression = care_result[0] if len(care_result) > 0 else None
-        motion = care_result[1] if len(care_result) > 1 else None
-        tts = care_result[2] if len(care_result) > 2 else None
+        expression = motion = tts = None
+        for item in care_result:
+            action_type = self._care_action_type(item)
+            if expression is None and action_type == "display.expression":
+                expression = item
+            elif motion is None and action_type == "motion.execute":
+                motion = item
+            elif tts is None and action_type == "audio.play_tts":
+                tts = item
+        if expression is None:
+            expression = care_result[0] if len(care_result) > 0 else None
+        if motion is None:
+            motion = care_result[1] if len(care_result) > 1 else None
+        if tts is None:
+            tts = care_result[2] if len(care_result) > 2 else None
         return expression, motion, tts
+
+    @staticmethod
+    def _care_action_type(item: Any) -> str:
+        if not isinstance(item, dict):
+            return ""
+        payload = item.get("payload")
+        if isinstance(payload, dict):
+            return str(payload.get("forwarded_type") or payload.get("command_type") or "")
+        return str(item.get("type") or "")
 
     def _care_result_success(self, care_result: Any) -> bool:
         if not isinstance(care_result, list) or not care_result:

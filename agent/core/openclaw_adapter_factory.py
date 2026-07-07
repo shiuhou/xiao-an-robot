@@ -30,6 +30,12 @@ def _parse_timeout(value: str | None) -> float:
         return DEFAULT_OPENCLAW_TIMEOUT_SEC
 
 
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_openclaw_adapter_from_env(environ: Mapping[str, str] | None = None):
     active_environ = os.environ if environ is None else environ
     backend = active_environ.get("XIAO_AN_OPENCLAW_BACKEND", DEFAULT_OPENCLAW_BACKEND).strip().lower()
@@ -58,6 +64,9 @@ def build_openclaw_adapter_from_env(environ: Mapping[str, str] | None = None):
                 active_environ.get("XIAO_AN_OPENCLAW_TIMEOUT_SEC")
                 or active_environ.get("XIAO_AN_OPENCLAW_GATEWAY_TIMEOUT_SEC")
                 or str(DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC),
+            ),
+            fresh_work_capture_sessions=_parse_bool(
+                active_environ.get("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION"),
             ),
         )
 

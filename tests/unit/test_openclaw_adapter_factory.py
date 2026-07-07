@@ -114,6 +114,15 @@ class OpenClawAdapterFactoryTest(unittest.TestCase):
         self.assertEqual(adapter.agent, "xiaoan-runtime-test")
         self.assertEqual(adapter.timeout_sec, 1.5)
 
+    def test_gateway_backend_reads_fresh_work_capture_session_flag(self) -> None:
+        adapter = build_openclaw_adapter_from_env({
+            "XIAO_AN_OPENCLAW_BACKEND": "gateway",
+            "XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION": "1",
+        })
+
+        self.assertIsInstance(adapter, GatewayOpenClawAdapter)
+        self.assertTrue(adapter.fresh_work_capture_sessions)
+
     def test_unknown_backend_raises_value_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "strange"):
             build_openclaw_adapter_from_env({"XIAO_AN_OPENCLAW_BACKEND": "strange"})

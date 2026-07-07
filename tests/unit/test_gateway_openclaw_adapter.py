@@ -238,6 +238,69 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
 
         self.assertEqual(request["tools"], [])
 
+    def test_work_capture_session_key_is_stable_by_default(self) -> None:
+        adapter = GatewayOpenClawAdapter(agent="xiaoan-runtime")
+        event = OpenClawEvent(
+            type="asr.transcript",
+            text="把晚上八点开会加入日程",
+            session_id="integration-console-link1",
+            context={"tool_profile": "work_capture"},
+        )
+
+        self.assertEqual(
+            adapter._session_key(event),
+            adapter._session_key(event),
+        )
+        self.assertEqual(
+            adapter._session_key(event),
+            "agent:xiaoan-runtime:xiao-an-robot-integration-console-link1",
+        )
+
+    def test_work_capture_session_key_can_be_fresh_per_event(self) -> None:
+        adapter = GatewayOpenClawAdapter(
+            agent="xiaoan-runtime",
+            fresh_work_capture_sessions=True,
+        )
+        event = OpenClawEvent(
+            type="asr.transcript",
+            text="把晚上八点开会加入日程",
+            session_id="integration-console-link1",
+            context={
+                "route_hint": {
+                    "kind": "work_capture",
+                    "tool_profile": "work_capture",
+                },
+            },
+        )
+
+        first_key = adapter._session_key(event)
+        second_key = adapter._session_key(event)
+
+        self.assertNotEqual(first_key, second_key)
+        self.assertTrue(first_key.startswith(
+            "agent:xiaoan-runtime:xiao-an-robot-integration-console-link1-run-"
+        ))
+        self.assertTrue(second_key.startswith(
+            "agent:xiaoan-runtime:xiao-an-robot-integration-console-link1-run-"
+        ))
+
+    def test_fresh_work_capture_sessions_do_not_affect_conversation_events(self) -> None:
+        adapter = GatewayOpenClawAdapter(
+            agent="xiaoan-runtime",
+            fresh_work_capture_sessions=True,
+        )
+        event = OpenClawEvent(
+            type="asr.transcript",
+            text="你好小安",
+            session_id="integration-console-link3",
+            context={"tool_profile": "conversation"},
+        )
+
+        self.assertEqual(
+            adapter._session_key(event),
+            "agent:xiaoan-runtime:xiao-an-robot-integration-console-link3",
+        )
+
     def test_build_request_filters_tools_for_robot_action_profile(self) -> None:
         adapter = GatewayOpenClawAdapter()
         request = adapter.build_request(OpenClawEvent(

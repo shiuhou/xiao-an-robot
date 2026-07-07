@@ -322,6 +322,11 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("--disable-companion-fast-path", link1)
         self.assertNotIn("--disable-companion-fast-path", link3)
         self.assertIn("openface_ov", link2)
+        self.assertIn("openvino_qwen_vl", link2)
+        self.assertEqual(
+            link2[link2.index("--vlm-model-path") + 1],
+            "base_station/models/Qwen2.5-VL-3B-OV-int4",
+        )
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
 
@@ -333,10 +338,13 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
             )
             link1_env = app.link_environment("link1")
             link2_env = app.link_environment("link2")
+            link3_env = app.link_environment("link3")
 
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
+        self.assertEqual(link1_env["XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION"], "1")
+        self.assertNotIn("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", link3_env)
         self.assertNotIn("XIAO_AN_OPENCLAW_BACKEND", link2_env)
 
     def test_link_state_displays_previous_voice_result_while_recording(self) -> None:

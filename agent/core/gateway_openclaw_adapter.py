@@ -32,12 +32,14 @@ class GatewayOpenClawAdapter:
         timeout_sec: float = DEFAULT_OPENCLAW_GATEWAY_TIMEOUT_SEC,
         gateway_token: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        fresh_work_capture_sessions: bool = False,
     ) -> None:
         self.gateway_url = str(gateway_url)
         self.agent = str(agent or DEFAULT_OPENCLAW_AGENT)
         self.timeout_sec = float(timeout_sec)
         self.gateway_token = gateway_token
         self.tools = deepcopy(tools) if tools is not None else None
+        self.fresh_work_capture_sessions = bool(fresh_work_capture_sessions)
 
     def handle_event(self, event: OpenClawEvent) -> OpenClawDecision:
         try:
@@ -214,7 +216,17 @@ class GatewayOpenClawAdapter:
     def _session_key(self, event: OpenClawEvent) -> str:
         session_id = event.session_id if isinstance(event.session_id, str) else "default"
         suffix = re.sub(r"[^A-Za-z0-9_.:-]+", "-", session_id).strip("-") or "default"
+        if self.fresh_work_capture_sessions and self._is_work_capture_event(event):
+            suffix = f"{suffix}-run-{uuid.uuid4().hex}"
         return f"agent:{self.agent}:xiao-an-robot-{suffix}"
+
+    @staticmethod
+    def _is_work_capture_event(event: OpenClawEvent) -> bool:
+        context = event.context if isinstance(event.context, dict) else {}
+        if context.get("tool_profile") == "work_capture":
+            return True
+        route_hint = context.get("route_hint")
+        return isinstance(route_hint, dict) and route_hint.get("kind") == "work_capture"
 
     @staticmethod
     def _is_connect_challenge(response: dict[str, Any]) -> bool:

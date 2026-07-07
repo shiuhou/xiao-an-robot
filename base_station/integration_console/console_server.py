@@ -27,6 +27,7 @@ DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
 DEFAULT_WS_URL = "ws://127.0.0.1:8765/agent"
 DEFAULT_OPENCLAW_URL = "ws://127.0.0.1:18789"
 DEFAULT_OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace-xiaoan-runtime"
+DEFAULT_QWEN_VL_MODEL_PATH = "base_station/models/Qwen2.5-VL-3B-OV-int4"
 OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
 EVENT_LIMIT = 200
 STATE_EVENT_LIMIT = 50
@@ -511,7 +512,9 @@ class IntegrationConsoleApp:
                 "--model-backend",
                 self._env_text("XIAOAN_LINK2_MODEL_BACKEND", "openface_ov"),
                 "--vlm-backend",
-                self._env_text("XIAOAN_LINK2_VLM_BACKEND", "fake"),
+                self._env_text("XIAOAN_LINK2_VLM_BACKEND", "openvino_qwen_vl"),
+                "--vlm-model-path",
+                self._env_text("XIAOAN_LINK2_VLM_MODEL_PATH", DEFAULT_QWEN_VL_MODEL_PATH),
                 "--visual-trace-dir",
                 str(self.visual_dir),
                 "--visual-trace-fps",
@@ -529,6 +532,8 @@ class IntegrationConsoleApp:
             env.setdefault("XIAO_AN_OPENCLAW_BACKEND", "gateway")
             env.setdefault("XIAO_AN_OPENCLAW_GATEWAY_URL", self.openclaw_url)
             env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
+        if link == "link1":
+            env.setdefault("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", "1")
         return env
 
     def start_link(self, body: dict[str, Any]) -> dict[str, Any]:

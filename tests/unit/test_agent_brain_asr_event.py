@@ -9,6 +9,7 @@ from pathlib import Path
 from agent.core.brain import XiaoAnBrain
 from agent.core.memory import XiaoAnMemoryStore
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
+from agent.skills.companion_request import PRE_RESPONSE_TEXT
 
 
 class FakeGateway:
@@ -232,7 +233,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("care_result", care_metadata)
                 self.assertIsNotNone(care_metadata["expression"])
                 self.assertIsNotNone(care_metadata["motion"])
-                self.assertIsNone(care_metadata["tts"])
+                self.assertIsNotNone(care_metadata["tts"])
                 self.assertTrue(care_metadata["handled"])
                 self.assertTrue(care_metadata["success"])
 
@@ -245,9 +246,10 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
             "payload": {"text": "我有点累"},
         })
 
-        self.assertEqual([call[0] for call in gateway.calls[:2]], ["expression", "motion"])
+        self.assertEqual([call[0] for call in gateway.calls[:3]], ["expression", "tts", "motion"])
         self.assertEqual(gateway.calls[0][1], "caring")
-        self.assertEqual(gateway.calls[1][1], "move_out_of_dock")
+        self.assertEqual(gateway.calls[1][1], PRE_RESPONSE_TEXT)
+        self.assertEqual(gateway.calls[2][1], "move_out_of_dock")
 
     async def test_companion_fast_path_pre_response_runs_before_openclaw(self) -> None:
         gateway = FakeGateway()
@@ -265,7 +267,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [call[0] for call in openclaw_adapter.calls_seen_before_openclaw],
-            ["expression", "motion"],
+            ["expression", "tts", "motion"],
         )
 
     async def test_companion_fast_path_is_forwarded_to_openclaw_for_followup(self) -> None:
@@ -317,7 +319,8 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result["handled"])
         self.assertEqual(result["route"], "link_3_companion_fast_path")
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "tts", "motion", "tts"])
+        self.assertEqual(gateway.calls[1][1], PRE_RESPONSE_TEXT)
         self.assertEqual(gateway.calls[-1][1], "先休息一下，我会陪着你。")
         self.assertEqual(result["openclaw_result"]["handled"], True)
         self.assertEqual(result["openclaw_result"]["executed_actions"][0]["source"], "reply_text")
@@ -340,7 +343,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "asr_emotion_triggered")
         self.assertEqual(result["route"], "link_3_companion_fast_path")
         self.assertIn("openclaw unavailable", result["openclaw_error"])
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion"])
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "tts", "motion"])
 
     async def test_asr_transcript_normal_text_routes_to_openclaw(self) -> None:
         gateway = FakeGateway()

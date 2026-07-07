@@ -221,6 +221,52 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
         self.assertEqual(decision.tool_calls[0].name, "xiaoan.robot.expression")
         self.assertEqual(decision.tool_calls[0].arguments["expression"], "happy")
 
+    def test_build_request_uses_empty_tools_for_work_capture_profile(self) -> None:
+        adapter = GatewayOpenClawAdapter()
+        request = adapter.build_request(OpenClawEvent(
+            type="asr.transcript",
+            text="把今天晚上七点开会加入到日程",
+            source="asr",
+            context={
+                "tool_profile": "work_capture",
+                "route_hint": {
+                    "kind": "work_capture",
+                    "tool_profile": "work_capture",
+                },
+            },
+        ))
+
+        self.assertEqual(request["tools"], [])
+
+    def test_build_request_filters_tools_for_robot_action_profile(self) -> None:
+        adapter = GatewayOpenClawAdapter()
+        request = adapter.build_request(OpenClawEvent(
+            type="asr.transcript",
+            text="小安笑一个",
+            source="asr",
+            context={
+                "tool_profile": "robot_action",
+            },
+        ))
+
+        tool_names = {item["name"] for item in request["tools"]}
+        self.assertIn("xiaoan.robot.expression", tool_names)
+        self.assertIn("xiaoan.robot.say", tool_names)
+        self.assertNotIn("xiaoan.emotion.snapshot", tool_names)
+
+    def test_explicit_adapter_tools_override_profile_filter(self) -> None:
+        adapter = GatewayOpenClawAdapter(
+            tools=[{"name": "custom.tool", "parameters": {"type": "object"}}],
+        )
+
+        request = adapter.build_request(OpenClawEvent(
+            type="asr.transcript",
+            text="记一下",
+            context={"tool_profile": "work_capture"},
+        ))
+
+        self.assertEqual(request["tools"], [{"name": "custom.tool", "parameters": {"type": "object"}}])
+
     def test_gateway_challenge_agent_response(self) -> None:
         gateway = FakeChallengeOpenClawGateway({
             "handled": True,

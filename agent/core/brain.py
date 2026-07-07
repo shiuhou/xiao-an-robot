@@ -14,6 +14,7 @@ from agent.core.context_builder import ContextBuilder
 from agent.core.gateway import RobotGateway
 from agent.core.memory import XiaoAnMemoryStore
 from agent.core.memory_recorder import MemoryRecorder
+from agent.core.event_router import openclaw_base_context_for_asr
 from agent.core.openclaw_adapter import OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.skills.companion_request import CompanionRequestSkill
@@ -159,10 +160,10 @@ class XiaoAnBrain:
                     source="asr",
                 )
 
-            base_context = {
-                "payload": payload,
-                "companion_result": companion_result,
-            }
+            base_context = openclaw_base_context_for_asr(
+                payload=payload,
+                companion_result=companion_result,
+            )
             openclaw_context = self._build_openclaw_context(
                 text=text,
                 base_context=base_context,

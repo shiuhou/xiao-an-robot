@@ -373,6 +373,67 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_event.session_id, "session-1")
         self.assertEqual(openclaw_event.context["payload"]["text"], "帮我查一下天气")
         self.assertEqual(openclaw_event.context["companion_result"]["reason"], "normal")
+        self.assertEqual(openclaw_event.context["tool_profile"], "conversation")
+        self.assertEqual(openclaw_event.context["route_hint"]["kind"], "conversation")
+
+    async def test_asr_transcript_openclaw_context_omits_audio_debug_payload(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {
+                "text": "把今天晚上七点开会加入到日程",
+                "source": "local_mic",
+                "session_id": "mic-session",
+                "timestamp_ms": 123,
+                "vad": {"speech_detected": True},
+                "asr": {"backend": "sensevoice"},
+                "audio": {
+                    "audio_path": "runtime/voice.wav",
+                    "speech_trim": {"path": "runtime/voice.trim.wav"},
+                },
+            },
+        })
+
+        context = openclaw_adapter.events[0].context
+        payload = context["payload"]
+        self.assertEqual(payload["text"], "把今天晚上七点开会加入到日程")
+        self.assertEqual(payload["source"], "local_mic")
+        self.assertEqual(payload["session_id"], "mic-session")
+        self.assertEqual(payload["timestamp_ms"], 123)
+        self.assertNotIn("vad", payload)
+        self.assertNotIn("asr", payload)
+        self.assertNotIn("audio", payload)
+        self.assertEqual(context["schema_version"], "xiaoan.assistant_capture_context.v1")
+        self.assertEqual(context["demo_intent"], "assistant_capture")
+        self.assertEqual(context["tool_profile"], "work_capture")
+        self.assertEqual(context["capture_kind_hint"], "meeting")
+
+    async def test_asr_transcript_robot_action_uses_robot_tool_profile(self) -> None:
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(handled=False),
+        )
+        brain = XiaoAnBrain(
+            gateway=FakeGateway(),
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "小安笑一个"},
+        })
+
+        context = openclaw_adapter.events[0].context
+        self.assertEqual(context["route_hint"]["kind"], "robot_action")
+        self.assertEqual(context["tool_profile"], "robot_action")
 
     async def test_openclaw_reply_text_is_executed_as_robot_say(self) -> None:
         gateway = FakeGateway()

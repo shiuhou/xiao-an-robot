@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from agent.core.event_router import tool_names_for_profile
 from agent.core.openclaw_adapter import OpenClawDecision, OpenClawEvent
 from agent.core.xiaoan_tool_manifest import tool_manifest
 
@@ -59,8 +60,31 @@ class GatewayOpenClawAdapter:
             "type": "xiaoan.event",
             "agent": self.agent,
             "event": event.to_dict(),
-            "tools": deepcopy(self.tools) if self.tools is not None else tool_manifest(),
+            "tools": self._tools_for_event(event),
         }
+
+    def _tools_for_event(self, event: OpenClawEvent) -> list[dict[str, Any]]:
+        if self.tools is not None:
+            return deepcopy(self.tools)
+
+        context = event.context if isinstance(event.context, dict) else {}
+        profile = context.get("tool_profile")
+        if not isinstance(profile, str):
+            route_hint = context.get("route_hint")
+            if isinstance(route_hint, dict):
+                profile = route_hint.get("tool_profile")
+
+        allowed_names = tool_names_for_profile(profile if isinstance(profile, str) else None)
+        full_manifest = tool_manifest()
+        if allowed_names is None:
+            return full_manifest
+
+        allowed = set(allowed_names)
+        return [
+            deepcopy(item)
+            for item in full_manifest
+            if str(item.get("name") or "") in allowed
+        ]
 
     async def _send_event(self, event: OpenClawEvent) -> dict[str, Any]:
         try:

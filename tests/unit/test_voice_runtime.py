@@ -240,6 +240,7 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 db_path=":memory:",
                 robot_ws_url="ws://example.invalid/agent",
             )
+            latest_path = Path(temp_dir) / "latest_voice.json"
             output = await voice_runtime.process_audio_file(
                 runtime,
                 str(audio_path),
@@ -247,12 +248,24 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 asr_backend="fake",
                 vad_backend="energy",
                 trim_speech=False,
+                latest_output_path=str(latest_path),
             )
+            pending = json.loads(latest_path.read_text(encoding="utf-8"))
 
         self.assertEqual(output["event_type"], "asr.transcript")
         self.assertEqual(runtime.brain.events[0]["payload"]["source"], "local_mic")
         self.assertEqual(runtime.brain.events[0]["payload"]["session_id"], "mic-test")
         self.assertEqual(runtime.latest_replies[0]["source"], "voice_runtime.local_mic")
+        self.assertEqual(pending["event_type"], "asr.transcript")
+        self.assertEqual(pending["reason"], "openclaw_pending")
+        self.assertEqual(pending["text"], "帮我查一下天气")
+
+    def test_prewarm_asr_skips_non_sensevoice_backend(self) -> None:
+        result = voice_runtime.prewarm_asr_model(asr_backend="fake")
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["skipped"])
+        self.assertEqual(result["reason"], "prewarm_only_required_for_sensevoice")
 
 
 if __name__ == "__main__":

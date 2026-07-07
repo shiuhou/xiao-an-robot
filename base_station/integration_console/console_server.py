@@ -209,6 +209,7 @@ class IntegrationConsoleApp:
         openclaw_url: str = DEFAULT_OPENCLAW_URL,
         openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
         command_sender: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        prewarm_voice: bool = False,
     ):
         self.host = host
         self.port = int(port)
@@ -221,6 +222,10 @@ class IntegrationConsoleApp:
         self.last_audio_sent_at = 0.0
         self.command_sender = command_sender
         self.link_processes: dict[str, subprocess.Popen[Any]] = {}
+        self.voice_prewarm_process: subprocess.Popen[Any] | None = None
+        self.voice_prewarm_started_at: str | None = None
+        if prewarm_voice:
+            self.start_voice_prewarm()
 
     @property
     def event_dir(self) -> Path:
@@ -262,6 +267,7 @@ class IntegrationConsoleApp:
             "ws_state_exists": (self.runtime_dir / "ws_state.json").exists(),
             "latest_jpg_exists": (self.runtime_dir / "latest.jpg").exists(),
             "audio_stats_exists": (self.runtime_dir / "audio_stats.json").exists(),
+            "voice_prewarm": self.voice_prewarm_state(),
         }
 
     def audio_stats(self) -> dict[str, Any]:
@@ -359,6 +365,70 @@ class IntegrationConsoleApp:
             for link in ("link1", "link2", "link3")
         }
 
+    def voice_prewarm_command(self) -> list[str]:
+        return [
+            sys.executable,
+            "-m",
+            "base_station.monitor.voice_runtime",
+            "--prewarm-asr",
+            "--asr-backend",
+            self._env_text("XIAOAN_PREWARM_ASR_BACKEND", "sensevoice"),
+            "--asr-model-path",
+            self._env_text("XIAOAN_PREWARM_ASR_MODEL_PATH", "base_station/models/sensevoice-small"),
+            "--asr-device",
+            self._env_text("XIAOAN_PREWARM_ASR_DEVICE", "cpu"),
+            "--asr-language",
+            self._env_text("XIAOAN_PREWARM_ASR_LANGUAGE", "zh"),
+            "--audio-output-dir",
+            str(self.runtime_dir / "voice_runtime_audio"),
+        ]
+
+    def start_voice_prewarm(self) -> dict[str, Any]:
+        if self.voice_prewarm_process is not None and self.voice_prewarm_process.poll() is None:
+            return {"ok": True, "already_running": True, "state": self.voice_prewarm_state()}
+        command = self.voice_prewarm_command()
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / "voice_prewarm.log"
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            process = subprocess.Popen(
+                command,
+                cwd=_repo_root(),
+                env=dict(os.environ),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        self.voice_prewarm_process = process
+        self.voice_prewarm_started_at = _now_iso()
+        return {"ok": True, "state": self.voice_prewarm_state()}
+
+    def voice_prewarm_state(self) -> dict[str, Any]:
+        log_path = self.process_log_dir / "voice_prewarm.log"
+        process = self.voice_prewarm_process
+        if process is None:
+            return {
+                "managed": False,
+                "running": False,
+                "status": "disabled",
+                "pid": None,
+                "returncode": None,
+                "started_at": None,
+                "log_path": str(log_path),
+            }
+        returncode = process.poll()
+        return {
+            "managed": True,
+            "running": returncode is None,
+            "status": "running" if returncode is None else "exited",
+            "pid": process.pid,
+            "returncode": returncode,
+            "started_at": self.voice_prewarm_started_at,
+            "log_path": str(log_path),
+        }
+
     def link_process_state(self, link: str) -> dict[str, Any]:
         process = self.link_processes.get(link)
         log_path = self.process_log_dir / f"{link}.log"
@@ -419,6 +489,7 @@ class IntegrationConsoleApp:
                 self._env_text(f"XIAOAN_{link.upper()}_ASR_LANGUAGE", "zh"),
                 "--latest-output",
                 str(self.link_voice_output_path(link)),
+                "--once",
                 *(["--disable-companion-fast-path"] if link == "link1" else []),
                 "--verbose",
             ]
@@ -452,6 +523,14 @@ class IntegrationConsoleApp:
             return command
         raise ValueError(f"unsupported_link:{link}")
 
+    def link_environment(self, link: str) -> dict[str, str]:
+        env = dict(os.environ)
+        if link in {"link1", "link3"}:
+            env.setdefault("XIAO_AN_OPENCLAW_BACKEND", "gateway")
+            env.setdefault("XIAO_AN_OPENCLAW_GATEWAY_URL", self.openclaw_url)
+            env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
+        return env
+
     def start_link(self, body: dict[str, Any]) -> dict[str, Any]:
         link = str(body.get("link") or "").strip()
         try:
@@ -469,6 +548,7 @@ class IntegrationConsoleApp:
             process = subprocess.Popen(
                 command,
                 cwd=_repo_root(),
+                env=self.link_environment(link),
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
@@ -656,6 +736,14 @@ class IntegrationConsoleApp:
         link3_output = self._display_voice_output(
             link3_voice.get("output") if isinstance(link3_voice.get("output"), dict) else {}
         )
+        link1_phase = self._voice_phase(
+            link1_voice.get("output") if isinstance(link1_voice.get("output"), dict) else {},
+            processes.get("link1") if isinstance(processes.get("link1"), dict) else {},
+        )
+        link3_phase = self._voice_phase(
+            link3_voice.get("output") if isinstance(link3_voice.get("output"), dict) else {},
+            processes.get("link3") if isinstance(processes.get("link3"), dict) else {},
+        )
         link1_asr_text = self._voice_text(link1_output) or str(demo1.get("transcript") or "").strip()
         link3_asr_text = self._voice_text(link3_output)
         link1_openclaw_text = self._voice_reply_text(link1_output)
@@ -691,6 +779,16 @@ class IntegrationConsoleApp:
         link1_running = bool((processes.get("link1") or {}).get("running"))
         link2_running = bool((processes.get("link2") or {}).get("running"))
         link3_running = bool((processes.get("link3") or {}).get("running"))
+        link1_completed_once = bool(
+            (processes.get("link1") or {}).get("status") == "exited"
+            and (processes.get("link1") or {}).get("returncode") == 0
+            and link1_voice.get("ok")
+        )
+        link3_completed_once = bool(
+            (processes.get("link3") or {}).get("status") == "exited"
+            and (processes.get("link3") or {}).get("returncode") == 0
+            and link3_voice.get("ok")
+        )
         link1_voice_age = link1_voice.get("age_ms")
         link3_voice_age = link3_voice.get("age_ms")
         link1_voice_fresh = bool(
@@ -705,14 +803,14 @@ class IntegrationConsoleApp:
         )
         link1_audio = self._voice_audio_info(link1_output)
         link3_audio = self._voice_audio_info(link3_output)
-        link1_audio_fresh = link1_running and (link1_voice_fresh or _fresh(link1_audio, 30000))
-        link3_audio_fresh = link3_running and (link3_voice_fresh or _fresh(link3_audio, 30000))
+        link1_audio_fresh = link1_voice_fresh or _fresh(link1_audio, 30000)
+        link3_audio_fresh = link3_voice_fresh or _fresh(link3_audio, 30000)
         camera_fresh = _fresh(latest_image, FRESH_IMAGE_MS)
         visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
         executed_actions = execution.get("executed_actions") if isinstance(execution.get("executed_actions"), list) else []
 
         link1_steps = [
-            _step("voice runtime", link1_running, (processes.get("link1") or {}).get("pid")),
+            _step("voice runtime", link1_running or link1_completed_once, (processes.get("link1") or {}).get("pid")),
             _step("麦克风", link1_audio_fresh, link1_audio.get("updated_at") or link1_voice.get("updated_at")),
             _step("ASR 文本", bool(link1_asr_text), link1_asr_text),
             _step("OpenClaw 回复", bool(link1_openclaw_text), link1_openclaw_text),
@@ -726,7 +824,7 @@ class IntegrationConsoleApp:
             _step("视觉状态文件", bool(visual.get("ok")), visual.get("reason")),
         ]
         link3_steps = [
-            _step("voice runtime", link3_running, (processes.get("link3") or {}).get("pid")),
+            _step("voice runtime", link3_running or link3_completed_once, (processes.get("link3") or {}).get("pid")),
             _step("麦克风", link3_audio_fresh, link3_audio.get("updated_at") or link3_voice.get("updated_at")),
             _step("ASR 文本", bool(link3_asr_text), link3_asr_text),
             _step("秒级机器人动作/语音", robot_execution_ok or bool(executed_actions), self._robot_execution_summary(robot)),
@@ -740,7 +838,7 @@ class IntegrationConsoleApp:
                 "latest_image": latest_image,
             },
             "link1": {
-                "status": self._status_from_steps(link1_steps) if link1_running else "idle",
+                "status": self._status_from_steps(link1_steps) if (link1_running or link1_completed_once) else "idle",
                 "done": all(step["ok"] for step in link1_steps),
                 "steps": link1_steps,
                 "asr_text": link1_asr_text,
@@ -748,6 +846,7 @@ class IntegrationConsoleApp:
                 "dashboard_text": dashboard_text,
                 "robot_execution": self._robot_execution_summary(robot),
                 "voice": link1_voice,
+                "voice_phase": link1_phase,
             },
             "link2": {
                 "status": self._status_from_steps(link2_steps) if link2_running else "idle",
@@ -756,13 +855,14 @@ class IntegrationConsoleApp:
                 "visual_freshness": visual.get("freshness"),
             },
             "link3": {
-                "status": self._status_from_steps(link3_steps) if link3_running else "idle",
+                "status": self._status_from_steps(link3_steps) if (link3_running or link3_completed_once) else "idle",
                 "done": all(step["ok"] for step in link3_steps),
                 "steps": link3_steps,
                 "asr_text": link3_asr_text,
                 "fast_response": self._robot_execution_summary(robot),
                 "follow_up_text": spoken_text or link3_openclaw_text,
                 "voice": link3_voice,
+                "voice_phase": link3_phase,
             },
         }
 
@@ -799,6 +899,52 @@ class IntegrationConsoleApp:
             if isinstance(previous, dict):
                 return previous
         return output
+
+    @staticmethod
+    def _voice_phase(output: dict[str, Any], process: dict[str, Any]) -> dict[str, Any]:
+        event_type = output.get("event_type")
+        reason = output.get("reason")
+        if event_type == "voice.recording":
+            return {
+                "phase": "recording",
+                "mic": "on",
+                "label": "MIC ON",
+                "detail": "正在收音",
+            }
+        if event_type == "voice.runtime_started":
+            return {
+                "phase": "starting",
+                "mic": "off",
+                "label": "MIC OFF",
+                "detail": "启动录音 runtime",
+            }
+        if event_type == "asr.transcript" and reason == "openclaw_pending":
+            return {
+                "phase": "openclaw_pending",
+                "mic": "off",
+                "label": "MIC OFF",
+                "detail": "ASR 完成，等待 OpenClaw",
+            }
+        if event_type == "asr.transcript":
+            return {
+                "phase": "done",
+                "mic": "off",
+                "label": "MIC OFF",
+                "detail": "本轮录音已结束",
+            }
+        if process.get("running"):
+            return {
+                "phase": "processing",
+                "mic": "off",
+                "label": "MIC OFF",
+                "detail": "处理中",
+            }
+        return {
+            "phase": "idle",
+            "mic": "off",
+            "label": "MIC OFF",
+            "detail": "空闲",
+        }
 
     @staticmethod
     def _voice_reply_text(output: dict[str, Any]) -> str:
@@ -1452,6 +1598,7 @@ def create_server(
     static_dir: str | Path = DEFAULT_STATIC_DIR,
     openclaw_url: str = DEFAULT_OPENCLAW_URL,
     openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
+    prewarm_voice: bool = False,
     verbose: bool = False,
 ) -> ThreadingHTTPServer:
     app = IntegrationConsoleApp(
@@ -1462,6 +1609,7 @@ def create_server(
         static_dir=static_dir,
         openclaw_url=openclaw_url,
         openclaw_workspace=openclaw_workspace,
+        prewarm_voice=prewarm_voice,
     )
     handler = make_handler(app, verbose=verbose)
     return ThreadingHTTPServer((host, int(port)), handler)
@@ -1476,6 +1624,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--static-dir", default=str(DEFAULT_STATIC_DIR))
     parser.add_argument("--openclaw-url", default=DEFAULT_OPENCLAW_URL)
     parser.add_argument("--openclaw-workspace", default=str(DEFAULT_OPENCLAW_WORKSPACE))
+    parser.add_argument(
+        "--no-prewarm-voice",
+        action="store_true",
+        help="Disable startup ASR prewarm for the local microphone runtime.",
+    )
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -1490,6 +1643,7 @@ def main(argv: list[str] | None = None) -> int:
         static_dir=args.static_dir,
         openclaw_url=args.openclaw_url,
         openclaw_workspace=args.openclaw_workspace,
+        prewarm_voice=not args.no_prewarm_voice,
         verbose=args.verbose,
     )
     try:

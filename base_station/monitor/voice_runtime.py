@@ -9,13 +9,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import struct
 import sys
 import time
+import wave
 from pathlib import Path
 from typing import Any, TextIO
 
 from base_station.api.runtime import ApiRuntime
 from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output
+from base_station.perception.asr import SenseVoiceASRBackend
 from base_station.perception.mic_capture import choose_input_device, list_input_devices, record_wav, recording_sample_rate
 
 
@@ -83,6 +86,22 @@ def _recording_status(
     return status
 
 
+def _openclaw_pending_output(text: str, event: dict) -> dict:
+    return build_voice_output(
+        text,
+        event,
+        {
+            "handled": False,
+            "route": "voice_runtime.openclaw_pending",
+            "reason": "openclaw_pending",
+            "trigger_result": None,
+            "display_text": "",
+            "spoken_text": "",
+            "reply_text": "",
+        },
+    )
+
+
 async def process_text(
     runtime: Any,
     text: str,
@@ -129,6 +148,7 @@ async def process_audio_file(
     speech_trim_start_padding_ms: int | None = 250,
     speech_trim_end_padding_ms: int | None = 800,
     disable_companion_fast_path: bool = False,
+    latest_output_path: str | None = None,
 ) -> dict:
     """Run one microphone WAV through VAD/ASR and then link-1 OpenClaw routing."""
 
@@ -157,6 +177,7 @@ async def process_audio_file(
     event["payload"]["session_id"] = session_id
     if disable_companion_fast_path:
         event["payload"]["disable_companion_fast_path"] = True
+    _write_latest_output(latest_output_path, _openclaw_pending_output(transcript, event))
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
     _publish_latest_reply(
@@ -342,6 +363,7 @@ async def run_local_mic_loop(
                 speech_trim_start_padding_ms=speech_trim_start_padding_ms,
                 speech_trim_end_padding_ms=speech_trim_end_padding_ms,
                 disable_companion_fast_path=disable_companion_fast_path,
+                latest_output_path=latest_output_path,
             )
             if output.get("event_type") == "asr.transcript":
                 handled_count += 1
@@ -446,6 +468,65 @@ def _compact_output(output: dict) -> dict:
     return compact
 
 
+def _write_silence_wav(path: Path, *, sample_rate: int = 16000, duration_seconds: float = 0.25) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame_count = max(1, int(sample_rate * duration_seconds))
+    samples = struct.pack("<" + "h" * frame_count, *([0] * frame_count))
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(samples)
+
+
+def prewarm_asr_model(
+    *,
+    asr_backend: str = "sensevoice",
+    asr_model_path: str | None = "base_station/models/sensevoice-small",
+    asr_device: str = "cpu",
+    asr_language: str | None = None,
+    asr_use_itn: bool = True,
+    audio_output_dir: str = "runtime/voice_runtime_audio",
+) -> dict:
+    started = time.monotonic()
+    if asr_backend != "sensevoice":
+        return {
+            "ok": True,
+            "skipped": True,
+            "backend": asr_backend,
+            "reason": "prewarm_only_required_for_sensevoice",
+            "duration_ms": int((time.monotonic() - started) * 1000),
+        }
+
+    wav_path = Path(audio_output_dir) / "prewarm_silence.wav"
+    _write_silence_wav(wav_path)
+    backend = SenseVoiceASRBackend(
+        model_dir=asr_model_path,
+        device=asr_device,
+        language=asr_language,
+        use_itn=asr_use_itn,
+    )
+    result = backend.transcribe(
+        {
+            "source": "prewarm",
+            "audio_path": str(wav_path),
+            "sample_rate": 16000,
+            "duration_ms": 250,
+            "channels": 1,
+        }
+    )
+    return {
+        "ok": True,
+        "backend": "sensevoice",
+        "model_path": asr_model_path,
+        "device": asr_device,
+        "language": asr_language,
+        "audio_path": str(wav_path),
+        "asr": result,
+        "duration_ms": int((time.monotonic() - started) * 1000),
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Xiao An's resident voice runtime.")
     parser.add_argument(
@@ -460,6 +541,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="Print full JSON output for each transcript.")
     parser.add_argument("--no-prompt", action="store_true", help="Disable the interactive prompt.")
     parser.add_argument("--list-devices", action="store_true", help="List local microphone input devices and exit.")
+    parser.add_argument("--prewarm-asr", action="store_true", help="Load the configured ASR model once and exit.")
     parser.add_argument("--device", default=None, help="Local microphone device index, id, or name substring.")
     parser.add_argument("--duration", type=float, default=5.0, help="Fixed local_mic capture window in seconds.")
     parser.add_argument("--sample-rate", type=int, default=16000)
@@ -500,6 +582,17 @@ async def main(args: argparse.Namespace | None = None) -> int:
                 f"(backend={device.get('backend')}, inputs={device['max_input_channels']}, "
                 f"default_rate={device['default_sample_rate']:.0f})"
             )
+        return 0
+    if args.prewarm_asr:
+        result = prewarm_asr_model(
+            asr_backend=args.asr_backend,
+            asr_model_path=args.asr_model_path,
+            asr_device=args.asr_device,
+            asr_language=args.asr_language,
+            asr_use_itn=args.asr_use_itn,
+            audio_output_dir=args.audio_output_dir,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.source == "local_mic":
         await run_local_mic_loop(

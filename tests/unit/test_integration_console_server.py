@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from base_station.integration_console.console_server import (
     IntegrationConsoleApp,
@@ -23,6 +24,16 @@ class FakeRunningProcess:
 
     def poll(self) -> None:
         return None
+
+
+class FakeExitedProcess:
+    pid = 12345
+
+    def __init__(self, returncode: int = 0) -> None:
+        self.returncode = returncode
+
+    def poll(self) -> int:
+        return self.returncode
 
 
 class IntegrationConsoleHttpTest(unittest.TestCase):
@@ -223,10 +234,12 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
                 runtime_dir=runtime,
                 openclaw_workspace=workspace,
             )
-            app.link_processes["link1"] = FakeRunningProcess()
+            app.link_processes["link1"] = FakeExitedProcess(0)
             state = app.state()
 
         self.assertEqual(state["links"]["link1"]["status"], "complete")
+        self.assertFalse(state["processes"]["link1"]["running"])
+        self.assertEqual(state["processes"]["link1"]["returncode"], 0)
         self.assertEqual(state["links"]["link1"]["asr_text"], "小安一分钟后提醒我喝水")
         self.assertEqual(state["links"]["link1"]["openclaw_text"], "一分钟后提醒你喝水。")
 
@@ -301,11 +314,30 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("--enable-vlm-gate", link2)
         self.assertIn("--latest-output", link1)
         self.assertIn("--asr-language", link1)
+        self.assertIn("--once", link1)
+        self.assertIn("--once", link3)
+        self.assertEqual(link1[link1.index("--duration") + 1], "6.0")
+        self.assertEqual(link3[link3.index("--duration") + 1], "6.0")
+        self.assertNotIn("--once", link2)
         self.assertIn("--disable-companion-fast-path", link1)
         self.assertNotIn("--disable-companion-fast-path", link3)
         self.assertIn("openface_ov", link2)
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
+
+    def test_voice_link_environment_defaults_to_openclaw_gateway(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
+            app = IntegrationConsoleApp(
+                runtime_dir=temp_dir,
+                openclaw_url="ws://127.0.0.1:18789",
+            )
+            link1_env = app.link_environment("link1")
+            link2_env = app.link_environment("link2")
+
+        self.assertEqual(link1_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
+        self.assertEqual(link1_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
+        self.assertEqual(link1_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
+        self.assertNotIn("XIAO_AN_OPENCLAW_BACKEND", link2_env)
 
     def test_link_state_displays_previous_voice_result_while_recording(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -334,6 +366,36 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
 
         self.assertEqual(state["links"]["link1"]["asr_text"], "小安一分钟后提醒我喝水")
         self.assertEqual(state["links"]["link1"]["openclaw_text"], "一分钟后提醒你喝水。")
+        self.assertEqual(state["links"]["link1"]["voice_phase"]["mic"], "on")
+        self.assertEqual(state["links"]["link1"]["voice_phase"]["phase"], "recording")
+
+    def test_link_state_shows_asr_text_while_openclaw_is_pending(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            latest_dir = runtime / "integration_console" / "link1"
+            latest_dir.mkdir(parents=True)
+            (latest_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "asr.transcript",
+                        "reason": "openclaw_pending",
+                        "text": "小安一分钟后提醒我喝水",
+                        "reply_text": "",
+                        "display_text": "",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+            app.link_processes["link1"] = FakeRunningProcess()
+
+            state = app.state()
+
+        self.assertEqual(state["links"]["link1"]["asr_text"], "小安一分钟后提醒我喝水")
+        self.assertEqual(state["links"]["link1"]["openclaw_text"], "")
+        self.assertEqual(state["links"]["link1"]["voice_phase"]["mic"], "off")
+        self.assertEqual(state["links"]["link1"]["voice_phase"]["phase"], "openclaw_pending")
 
     def test_start_link_rejects_unknown_link_without_shell(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -166,6 +166,10 @@ python -m base_station.integration_console.console_server --openclaw-url ws://12
 
 `decision-only` 工具只验证 OpenClaw 决策路径，不发机器人动作。`send to robot` 开关默认关闭，避免把 Agent 决策误转成硬件动作。
 
+## 6.1 链路运行模式
+
+链路一和链路三的“运行一次”会启动 `voice_runtime --source local_mic --once`。它只录一个固定窗口，默认 6 秒，ASR 文本生成后会立刻写入控制台，后续再等待 OpenClaw/机器人转发；本轮结束后停止收音并保留结果，避免下一轮录音覆盖上一轮 ASR 文本。控制台会给这两个子进程默认注入 `XIAO_AN_OPENCLAW_BACKEND=gateway`、`XIAO_AN_OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789`、`XIAO_AN_OPENCLAW_AGENT=xiaoan-runtime`。控制台启动时会后台预热一次本地 ASR 模型，预热日志在 `runtime/integration_console/process_logs/voice_prewarm.log`，如需关闭可加 `--no-prewarm-voice`。链路二仍是持续视觉 observer，需要手动关闭。
+
 ## 7. 场景脚本
 
 | 场景 | 行为 |

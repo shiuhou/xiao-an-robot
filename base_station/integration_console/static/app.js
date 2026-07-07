@@ -214,14 +214,15 @@ function renderRunStatus(key, link) {
   const process = state?.processes?.[key] || {};
   const running = !!process.running;
   const status = link?.status || "idle";
+  const completedOnce = !running && process.status === "exited" && process.returncode === 0 && link?.done;
   const text = running
     ? (status === "complete" ? "COMPLETE" : status.toUpperCase())
-    : (process.status === "exited" ? "EXITED" : "OFF");
+    : (completedOnce ? "DONE" : (process.status === "exited" ? "EXITED" : "OFF"));
   const switchNode = $(`${key}RunSwitch`);
   if (switchNode) switchNode.checked = running;
   statusPill(
     $(`${key}Status`),
-    process.status === "exited" ? "error" : chainStatusClass(status, running),
+    process.status === "exited" && !completedOnce ? "error" : chainStatusClass(status, running || completedOnce),
     text,
   );
 }
@@ -238,6 +239,8 @@ function renderLinks() {
   const link3 = links.link3 || {};
   const link1Voice = link1.voice || {};
   const link3Voice = link3.voice || {};
+  const link1Phase = link1.voice_phase || {};
+  const link3Phase = link3.voice_phase || {};
   const link1Audio = link1Voice.output?.event?.payload?.audio || {};
   const link3Audio = link3Voice.output?.event?.payload?.audio || {};
 
@@ -249,6 +252,8 @@ function renderLinks() {
   renderChainSteps("link3Steps", link3.steps || []);
 
   kv("link1MicKv", [
+    ["mic", link1Phase.label || "-"],
+    ["阶段", link1Phase.detail || link1Phase.phase || "-"],
     ["runtime", state?.processes?.link1?.running ? "running" : "off"],
     ["latest output", link1Voice.ok],
     ["output age", msAge(link1Voice.age_ms)],
@@ -268,6 +273,8 @@ function renderLinks() {
   $("link1RobotJson").textContent = pretty(link1.robot_execution);
 
   kv("link3MicKv", [
+    ["mic", link3Phase.label || "-"],
+    ["阶段", link3Phase.detail || link3Phase.phase || "-"],
     ["runtime", state?.processes?.link3?.running ? "running" : "off"],
     ["latest output", link3Voice.ok],
     ["output age", msAge(link3Voice.age_ms)],
@@ -535,7 +542,8 @@ function bindEvents() {
         node.checked = !start;
         toast(`失败: ${result.error || "unknown"}`);
       } else {
-        toast(start ? `${key} runtime 已启动` : `${key} runtime 已停止`);
+        const oneShot = key === "link1" || key === "link3";
+        toast(start ? `${key} ${oneShot ? "单次采集" : "runtime"}已启动` : `${key} runtime 已停止`);
       }
       await refreshState();
     });

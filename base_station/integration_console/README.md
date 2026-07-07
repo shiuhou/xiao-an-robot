@@ -37,11 +37,11 @@ http://<DK2500-IP>:8090/console
 ## Link Pages
 
 - `相机`：只显示 `runtime/latest.jpg`，用于确认机器人相机连接和图像更新时间。
-- `链路一`：启动/停止固定的 `voice_runtime --source local_mic`，观察基站麦克风、ASR 文本、OpenClaw 回复、基站屏幕更新和机器人执行提醒。运行时最新输出写到 `runtime/integration_console/link1/latest_voice.json`。
+- `链路一`：单次启动固定的 `voice_runtime --source local_mic --once`，收完一个固定窗口后停止收音，观察基站麦克风、ASR 文本、OpenClaw 回复、基站屏幕更新和机器人执行提醒。运行时最新输出写到 `runtime/integration_console/link1/latest_voice.json`。
 - `链路二`：启动/停止固定的 `emotion_runtime --source ws_video_observer`，默认使用 `openface_ov` CV 后端，展示 ws_video 画面、OpenFace/Gate/VLM/Fusion 状态。
-- `链路三`：启动/停止固定的 `voice_runtime --source local_mic`，观察基站麦克风、ASR 文本、机器人秒级动作/语音响应，以及后续 OpenClaw 关怀语音。运行时最新输出写到 `runtime/integration_console/link3/latest_voice.json`。
+- `链路三`：单次启动固定的 `voice_runtime --source local_mic --once`，收完一个固定窗口后停止收音，观察基站麦克风、ASR 文本、机器人秒级动作/语音响应，以及后续 OpenClaw 关怀语音。运行时最新输出写到 `runtime/integration_console/link3/latest_voice.json`。
 
-每个链路页的“运行模式”开关只启动/停止控制台白名单里的固定 runtime，不接受浏览器传入 shell 或任意命令。关闭链路只停止控制台自己启动的 runtime，不停止 `base_station.ws_server.server`，也不清空 runtime 文件。
+每个链路页的开关只启动/停止控制台白名单里的固定 runtime，不接受浏览器传入 shell 或任意命令。链路一和链路三默认单次采集，固定收音窗口默认 6 秒，避免连续收音覆盖上一轮 ASR 结果；它们的子进程默认使用 OpenClaw Gateway `ws://127.0.0.1:18789` / `xiaoan-runtime`，不用额外手动 export。控制台启动时会后台预热一次本地 ASR 模型，预热日志在 `runtime/integration_console/process_logs/voice_prewarm.log`，如需关闭可加 `--no-prewarm-voice`。关闭链路只停止控制台自己启动的 runtime，不停止 `base_station.ws_server.server`，也不清空 runtime 文件。
 
 ## Safety
 

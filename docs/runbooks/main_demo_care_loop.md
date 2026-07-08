@@ -36,7 +36,7 @@ but the public demo should not depend on the robot microphone.
 
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
-$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 $env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```

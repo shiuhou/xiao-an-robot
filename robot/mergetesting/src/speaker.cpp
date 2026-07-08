@@ -6,6 +6,7 @@
 #if MERGETEST_ENABLE_SPEAKER
 
 #include <driver/i2s.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <freertos/task.h>
@@ -24,6 +25,9 @@
 #endif
 #ifndef MERGETEST_SPEAKER_STREAM_GAIN
 #define MERGETEST_SPEAKER_STREAM_GAIN 1
+#endif
+#ifndef MERGETEST_SPEAKER_BUFFERED_STREAM
+#define MERGETEST_SPEAKER_BUFFERED_STREAM 0
 #endif
 
 #if MERGETEST_SPEAKER_TTS_EMBEDDED_PHRASE
@@ -70,6 +74,9 @@ TaskHandle_t gTaskHandle = nullptr;
 TaskHandle_t gPcmTaskHandle = nullptr;
 QueueHandle_t gPcmQueue = nullptr;
 size_t gPcmBufferLen = 0;
+uint8_t* gBufferedPcm = nullptr;
+size_t gBufferedPcmLen = 0;
+size_t gBufferedPcmCap = 0;
 char gTaskSound[32] = {};
 char gTaskText[96] = {};
 portMUX_TYPE gPlaybackResultMux = portMUX_INITIALIZER_UNLOCKED;
@@ -365,6 +372,15 @@ void resetPcmBuffer() {
   gPcmBufferLen = 0;
 }
 
+void resetBufferedPcm() {
+  if (gBufferedPcm) {
+    heap_caps_free(gBufferedPcm);
+  }
+  gBufferedPcm = nullptr;
+  gBufferedPcmLen = 0;
+  gBufferedPcmCap = 0;
+}
+
 void finishPcmPlayback() {
   if (!gReady) {
     return;
@@ -389,6 +405,53 @@ void closePcmQueue() {
   if (queue) {
     vQueueDelete(queue);
   }
+}
+
+bool reserveBufferedPcm(size_t required) {
+  if (required <= gBufferedPcmCap) {
+    return true;
+  }
+  size_t nextCap = gBufferedPcmCap ? gBufferedPcmCap : 8192;
+  while (nextCap < required) {
+    nextCap *= 2;
+  }
+
+  uint8_t* next = nullptr;
+  if (gBufferedPcm) {
+    next = static_cast<uint8_t*>(heap_caps_realloc(gBufferedPcm, nextCap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!next) {
+      next = static_cast<uint8_t*>(heap_caps_realloc(gBufferedPcm, nextCap, MALLOC_CAP_8BIT));
+    }
+  } else {
+    next = static_cast<uint8_t*>(heap_caps_malloc(nextCap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!next) {
+      next = static_cast<uint8_t*>(heap_caps_malloc(nextCap, MALLOC_CAP_8BIT));
+    }
+  }
+  if (!next) {
+    LOGE(
+        "Speaker",
+        "buffered pcm alloc failed required=%u cap=%u",
+        static_cast<unsigned>(required),
+        static_cast<unsigned>(nextCap));
+    return false;
+  }
+  gBufferedPcm = next;
+  gBufferedPcmCap = nextCap;
+  return true;
+}
+
+bool appendBufferedPcm(const uint8_t* pcm, size_t len) {
+  if (!pcm || len == 0) {
+    return true;
+  }
+  const size_t required = gBufferedPcmLen + len;
+  if (!reserveBufferedPcm(required)) {
+    return false;
+  }
+  memcpy(gBufferedPcm + gBufferedPcmLen, pcm, len);
+  gBufferedPcmLen = required;
+  return true;
 }
 
 bool enqueuePcmChunk(const uint8_t* pcm, size_t len) {
@@ -456,6 +519,46 @@ void pcmStreamTask(void* arg) {
   gPcmTaskHandle = nullptr;
   storeTtsPlaybackResult(ok, static_cast<uint32_t>(playedBytes), millis() - startedMs);
   LOGI("Speaker", "pcm stream task done ok=%s played_bytes=%u", ok ? "true" : "false", static_cast<unsigned>(playedBytes));
+  vTaskDelete(nullptr);
+}
+
+void pcmBufferedPlaybackTask(void* arg) {
+  (void)arg;
+  const uint32_t startedMs = millis();
+  const size_t len = gBufferedPcmLen;
+  uint8_t* pcm = gBufferedPcm;
+  gBufferedPcm = nullptr;
+  gBufferedPcmLen = 0;
+  gBufferedPcmCap = 0;
+
+  uint32_t bytesWritten = 0;
+  bool ok = true;
+  if (!ensureSpeakerReady()) {
+    ok = false;
+  } else {
+    ok = writeMonoPcmS16Le(
+        pcm,
+        len,
+        PCM_WRITE_TIMEOUT_TICKS,
+        MERGETEST_SPEAKER_STREAM_GAIN,
+        &bytesWritten);
+    finishPcmPlayback();
+    releaseSpeakerI2S();
+  }
+  if (pcm) {
+    heap_caps_free(pcm);
+  }
+  gPcmStreaming = false;
+  gPlaying = false;
+  gPcmTaskHandle = nullptr;
+  storeTtsPlaybackResult(ok, bytesWritten, millis() - startedMs);
+  LOGI(
+      "Speaker",
+      "pcm buffered playback done ok=%s buffered_bytes=%u bytes_written=%lu duration_ms=%lu",
+      ok ? "true" : "false",
+      static_cast<unsigned>(len),
+      static_cast<unsigned long>(bytesWritten),
+      static_cast<unsigned long>(millis() - startedMs));
   vTaskDelete(nullptr);
 }
 
@@ -605,8 +708,11 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
   }
 
   resetPcmBuffer();
+  resetBufferedPcm();
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
+#if MERGETEST_SPEAKER_BUFFERED_STREAM
+#else
   if (!ensureSpeakerReady()) {
     LOGE("Speaker", "pcm stream speaker init failed");
     return false;
@@ -617,11 +723,14 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
     return false;
   }
 #endif
+#endif
 
   gPcmStreaming = true;
   gPlaying = true;
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
+#if MERGETEST_SPEAKER_BUFFERED_STREAM
+#else
   const BaseType_t created = xTaskCreate(
       pcmStreamTask,
       "speaker_pcm",
@@ -637,13 +746,15 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
     return false;
   }
 #endif
+#endif
 
   LOGI(
       "Speaker",
-      "pcm stream begin sample_rate=%lu channels=%u drain_only=%u",
+      "pcm stream begin sample_rate=%lu channels=%u drain_only=%u buffered=%u",
       static_cast<unsigned long>(sampleRate),
       channels,
-      static_cast<unsigned>(MERGETEST_SPEAKER_PCM_DRAIN_ONLY));
+      static_cast<unsigned>(MERGETEST_SPEAKER_PCM_DRAIN_ONLY),
+      static_cast<unsigned>(MERGETEST_SPEAKER_BUFFERED_STREAM));
   return true;
 }
 
@@ -659,6 +770,8 @@ bool speaker_write_pcm_chunk(const uint8_t* pcm, size_t len) {
 
 #if MERGETEST_SPEAKER_PCM_DRAIN_ONLY
   return true;
+#elif MERGETEST_SPEAKER_BUFFERED_STREAM
+  return appendBufferedPcm(pcm, len);
 #else
   return enqueuePcmChunk(pcm, len);
 #endif
@@ -674,6 +787,21 @@ void speaker_end_pcm_stream() {
 #if MERGETEST_SPEAKER_PCM_DRAIN_ONLY
   resetPcmBuffer();
   gPlaying = false;
+#elif MERGETEST_SPEAKER_BUFFERED_STREAM
+  const BaseType_t created = xTaskCreate(
+      pcmBufferedPlaybackTask,
+      "speaker_pcm_buf",
+      4096,
+      nullptr,
+      1,
+      &gPcmTaskHandle);
+  if (created != pdPASS) {
+    LOGE("Speaker", "pcm buffered playback task create failed");
+    resetBufferedPcm();
+    resetPcmBuffer();
+    gPlaying = false;
+    storeTtsPlaybackResult(false, 0, 0);
+  }
 #else
   if (!enqueuePcmEnd()) {
     finishPcmPlayback();
@@ -689,6 +817,7 @@ void speaker_stop() {
   if (gPcmStreaming) {
     gPcmStreaming = false;
     resetPcmBuffer();
+    resetBufferedPcm();
     finishPcmPlayback();
     closePcmQueue();
     return;

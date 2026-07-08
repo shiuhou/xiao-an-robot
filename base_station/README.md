@@ -22,7 +22,7 @@ The base station is the local bridge between the ESP32-S3 robot and OpenClaw/Age
 Run from the repository root:
 
 ```powershell
-$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 python -m base_station.ws_server.server
 ```
 
@@ -54,8 +54,8 @@ Expected robot behavior:
 - `/agent` accepts local Agent/tool commands and forwards them to the robot.
 - streamed `audio.play_tts` defaults to `runtime/tts_probe/edge_tts_to_wav.py`
   on Linux when `XIAOAN_TTS_COMMAND` is not set. Use `XIAOAN_CONTROL_TTS_STREAM=0`
-  to force the old metadata/mock path. The current P0 baseline uses
-  `XIAOAN_TTS_TARGET_PEAK=800`.
+  to force the old metadata/mock path. The current buffered speaker baseline
+  uses `XIAOAN_TTS_TARGET_PEAK=500`.
 
 ## Boundaries
 

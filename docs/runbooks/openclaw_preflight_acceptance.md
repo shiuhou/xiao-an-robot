@@ -17,7 +17,7 @@ Start the base station in streamed TTS mode:
 
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
-$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 $env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
@@ -28,6 +28,7 @@ Current COM23 speaker firmware baseline:
 env: mergetesting_care_demo_face240_spoken_tts_din41
 speaker pins: BCLK=39, LRC=40, DIN=41
 stream gain: MERGETEST_SPEAKER_STREAM_GAIN=32
+stream mode: full PCM buffered before I2S playback
 device_id: xiaoan_robot_01
 ```
 
@@ -187,7 +188,7 @@ Stop and debug before connecting OpenClaw if any of these happen:
 
 - TTS has `accepted` but no `audio.playback_done`.
 - TTS is audible but words are not understandable after setting
-  `XIAOAN_TTS_TARGET_PEAK=800` and
+  `XIAOAN_TTS_TARGET_PEAK=500` and
   `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`.
 - A command returns `agent.ack ok=false`.
 - Motion starts but no `motion.completed` appears.

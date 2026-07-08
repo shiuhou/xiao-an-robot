@@ -616,8 +616,13 @@ class MergetestingLayeringTest(unittest.TestCase):
         ):
             body = platformio.split(f"[env:{env}]", 1)[1].split("[env:", 1)[0]
             self.assertIn("-DMERGETEST_SPEAKER_STREAM_GAIN=32", body)
+            if env == "mergetesting_care_demo_face240_spoken_tts_din41":
+                self.assertIn("-DMERGETEST_SPEAKER_BUFFERED_STREAM=1", body)
 
         self.assertIn("MERGETEST_SPEAKER_STREAM_GAIN", speaker_cpp)
+        self.assertIn("MERGETEST_SPEAKER_BUFFERED_STREAM", speaker_cpp)
+        self.assertIn("appendBufferedPcm", speaker_cpp)
+        self.assertIn("pcmBufferedPlaybackTask", speaker_cpp)
         self.assertIn(
             "writeMonoPcmS16Le(job.data, job.len, PCM_WRITE_TIMEOUT_TICKS, MERGETEST_SPEAKER_STREAM_GAIN)",
             speaker_cpp,
@@ -668,7 +673,7 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("pcm_stream", router_cpp)
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "pcm_stream")', router_cpp)
 
-    def test_speaker_pcm_stream_is_played_incrementally_from_chunks(self) -> None:
+    def test_speaker_pcm_stream_buffers_full_stream_before_playback(self) -> None:
         speaker_cpp = (MERGETEST_SRC / "speaker.cpp").read_text(encoding="utf-8")
         write_body = speaker_cpp.split("bool speaker_write_pcm_chunk", 1)[1].split(
             "void speaker_end_pcm_stream", 1
@@ -678,13 +683,18 @@ class MergetestingLayeringTest(unittest.TestCase):
         )[0]
 
         self.assertIn("resetPcmBuffer", speaker_cpp)
-        self.assertIn("enqueuePcmChunk(pcm, len)", write_body)
+        self.assertIn("resetBufferedPcm", speaker_cpp)
+        self.assertIn("appendBufferedPcm(pcm, len)", write_body)
         self.assertIn("xQueueSend", speaker_cpp)
         self.assertIn("void pcmStreamTask(void* arg)", speaker_cpp)
         self.assertIn("writeMonoPcmS16Le(job.data", speaker_cpp)
-        self.assertIn("finishPcmPlayback();", end_body)
+        self.assertIn("void pcmBufferedPlaybackTask(void* arg)", speaker_cpp)
+        self.assertIn("xTaskCreate", end_body)
+        self.assertIn("pcmBufferedPlaybackTask", end_body)
+        self.assertIn("writeMonoPcmS16Le(", speaker_cpp)
+        self.assertIn("MERGETEST_SPEAKER_STREAM_GAIN", speaker_cpp)
+        self.assertIn("finishPcmPlayback();", speaker_cpp)
         self.assertNotIn("appendPcmBuffer(pcm, len)", write_body)
-        self.assertNotIn("xTaskCreate", end_body)
         self.assertNotIn("speaker_begin_pcm_stream", write_body)
         self.assertNotIn("void pcmPlaybackTask(void* arg)", speaker_cpp)
 

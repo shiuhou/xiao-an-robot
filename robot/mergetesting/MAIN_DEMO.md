@@ -52,8 +52,7 @@ From the repo root:
 
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
-$env:XIAOAN_TTS_TARGET_PEAK='800'
-$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 python -m base_station.ws_server.server
 ```
 

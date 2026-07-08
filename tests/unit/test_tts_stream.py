@@ -42,14 +42,14 @@ class TtsStreamTest(unittest.TestCase):
         self.assertLessEqual(max(abs(sample) for sample in samples), 2800)
         self.assertGreater(max(abs(sample) for sample in samples), 2600)
 
-    def test_default_tts_peak_limit_is_demo_audible_without_full_scale_clipping(self) -> None:
+    def test_default_tts_peak_limit_matches_buffered_speaker_baseline(self) -> None:
         pcm = struct.pack("<hh", -32768, 32767)
 
         limited = limit_pcm_peak_s16le(pcm)
         samples = struct.unpack("<hh", limited)
 
-        self.assertLessEqual(max(abs(sample) for sample in samples), 24000)
-        self.assertGreater(max(abs(sample) for sample in samples), 20000)
+        self.assertLessEqual(max(abs(sample) for sample in samples), 500)
+        self.assertGreater(max(abs(sample) for sample in samples), 450)
 
     def test_tts_target_peak_can_be_lowered_for_quiet_hardware_smoke(self) -> None:
         with mock.patch.dict("os.environ", {TTS_TARGET_PEAK_ENV: "800"}, clear=False):
@@ -64,7 +64,7 @@ class TtsStreamTest(unittest.TestCase):
 
     def test_tts_target_peak_invalid_env_uses_default(self) -> None:
         with mock.patch.dict("os.environ", {TTS_TARGET_PEAK_ENV: "not-a-number"}, clear=False):
-            self.assertEqual(tts_target_peak_from_env(), 24000)
+            self.assertEqual(tts_target_peak_from_env(), 500)
 
     def test_windows_sapi_script_prefers_mandarin_voice_before_zh_hk(self) -> None:
         script = windows_sapi_script()

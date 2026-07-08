@@ -73,13 +73,13 @@ $env:XIAOAN_CONTROL_TTS_STREAM='1'
 python -m base_station.ws_server.server
 ```
 
-For quiet hardware smoke tests, lower the synthesized PCM peak before starting
-the server. The normal demo default is `24000`; `800` is suitable for unattended
-or very-low-volume checks:
+For the current replaced-speaker DIN41 baseline, keep the synthesized PCM peak
+at `500`. This matches the buffered robot playback path that was accepted as
+clear in live Chinese TTS tests:
 
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
-$env:XIAOAN_TTS_TARGET_PEAK='800'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 python -m base_station.ws_server.server
 ```
 
@@ -168,18 +168,18 @@ The allowed actions for the demo remain:
 
 ## Streamed Spoken TTS Evidence
 
-On 2026-07-04, with this PC acting as the base station and the robot on COM23
-using `mergetesting_care_demo_face240_spoken_tts_din41`, streamed PCM TTS was
-validated over `/agent -> /control -> ESP32 I2S` at low volume:
+On 2026-07-08, with the replaced `4 ohm 3 W, 500-5000 Hz` speaker and the
+DIN41 buffered firmware path, streamed PCM TTS was accepted as clear over
+`/agent -> /control -> ESP32 I2S`:
 
 ```text
-text="你好"                  bytes_written=40052  duration_ms=2297
-text="你好，我是小安。"       bytes_written=83068  duration_ms=3741
-text="OpenClaw ... 任意句子。" bytes_written=148038 duration_ms=5491
+text="你好，我是小安。請聽我的中文發音清不清楚。"
+bytes_written=367384 duration_ms=5763
 ```
 
-These tests used `XIAOAN_CONTROL_TTS_STREAM=1` and
-`XIAOAN_TTS_TARGET_PEAK=800`. The expected server evidence is:
+The accepted baseline uses `XIAOAN_CONTROL_TTS_STREAM=1`,
+`XIAOAN_TTS_TARGET_PEAK=500`, default SAPI rate, and full PCM buffering before
+I2S playback. The expected server evidence is:
 
 ```text
 Command ack: type=audio.play_tts status=accepted

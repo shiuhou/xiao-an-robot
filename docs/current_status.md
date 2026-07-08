@@ -36,7 +36,7 @@ For the nine-day demo sprint, the primary voice input is the DK-2500/base-statio
 | Display | 2.4 inch face240 path is the current full-demo face path |
 | Motor | DRV8833 motion works with practical demo speed around `0.56` |
 | Speaker | Local speaker minimal loop passed for `audio.play_local care_01` and `success_ding`; current P0 spoken TTS speaker wiring is MAX98357A BCLK=39, LRC=40, DIN=41, robot mic disabled; product candidate with robot mic uses DIN=47 |
-| TTS | Streamed `audio.play_tts` passed P0 with `XIAOAN_TTS_TARGET_PEAK=800`, `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`, and robot `MERGETEST_SPEAKER_STREAM_GAIN=32`; complete care sequence still needs audio-channel sequencing when TTS and local sound are sent back to back |
+| TTS | Current best spoken TTS path uses the replaced `4 ohm 3 W, 500-5000 Hz` speaker, DIN41 buffered PCM firmware, `XIAOAN_TTS_TARGET_PEAK=500`, and robot `MERGETEST_SPEAKER_STREAM_GAIN=32`; the robot buffers the full PCM stream before I2S playback |
 | Dock dashboard | `python -m base_station.dashboard.dashboard_server` serves the 1024x600 kiosk dashboard at `/dashboard` |
 | Integration Console | `python -m base_station.integration_console.console_server --host 0.0.0.0 --port 8090` serves the hardware bring-up console at `/console`; software tests cover health/state/command payloads/scenario sequencing/tool guardrails, real hardware validation still pending |
 
@@ -79,8 +79,7 @@ Base station:
 
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
-$env:XIAOAN_TTS_TARGET_PEAK='800'
-$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
+$env:XIAOAN_TTS_TARGET_PEAK='500'
 python -m base_station.ws_server.server
 ```
 

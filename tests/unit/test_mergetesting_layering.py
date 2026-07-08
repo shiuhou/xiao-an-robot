@@ -361,6 +361,8 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("-DMERGETEST_DISPLAY_FACE240=1", full_body)
         self.assertIn("-DMERGETEST_ENABLE_CAMERA=1", full_body)
         self.assertIn("-DMERGETEST_CAMERA_USE_VGA=0", full_body)
+        self.assertIn("-DMERGETEST_VIDEO_INTERVAL_MS=150", full_body)
+        self.assertIn("-DMERGETEST_CAMERA_JPEG_QUALITY=16", full_body)
         self.assertIn("-DMERGETEST_ENABLE_MOTOR=1", full_body)
         self.assertIn("-DMERGETEST_ENABLE_SPEAKER=1", full_body)
         self.assertIn("-DMERGETEST_ENABLE_MIC=1", full_body)
@@ -377,6 +379,33 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("upload_port = xiao-an-esp32.local", ota_body)
         self.assertIn("--host_ip=192.168.137.1", ota_body)
         self.assertIn("-DENABLE_ARDUINO_OTA=1", ota_body)
+
+        self.assertIn("[env:mergetesting_full_face240_spoken_tts_din41_base_mic]", platformio)
+        din41_body = platformio.split(
+            "[env:mergetesting_full_face240_spoken_tts_din41_base_mic]", 1
+        )[1].split("[env:", 1)[0]
+        self.assertIn("-DMERGETEST_ENABLE_DISPLAY=1", din41_body)
+        self.assertIn("-DMERGETEST_ENABLE_CAMERA=1", din41_body)
+        self.assertIn("-DMERGETEST_CAMERA_USE_VGA=0", din41_body)
+        self.assertIn("-DMERGETEST_VIDEO_INTERVAL_MS=150", din41_body)
+        self.assertIn("-DMERGETEST_CAMERA_JPEG_QUALITY=16", din41_body)
+        self.assertIn("-DMERGETEST_ENABLE_MOTOR=1", din41_body)
+        self.assertIn("-DMERGETEST_ENABLE_SPEAKER=1", din41_body)
+        self.assertIn("-DMERGETEST_ENABLE_MIC=0", din41_body)
+        self.assertIn("-DMERGETEST_SPEAKER_DIN=41", din41_body)
+        self.assertIn("-DMERGETEST_SPEAKER_BUFFERED_STREAM=1", din41_body)
+        self.assertIn(
+            "[env:mergetesting_full_face240_spoken_tts_din41_base_mic_ota_usb]",
+            platformio,
+        )
+        din41_usb_ota_body = platformio.split(
+            "[env:mergetesting_full_face240_spoken_tts_din41_base_mic_ota_usb]", 1
+        )[1].split("[env:", 1)[0]
+        self.assertIn(
+            "extends = env:mergetesting_full_face240_spoken_tts_din41_base_mic",
+            din41_usb_ota_body,
+        )
+        self.assertIn("-DENABLE_ARDUINO_OTA=1", din41_usb_ota_body)
 
     def test_care_demo_face240_env_excludes_media_streams(self) -> None:
         platformio = (ROOT / "robot" / "mergetesting" / "platformio.ini").read_text(
@@ -860,7 +889,14 @@ class MergetestingLayeringTest(unittest.TestCase):
             "[env:mergetesting_cam_only_ota]", 1
         )[0]
         self.assertIn("-DMERGETEST_CAMERA_USE_VGA=0", cam_env)
+        self.assertIn("[env:mergetesting_cam_qvga_150ms]", platformio)
+        cam_fast_env = platformio.split("[env:mergetesting_cam_qvga_150ms]", 1)[
+            1
+        ].split("[env:", 1)[0]
+        self.assertIn("-DMERGETEST_VIDEO_INTERVAL_MS=150", cam_fast_env)
+        self.assertIn("-DMERGETEST_CAMERA_JPEG_QUALITY=16", cam_fast_env)
         self.assertIn("FRAMESIZE_QVGA", cam_cpp)
+        self.assertIn("fps=%.2f ok=%lu fail=%lu", cam_cpp)
         self.assertIn("fb->format != PIXFORMAT_JPEG", cam_cpp)
         self.assertIn("ws.sendVideoFrameMeta", cam_cpp)
         self.assertIn("ws.sendVideoBinary", cam_cpp)

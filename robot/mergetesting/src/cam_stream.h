@@ -19,4 +19,6 @@ private:
   uint32_t _frameId = 0;
   uint32_t _captureOk = 0;
   uint32_t _captureFail = 0;
+  uint32_t _lastStatsMs = 0;
+  uint32_t _lastStatsFrameId = 0;
 };

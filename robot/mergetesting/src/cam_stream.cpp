@@ -43,6 +43,8 @@ void CamStream::begin() {
   _frameId = 0;
   _captureOk = 0;
   _captureFail = 0;
+  _lastStatsMs = millis();
+  _lastStatsFrameId = 0;
   LOGI("Cam", "Camera ready %s", modeLabel);
 }
 
@@ -83,9 +85,19 @@ void CamStream::captureLoop(WSClient& ws) {
   }
 #endif
 
-  LOGI("Cam", "frame #%lu %ux%u len=%u ok=%lu",
-       static_cast<unsigned long>(_frameId), width, height, fb->len,
-       static_cast<unsigned long>(_captureOk));
+  const uint32_t statsNow = millis();
+  const uint32_t statsElapsed = statsNow - _lastStatsMs;
+  if (statsElapsed >= 5000) {
+    const uint32_t statsFrames = _frameId - _lastStatsFrameId;
+    const float fps = (static_cast<float>(statsFrames) * 1000.0f) /
+                      static_cast<float>(statsElapsed);
+    LOGI("Cam", "frame #%lu %ux%u len=%u fps=%.2f ok=%lu fail=%lu",
+         static_cast<unsigned long>(_frameId), width, height, fb->len, fps,
+         static_cast<unsigned long>(_captureOk),
+         static_cast<unsigned long>(_captureFail));
+    _lastStatsMs = statsNow;
+    _lastStatsFrameId = _frameId;
+  }
   esp_camera_fb_return(fb);
 }
 

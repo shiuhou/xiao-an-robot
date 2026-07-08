@@ -649,9 +649,9 @@ class _TwoFrameSource:
 
 
 class _FixedCvPipeline:
-    def __init__(self, cv_sample):
+    def __init__(self, cv_sample, observation=None):
         self._cv = cv_sample
-        self.last_observation = {"face_confidence": 0.9}
+        self.last_observation = observation if observation is not None else {"face_confidence": 0.9}
 
     def process_frame(self, frame):
         return dict(self._cv)
@@ -993,6 +993,38 @@ class VLMGatedAssemblyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finished["request_id"], "vlm-1")
         self.assertEqual(finished["status"], "done")
         self.assertGreaterEqual(finished["latency_ms"], 0.0)
+
+    async def test_no_face_observation_suppresses_vlm_trigger(self):
+        gate = _AlwaysTriggerGate()
+        observer = _RecordingObserver()
+        vlm = _FixedVlm({"expression_label": "tired"})
+        source = VLMGatedCameraEmotionSource(
+            frame_source=_OneFrameSource({"frame_id": 1, "timestamp_ms": 123, "payload": None}),
+            cv_pipeline=_FixedCvPipeline(
+                {
+                    "frame_id": 1,
+                    "timestamp_ms": 123,
+                    "emotion_tag": "tired",
+                    "confidence": 0.9,
+                    "fatigue_score": 100.0,
+                },
+                observation={"face_detected": False, "landmarks": None, "face_confidence": 0.0},
+            ),
+            gate=gate,
+            context_builder=_FixedContextBuilder(),
+            vlm_model=vlm,
+            visual_observer=observer,
+        )
+
+        samples = [item async for item in source.samples()]
+
+        self.assertEqual(samples, [])
+        self.assertEqual(gate.evaluate_calls, 0)
+        self.assertIsNone(vlm.last_frame)
+        self.assertEqual([name for name, _payload in observer.calls], ["observe_frame"])
+        observed = observer.calls[0][1]
+        self.assertEqual(observed["gate_diagnostics"]["result"]["reason"], "no_face")
+        self.assertFalse(observed["gate_diagnostics"]["result"]["should_trigger"])
 
     async def test_visual_observer_failure_does_not_break_runtime_sample(self):
         gate = _AlwaysTriggerGate()

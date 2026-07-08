@@ -354,6 +354,41 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   overflow-wrap: anywhere;
 }
 
+.openclaw-care-module {
+  min-height: 155px;
+}
+
+.care-voice-text {
+  min-height: 54px;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid #b7d9cf;
+  border-radius: 6px;
+  background: #f1fbf8;
+  color: #16483f;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.care-voice-meta {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.45fr) minmax(0, 1fr);
+  gap: 4px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.care-voice-meta .k {
+  font-weight: 800;
+}
+
+.care-voice-meta .v {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .empty-state { min-height: 80px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
 
 .card {

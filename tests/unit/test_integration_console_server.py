@@ -66,6 +66,9 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "visualVlmStatus",
             "visualTriggerImage",
             "visualFusion",
+            "link2OpenclawCareStatus",
+            "link2OpenclawCareVoice",
+            "link2OpenclawCareMeta",
         ):
             self.assertIn(f'id="{element_id}"', html)
 
@@ -330,7 +333,7 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
 
-    def test_voice_link_environment_defaults_to_openclaw_gateway(self) -> None:
+    def test_link_environment_defaults_to_openclaw_gateway(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
             app = IntegrationConsoleApp(
                 runtime_dir=temp_dir,
@@ -344,8 +347,14 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION"], "1")
+        self.assertEqual(link2_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
+        self.assertEqual(link2_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
+        self.assertEqual(link2_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
+        self.assertNotIn("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", link2_env)
+        self.assertEqual(link3_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
+        self.assertEqual(link3_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
+        self.assertEqual(link3_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
         self.assertNotIn("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", link3_env)
-        self.assertNotIn("XIAO_AN_OPENCLAW_BACKEND", link2_env)
 
     def test_link_state_displays_previous_voice_result_while_recording(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -404,6 +413,43 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(state["links"]["link1"]["openclaw_text"], "")
         self.assertEqual(state["links"]["link1"]["voice_phase"]["mic"], "off")
         self.assertEqual(state["links"]["link1"]["voice_phase"]["phase"], "openclaw_pending")
+
+    def test_link2_state_exposes_openclaw_care_voice_from_runtime_log(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            log_dir = runtime / "integration_console" / "process_logs"
+            log_dir.mkdir(parents=True)
+            (log_dir / "link2.log").write_text(
+                """
+[emotion.sample] {"payload": {"frame_id": 17, "emotion_tag": "tired", "fatigue_score": 88.0}}
+{
+  "openclaw_result": {
+    "executed_actions": [
+      {
+        "name": "xiaoan.robot.care",
+        "arguments": {
+          "text": "辛苦啦，先放下手里的事，喝口水，休息一分钟就好。",
+          "reason": "emotion.intervention"
+        }
+      }
+    ]
+  }
+}
+""",
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+            app.link_processes["link2"] = FakeRunningProcess()
+
+            state = app.state()
+
+        care_voice = state["links"]["link2"]["openclaw_care_voice"]
+        self.assertTrue(care_voice["ok"])
+        self.assertEqual(care_voice["text"], "辛苦啦，先放下手里的事，喝口水，休息一分钟就好。")
+        self.assertEqual(care_voice["frame_id"], 17)
+        self.assertEqual(care_voice["emotion_tag"], "tired")
+        self.assertEqual(care_voice["fatigue_score"], 88.0)
+        self.assertIn("OpenClaw 关怀语音", [step["label"] for step in state["links"]["link2"]["steps"]])
 
     def test_start_link_rejects_unknown_link_without_shell(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

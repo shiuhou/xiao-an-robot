@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -528,7 +529,7 @@ class IntegrationConsoleApp:
 
     def link_environment(self, link: str) -> dict[str, str]:
         env = dict(os.environ)
-        if link in {"link1", "link3"}:
+        if link in {"link1", "link2", "link3"}:
             env.setdefault("XIAO_AN_OPENCLAW_BACKEND", "gateway")
             env.setdefault("XIAO_AN_OPENCLAW_GATEWAY_URL", self.openclaw_url)
             env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
@@ -813,6 +814,7 @@ class IntegrationConsoleApp:
         camera_fresh = _fresh(latest_image, FRESH_IMAGE_MS)
         visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
         executed_actions = execution.get("executed_actions") if isinstance(execution.get("executed_actions"), list) else []
+        link2_care_voice = self.link2_openclaw_care_voice_state()
 
         link1_steps = [
             _step("voice runtime", link1_running or link1_completed_once, (processes.get("link1") or {}).get("pid")),
@@ -827,6 +829,7 @@ class IntegrationConsoleApp:
             _step("相机连接", camera_fresh, latest_image.get("updated_at")),
             _step("ws_video 分析快照", visual_fresh, visual.get("freshness")),
             _step("视觉状态文件", bool(visual.get("ok")), visual.get("reason")),
+            _step("OpenClaw 关怀语音", bool(link2_care_voice.get("text")), link2_care_voice.get("text") or link2_care_voice.get("reason")),
         ]
         link3_steps = [
             _step("voice runtime", link3_running or link3_completed_once, (processes.get("link3") or {}).get("pid")),
@@ -858,6 +861,7 @@ class IntegrationConsoleApp:
                 "done": all(step["ok"] for step in link2_steps),
                 "steps": link2_steps,
                 "visual_freshness": visual.get("freshness"),
+                "openclaw_care_voice": link2_care_voice,
             },
             "link3": {
                 "status": self._status_from_steps(link3_steps) if (link3_running or link3_completed_once) else "idle",
@@ -892,6 +896,101 @@ class IntegrationConsoleApp:
             "updated_at": info.get("updated_at"),
             "output": data,
         }
+
+    def link2_openclaw_care_voice_state(self) -> dict[str, Any]:
+        log_path = Path(self.runtime_dir) / "integration_console" / "process_logs" / "link2.log"
+        info = _file_info(log_path)
+        if not info.get("exists"):
+            return {
+                "ok": False,
+                "text": "",
+                "source": "link2.log",
+                "path": str(log_path),
+                "reason": "not_found",
+                "age_ms": None,
+                "updated_at": None,
+            }
+        try:
+            raw = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return {
+                "ok": False,
+                "text": "",
+                "source": "link2.log",
+                "path": str(log_path),
+                "reason": str(exc),
+                "age_ms": info.get("age_ms"),
+                "updated_at": info.get("updated_at"),
+            }
+
+        tail = raw[-300_000:]
+        name_idx = tail.rfind('"name": "xiaoan.robot.care"')
+        if name_idx < 0:
+            return {
+                "ok": False,
+                "text": "",
+                "source": "link2.log",
+                "path": str(log_path),
+                "reason": "no_care_tool_call",
+                "age_ms": info.get("age_ms"),
+                "updated_at": info.get("updated_at"),
+            }
+
+        region = tail[name_idx:]
+        arguments = self._extract_json_field_object(region, "arguments")
+        text = str(arguments.get("text") or "").strip() if isinstance(arguments, dict) else ""
+        context = tail[max(0, name_idx - 8000):name_idx]
+        frame_ids = re.findall(r'"frame_id"\s*:\s*(\d+)', context)
+        emotions = re.findall(r'"emotion_tag"\s*:\s*"([^"]+)"', context)
+        fatigues = re.findall(r'"fatigue_score"\s*:\s*([0-9.]+)', context)
+        return {
+            "ok": bool(text),
+            "text": text,
+            "reason": str(arguments.get("reason") or "") if isinstance(arguments, dict) else "bad_arguments",
+            "source": "link2.log",
+            "path": str(log_path),
+            "age_ms": info.get("age_ms"),
+            "updated_at": info.get("updated_at"),
+            "frame_id": int(frame_ids[-1]) if frame_ids else None,
+            "emotion_tag": emotions[-1] if emotions else "",
+            "fatigue_score": float(fatigues[-1]) if fatigues else None,
+        }
+
+    @staticmethod
+    def _extract_json_field_object(text: str, field: str) -> dict[str, Any]:
+        field_idx = text.find(f'"{field}"')
+        if field_idx < 0:
+            return {}
+        colon_idx = text.find(":", field_idx)
+        start_idx = text.find("{", colon_idx)
+        if colon_idx < 0 or start_idx < 0:
+            return {}
+        depth = 0
+        in_string = False
+        escape = False
+        for idx in range(start_idx, len(text)):
+            char = text[idx]
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        data = json.loads(text[start_idx:idx + 1])
+                    except json.JSONDecodeError:
+                        return {}
+                    return data if isinstance(data, dict) else {}
+        return {}
 
     @staticmethod
     def _voice_text(output: dict[str, Any]) -> str:

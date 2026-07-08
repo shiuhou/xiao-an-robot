@@ -250,6 +250,7 @@ function renderLinks() {
   renderChainSteps("link1Steps", link1.steps || []);
   renderChainSteps("link2Steps", link2.steps || []);
   renderChainSteps("link3Steps", link3.steps || []);
+  renderLink2CareVoice(link2.openclaw_care_voice || {});
 
   kv("link1MicKv", [
     ["mic", link1Phase.label || "-"],
@@ -286,6 +287,24 @@ function renderLinks() {
   $("link3AsrText").textContent = link3.asr_text || "-";
   $("link3FastJson").textContent = pretty(link3.fast_response);
   $("link3FollowUpText").textContent = link3.follow_up_text || "-";
+}
+
+function renderLink2CareVoice(careVoice) {
+  const text = careVoice.text || "";
+  $("link2OpenclawCareVoice").textContent = text || "-";
+  statusPill(
+    $("link2OpenclawCareStatus"),
+    text ? "done" : "unavailable",
+    text ? "READY" : "NO DATA",
+  );
+  kv("link2OpenclawCareMeta", [
+    ["source", careVoice.source || "-"],
+    ["frame", careVoice.frame_id],
+    ["emotion", careVoice.emotion_tag || "-"],
+    ["fatigue", careVoice.fatigue_score],
+    ["age", msAge(careVoice.age_ms)],
+    ["reason", careVoice.reason || "-"],
+  ]);
 }
 
 function statusPill(node, status, text) {

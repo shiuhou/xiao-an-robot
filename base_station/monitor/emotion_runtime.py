@@ -439,7 +439,11 @@ class VLMGatedCameraEmotionSource:
 
     def _process_cv_frame(self, frame: dict) -> tuple[dict, dict, str, Any]:
         cv_sample = self.cv_pipeline.process_frame(frame)
-        gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
+        observation = getattr(self.cv_pipeline, "last_observation", None)
+        if self._is_no_face_observation(observation) and not self.force_vlm:
+            gate_result = {"should_trigger": False, "reason": "no_face"}
+        else:
+            gate_result = self.gate.evaluate(cv_sample, force_vlm=self.force_vlm)
         reason = str(gate_result.get("reason", "normal"))
         diagnostics = getattr(self.gate, "diagnostics", None)
         gate_diagnostics = (
@@ -450,11 +454,19 @@ class VLMGatedCameraEmotionSource:
         visual_token = self._notify_visual_observer(
             "observe_frame",
             frame=frame,
-            observation=getattr(self.cv_pipeline, "last_observation", None),
+            observation=observation,
             cv_sample=cv_sample,
             gate_diagnostics=gate_diagnostics,
         )
         return cv_sample, gate_result, reason, visual_token
+
+    @staticmethod
+    def _is_no_face_observation(observation: Any) -> bool:
+        if not isinstance(observation, dict):
+            return False
+        if observation.get("face_detected") is False:
+            return True
+        return "landmarks" in observation and observation.get("landmarks") is None
 
     async def _run_vlm(
         self,

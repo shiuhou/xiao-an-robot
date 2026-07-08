@@ -331,6 +331,52 @@ class XiaoAnBrainEmotionEventTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(tool_runs), 1)
                 self.assertEqual(tool_runs[0]["source_event_type"], "emotion.intervention")
 
+    async def test_emotion_care_tool_call_handles_reply_without_duplicate_tts(self) -> None:
+        gateway = FakeGateway()
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(
+                handled=True,
+                spoken_text="我看到你有点累了。",
+                reply_text="我看到你有点累了。",
+                tool_calls=[
+                    OpenClawToolCall(
+                        name="xiaoan.robot.care",
+                        arguments={
+                            "text": "辛苦啦，先靠着我慢慢喘口气，我们休息一分钟就好。",
+                            "reason": "emotion.intervention",
+                        },
+                    ),
+                ],
+            ),
+        )
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(tired_summary()),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        result = await brain.handle_event({
+            "type": "emotion.sample",
+            "payload": {
+                "source": "face",
+                "emotion_tag": "tired",
+                "confidence": 0.9,
+                "fatigue_score": 0.85,
+                "session_id": "emotion-care-no-duplicate",
+            },
+        })
+
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual(
+            gateway.calls[-1][1],
+            "辛苦啦，先靠着我慢慢喘口气，我们休息一分钟就好。",
+        )
+        self.assertEqual(
+            [action["name"] for action in result["openclaw_result"]["executed_actions"]],
+            ["xiaoan.robot.care"],
+        )
+        self.assertEqual(result["openclaw_result"]["skipped_actions"], [])
+
     async def test_neutral_emotion_sample_does_not_enter_openclaw(self) -> None:
         openclaw_adapter = FakeOpenClawAdapter()
         brain = XiaoAnBrain(

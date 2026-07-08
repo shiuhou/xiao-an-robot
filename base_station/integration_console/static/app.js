@@ -45,6 +45,21 @@ async function post(path, body) {
   }
 }
 
+function postMotion(body) {
+  lastPayload = body;
+  toast("运动命令已发送");
+  api("/api/robot/motion", { method: "POST", body: JSON.stringify(body || {}) })
+    .then((data) => {
+      toast(data.ok ? "运动已确认" : `运动失败: ${data.error || data.reason || "unknown"}`);
+      refreshState();
+    })
+    .catch((error) => {
+      toast(`运动失败: ${error.message || error}`);
+      refreshState();
+    });
+  setTimeout(refreshState, 250);
+}
+
 function setPendingButtons(disabled) {
   document.querySelectorAll("button").forEach((button) => {
     if (button.id !== "stopAllBtn") button.disabled = disabled;
@@ -487,12 +502,11 @@ function motionBody(action, angle) {
 }
 
 async function sendMotion(action, angle) {
-  if (pending) return;
   if (action !== "stop") {
     const bench = $("benchMode").checked ? "\n\nbench 危险 / 仅空载测试 已开启" : "";
     if (!confirm(`确认发送运动命令：${action}${bench}`)) return;
   }
-  await post("/api/robot/motion", motionBody(action, angle));
+  postMotion(motionBody(action, angle));
 }
 
 function bindEvents() {
@@ -505,7 +519,7 @@ function bindEvents() {
     });
   });
 
-  $("stopAllBtn").addEventListener("click", () => post("/api/robot/motion", motionBody("stop")));
+  $("stopAllBtn").addEventListener("click", () => postMotion(motionBody("stop")));
   $("refreshBtn").addEventListener("click", refreshState);
   $("refreshCameraBtn").addEventListener("click", refreshState);
   $("refreshVisualBtn").addEventListener("click", refreshVisualTrace);

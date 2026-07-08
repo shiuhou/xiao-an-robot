@@ -53,6 +53,16 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
 
         for element_id in (
             "cameraLatestImage",
+            "manualRobotStatus",
+            "expressionButtons",
+            "motionAction",
+            "motionSpeed",
+            "motionDistance",
+            "motionAngle",
+            "motionDuration",
+            "motionTimeout",
+            "sendMotionBtn",
+            "manualRobotJson",
             "link1RunSwitch",
             "link1Steps",
             "link2RunSwitch",

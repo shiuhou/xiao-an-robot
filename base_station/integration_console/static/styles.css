@@ -484,6 +484,24 @@ textarea {
   font-weight: 700;
 }
 
+.motion-help {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.motion-help p {
+  margin: 0;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #e4eaf0;
+}
+
+.motion-help p:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
 .inline-check {
   display: flex;
   align-items: center;

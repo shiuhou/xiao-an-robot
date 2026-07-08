@@ -27,6 +27,7 @@
     <nav class="tabs" aria-label="联调面板">
       <button class="tab active" data-tab="health">连接</button>
       <button class="tab" data-tab="camera">相机</button>
+      <button class="tab" data-tab="robot">机器人</button>
       <button class="tab" data-tab="link1">链路一</button>
       <button class="tab" data-tab="link2">链路二</button>
       <button class="tab" data-tab="link3">链路三</button>
@@ -52,6 +53,13 @@
     </section>
 
     <section class="panel" id="tab-robot">
+      <div class="chain-header">
+        <div>
+          <div class="section-label">MANUAL CONTROL</div>
+          <h2>机器人手动控制</h2>
+        </div>
+        <span class="status-pill unavailable" id="manualRobotStatus">READY</span>
+      </div>
       <div class="grid three">
         <article class="card">
           <h2>表情控制</h2>
@@ -67,15 +75,28 @@
           <div class="button-grid">
             <button data-motion="move_out_of_dock">出 Dock safe</button>
             <button data-motion="move_back_to_dock">回 Dock safe</button>
-            <button data-motion="turn" data-angle="-15">左转小角度</button>
-            <button data-motion="turn" data-angle="15">右转小角度</button>
+            <button data-motion="turn" data-angle="-15">左转</button>
+            <button data-motion="turn" data-angle="15">右转</button>
             <button data-motion="stop" class="secondary-stop">Stop</button>
           </div>
           <div class="params">
+            <label>action
+              <select id="motionAction">
+                <option value="move_out_of_dock">move_out_of_dock</option>
+                <option value="move_back_to_dock">move_back_to_dock</option>
+                <option value="turn">turn</option>
+                <option value="stop">stop</option>
+              </select>
+            </label>
             <label>speed <input id="motionSpeed" type="number" value="0.56" min="0" max="1" step="0.01"></label>
-            <label>distance_cm <input id="motionDistance" type="number" value="8" min="0" max="10" step="1"></label>
-            <label>timeout_ms <input id="motionTimeout" type="number" value="1200" min="1" max="1200" step="100"></label>
+            <label>distance_cm <input id="motionDistance" type="number" value="8" min="0" max="100" step="1"></label>
+            <label>angle_deg <input id="motionAngle" type="number" value="-15" min="-360" max="360" step="1"></label>
+            <label>duration_ms <input id="motionDuration" type="number" value="" min="0" max="10000" step="100" placeholder="optional"></label>
+            <label>timeout_ms <input id="motionTimeout" type="number" value="1200" min="1" max="10000" step="100"></label>
             <label class="bench"><input id="benchMode" type="checkbox"> bench 危险 / 仅空载测试</label>
+          </div>
+          <div class="actions">
+            <button id="sendMotionBtn">发送自定义运动</button>
           </div>
         </article>
         <article class="card">
@@ -91,6 +112,24 @@
           <textarea id="ttsText">我在这里，别着急，我们慢慢来。</textarea>
           <div class="warn">TTS 当前可能不稳定，不建议和本地音效连续播放。</div>
           <button id="sendTtsBtn">发送 TTS 实验</button>
+        </article>
+      </div>
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>运动参数说明</h2>
+          <div class="motion-help">
+            <p><strong>action</strong>：运动类型；出 Dock、回 Dock、转向、停止。</p>
+            <p><strong>speed</strong>：速度比例。普通模式会被限幅到安全演示范围。</p>
+            <p><strong>distance_cm</strong>：出 Dock / 回 Dock 的目标距离，普通模式最大 10cm。</p>
+            <p><strong>angle_deg</strong>：turn 的角度；负数左转，正数右转，普通模式限制在 ±45°。</p>
+            <p><strong>duration_ms</strong>：可选持续时间；不填时由固件/动作默认值决定。</p>
+            <p><strong>timeout_ms</strong>：等待命令完成的最长时间，不是运动时长。</p>
+            <p><strong>bench</strong>：解除部分演示限幅，仅限离地或空载测试。</p>
+          </div>
+        </article>
+        <article class="card">
+          <h2>最近机器人反馈</h2>
+          <pre class="jsonbox compact-json" id="manualRobotJson">{}</pre>
         </article>
       </div>
     </section>

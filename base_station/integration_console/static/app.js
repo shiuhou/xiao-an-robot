@@ -158,6 +158,19 @@ function renderState() {
     last_motion_completed: robot.last_motion_completed,
     last_audio_playback_done: robot.last_audio_playback_done,
   });
+  $("manualRobotJson").textContent = pretty({
+    selected_device_id: robot.selected_device_id,
+    online: robot.online,
+    last_command_ack: robot.last_command_ack,
+    last_motion_completed: robot.last_motion_completed,
+    last_audio_playback_done: robot.last_audio_playback_done,
+    last_error: robot.last_error,
+  });
+  statusPill(
+    $("manualRobotStatus"),
+    robot.online ? "live" : "unavailable",
+    robot.online ? "ROBOT ONLINE" : "ROBOT OFFLINE",
+  );
   renderCameraConnection();
   renderLinks();
   renderLogs();
@@ -458,6 +471,7 @@ function initExpressions() {
 }
 
 function motionBody(action, angle) {
+  const durationValue = $("motionDuration").value;
   return {
     device_id: null,
     action,
@@ -465,8 +479,9 @@ function motionBody(action, angle) {
     params: {
       speed: Number($("motionSpeed").value || 0.56),
       distance_cm: Number($("motionDistance").value || 8),
+      angle_deg: angle === undefined ? Number($("motionAngle").value || -15) : Number(angle),
+      duration_ms: durationValue === "" ? undefined : Number(durationValue),
       timeout_ms: Number($("motionTimeout").value || 1200),
-      angle_deg: angle === undefined ? undefined : Number(angle),
     },
   };
 }
@@ -533,6 +548,10 @@ function bindEvents() {
     text: $("ttsText").value,
     duration_ms: 3000,
   }));
+  $("sendMotionBtn").addEventListener("click", () => {
+    const action = $("motionAction").value;
+    sendMotion(action);
+  });
   $("agentPayloadBtn").addEventListener("click", () => {
     lastPayload = {
       transcript: $("agentText").value,

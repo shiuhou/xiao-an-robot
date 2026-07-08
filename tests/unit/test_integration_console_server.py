@@ -79,6 +79,20 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "link2OpenclawCareStatus",
             "link2OpenclawCareVoice",
             "link2OpenclawCareMeta",
+            "fastDemoSendRobotSwitch",
+            "fastDemoAllowMotionSwitch",
+            "fastReminderKv",
+            "fastReminderJson",
+            "fast1RunSwitch",
+            "fast1Steps",
+            "fast1BrainText",
+            "fast2RunSwitch",
+            "fast2Steps",
+            "fast2BrainText",
+            "fast2ExecuteBtn",
+            "fast3RunSwitch",
+            "fast3Steps",
+            "fast3BrainText",
         ):
             self.assertIn(f'id="{element_id}"', html)
 
@@ -115,6 +129,10 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertIn("link1", state["links"])
         self.assertIn("link2", state["links"])
         self.assertIn("link3", state["links"])
+        self.assertIn("fast_demo", state)
+        self.assertIn("fast1", state["fast_demo"])
+        self.assertIn("fast2", state["fast_demo"])
+        self.assertIn("fast3", state["fast_demo"])
         self.assertFalse(state["processes"]["link2"]["running"])
 
     def test_state_ignores_stale_demo_files_for_link_completion(self) -> None:
@@ -366,6 +384,49 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(link3_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
         self.assertNotIn("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", link3_env)
 
+    def test_fast_demo_commands_keep_inference_and_skip_openclaw_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            fast1 = app.fast_demo_command("fast1", {"send_to_robot": True, "allow_motion": False})
+            fast2 = app.fast_demo_command("fast2", {})
+            fast3 = app.fast_demo_command("fast3", {"send_to_robot": True, "allow_motion": True})
+
+        self.assertIn("base_station.monitor.voice_runtime", fast1)
+        self.assertIn("--decision-mode", fast1)
+        self.assertEqual(fast1[fast1.index("--decision-mode") + 1], "local_demo")
+        self.assertEqual(fast1[fast1.index("--local-demo-link") + 1], "fast1")
+        self.assertIn("--local-demo-send-to-robot", fast1)
+        self.assertNotIn("--local-demo-allow-motion", fast1)
+        self.assertIn("--local-demo-reminders-path", fast1)
+        self.assertIn("--once", fast1)
+
+        self.assertIn("base_station.monitor.emotion_runtime", fast2)
+        self.assertIn("ws_video_observer", fast2)
+        self.assertIn("--enable-vlm-gate", fast2)
+        self.assertIn("--no-agent", fast2)
+        self.assertTrue(fast2[fast2.index("--visual-trace-dir") + 1].endswith("integration_console/fast_demo/visual"))
+
+        self.assertEqual(fast3[fast3.index("--local-demo-link") + 1], "fast3")
+        self.assertIn("--local-demo-send-to-robot", fast3)
+        self.assertIn("--local-demo-allow-motion", fast3)
+
+    def test_fast_demo_environment_removes_openclaw_runtime_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            os.environ,
+            {
+                "XIAO_AN_OPENCLAW_BACKEND": "gateway",
+                "XIAO_AN_OPENCLAW_GATEWAY_URL": "ws://127.0.0.1:18789",
+                "XIAO_AN_OPENCLAW_AGENT": "xiaoan-runtime",
+            },
+            clear=True,
+        ):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            env = app.fast_demo_environment()
+
+        self.assertNotIn("XIAO_AN_OPENCLAW_BACKEND", env)
+        self.assertNotIn("XIAO_AN_OPENCLAW_GATEWAY_URL", env)
+        self.assertNotIn("XIAO_AN_OPENCLAW_AGENT", env)
+
     def test_link_state_displays_previous_voice_result_while_recording(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = Path(temp_dir)
@@ -468,6 +529,95 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertIn("unsupported_link", result["error"])
+
+    def test_start_fast_demo_rejects_unknown_link_without_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            result = app.start_fast_demo({"link": "echo hacked"})
+
+        self.assertFalse(result["ok"])
+        self.assertIn("unsupported_fast_demo_link", result["error"])
+
+    def test_execute_fast_demo_visual_plan_respects_motion_switch(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            visual_dir = runtime / "integration_console" / "fast_demo" / "visual"
+            visual_dir.mkdir(parents=True)
+            (visual_dir / "latest_state.json").write_text(
+                json.dumps(
+                    {
+                        "observation": {"face_detected": True},
+                        "cv_sample": {"emotion_tag": "tired", "confidence": 0.92, "fatigue_score": 0.84},
+                        "gate": {"result": {"should_trigger": True, "reason": "fatigue"}},
+                        "vlm": {"status": "done", "result": {"expression_label": "tired"}},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime, command_sender=sender)
+            result = app.execute_fast_demo_plan({
+                "link": "fast2",
+                "send_to_robot": True,
+                "allow_motion": False,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
+        self.assertTrue(any(step.get("reason") == "motion_disabled" for step in result["steps"]))
+
+    def test_process_due_fast_demo_reminder_moves_out_once(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            reminder_path = runtime / "integration_console" / "fast_demo" / "reminders.json"
+            reminder_path.parent.mkdir(parents=True)
+            reminder_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "xiaoan.fast_demo_reminders.v1",
+                        "items": [
+                            {
+                                "id": "fast-reminder-unit",
+                                "status": "pending",
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "due_at": datetime.now(timezone.utc).isoformat(),
+                                "transcript": "小安，10秒后提醒我喝水",
+                                "send_to_robot": True,
+                                "allow_motion": True,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime, command_sender=sender)
+            first = app.process_due_fast_demo_reminders()
+            second = app.process_due_fast_demo_reminders()
+            saved = json.loads(reminder_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(first["processed"], 1)
+        self.assertEqual(second["processed"], 0)
+        self.assertEqual(saved["items"][0]["status"], "fired")
+        self.assertIn("fired_at", saved["items"][0])
+        self.assertEqual(
+            [payload["command"] for payload in sent],
+            ["display.expression", "motion.execute", "audio.play_tts"],
+        )
+        self.assertEqual(sent[1]["action"], "move_out_of_dock")
+        self.assertEqual(sent[1]["params"]["distance_cm"], 8.0)
 
     def test_robot_expression_payload_is_agent_command(self) -> None:
         sent: list[dict] = []

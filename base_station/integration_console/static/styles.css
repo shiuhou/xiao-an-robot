@@ -214,6 +214,16 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-top: 10px;
 }
 
+.fast-demo-block {
+  margin-bottom: 12px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.inline-chain-header {
+  margin-bottom: 10px;
+}
+
 .visual-side {
   display: grid;
   gap: 10px;

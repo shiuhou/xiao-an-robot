@@ -188,6 +188,7 @@ function renderState() {
   );
   renderCameraConnection();
   renderLinks();
+  renderFastDemo();
   renderLogs();
 }
 
@@ -333,6 +334,62 @@ function renderLink2CareVoice(careVoice) {
     ["age", msAge(careVoice.age_ms)],
     ["reason", careVoice.reason || "-"],
   ]);
+}
+
+function renderFastDemo() {
+  const fast = state?.fast_demo || {};
+  const reminders = state?.fast_demo_reminders || {};
+  ["fast1", "fast2", "fast3"].forEach((key) => {
+    renderRunStatus(key, fast[key] || {});
+    renderChainSteps(`${key}Steps`, fast[key]?.steps || []);
+  });
+  kv("fastReminderKv", [
+    ["pending", reminders.pending_count],
+    ["fired", reminders.fired_count],
+    ["next due", reminders.next_due_at || "-"],
+    ["last processed", reminders.last_result?.processed ?? 0],
+  ]);
+  $("fastReminderJson").textContent = pretty({
+    last_result: reminders.last_result,
+    items: reminders.items,
+  });
+
+  renderFastVoiceLink("fast1", fast.fast1 || {});
+  renderFastVoiceLink("fast3", fast.fast3 || {});
+  const fast2 = fast.fast2 || {};
+  $("fast2BrainText").textContent = fast2.brain_text || "-";
+  $("fast2DecisionJson").textContent = pretty(fast2.decision);
+  $("fast2RobotJson").textContent = pretty(fast2.robot_plan);
+  $("fast2StateJson").textContent = pretty(fast2.visual?.state);
+  $("fast2VisualJson").textContent = pretty({
+    ok: fast2.visual?.ok,
+    freshness: fast2.visual?.freshness,
+    age_ms: fast2.visual?.age_ms,
+    files: fast2.visual?.files,
+  });
+}
+
+function renderFastVoiceLink(key, link) {
+  const voice = link.voice || {};
+  const phase = link.voice_phase || {};
+  const audio = voice.output?.event?.payload?.audio || {};
+  kv(`${key}MicKv`, [
+    ["mic", phase.label || "-"],
+    ["阶段", phase.detail || phase.phase || "-"],
+    ["runtime", state?.processes?.[key]?.running ? "running" : "off"],
+    ["latest output", voice.ok],
+    ["output age", msAge(voice.age_ms)],
+    ["audio", audio.audio_path || "-"],
+    ["sample_rate", audio.sample_rate],
+    ["duration_ms", audio.duration_ms],
+  ]);
+  $(`${key}AsrText`).textContent = link.asr_text || "-";
+  $(`${key}BrainText`).textContent = link.brain_text || "-";
+  $(`${key}DecisionJson`).textContent = pretty(link.decision);
+  $(`${key}RobotJson`).textContent = pretty({
+    plan: link.robot_plan,
+    execution: link.robot_execution,
+  });
 }
 
 function statusPill(node, status, text) {
@@ -573,6 +630,19 @@ function bindEvents() {
     };
     $("agentJson").textContent = pretty(lastPayload);
   });
+  $("fast2ExecuteBtn").addEventListener("click", async () => {
+    if (!$("fastDemoSendRobotSwitch").checked) {
+      toast("发送到机器人未开启，仅会记录跳过结果");
+    } else if ($("fastDemoAllowMotionSwitch").checked && !confirm("确认执行当前视觉计划，并允许运动？")) {
+      return;
+    }
+    const result = await post("/api/fast-demo/execute", {
+      link: "fast2",
+      send_to_robot: $("fastDemoSendRobotSwitch").checked,
+      allow_motion: $("fastDemoAllowMotionSwitch").checked,
+    });
+    $("fast2RobotJson").textContent = pretty(result);
+  });
   $("clearLogViewBtn").addEventListener("click", () => {
     hiddenLogs = true;
     $("logList").innerHTML = "";
@@ -595,6 +665,25 @@ function bindEvents() {
         toast(`失败: ${result.error || "unknown"}`);
       } else {
         const oneShot = key === "link1" || key === "link3";
+        toast(start ? `${key} ${oneShot ? "单次采集" : "runtime"}已启动` : `${key} runtime 已停止`);
+      }
+      await refreshState();
+    });
+  });
+  ["fast1", "fast2", "fast3"].forEach((key) => {
+    const node = $(`${key}RunSwitch`);
+    node.addEventListener("change", async () => {
+      const start = node.checked;
+      const result = await post(start ? "/api/fast-demo/start" : "/api/fast-demo/stop", {
+        link: key,
+        send_to_robot: $("fastDemoSendRobotSwitch").checked,
+        allow_motion: $("fastDemoAllowMotionSwitch").checked,
+      });
+      if (!result.ok) {
+        node.checked = !start;
+        toast(`失败: ${result.error || "unknown"}`);
+      } else {
+        const oneShot = key === "fast1" || key === "fast3";
         toast(start ? `${key} ${oneShot ? "单次采集" : "runtime"}已启动` : `${key} runtime 已停止`);
       }
       await refreshState();

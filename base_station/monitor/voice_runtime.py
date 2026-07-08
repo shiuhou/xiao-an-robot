@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from base_station.api.runtime import ApiRuntime
+from base_station.integration_console.fast_demo_brain import (
+    build_fast_demo_voice_output,
+    build_reminder_record,
+    execute_robot_plan,
+)
 from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output
 from base_station.perception.asr import SenseVoiceASRBackend
 from base_station.perception.mic_capture import choose_input_device, list_input_devices, record_wav, recording_sample_rate
@@ -24,6 +29,7 @@ from base_station.perception.mic_capture import choose_input_device, list_input_
 
 SUPPORTED_SOURCES = {"text_loop", "local_mic"}
 RESERVED_SOURCES = {"audio_file_loop"}
+DECISION_MODES = {"openclaw", "local_demo"}
 
 
 def build_voice_output(text: str, event: dict, result: dict) -> dict:
@@ -129,7 +135,7 @@ async def process_text(
 
 
 async def process_audio_file(
-    runtime: Any,
+    runtime: Any | None,
     audio_path: str,
     *,
     session_id: str = "voice-runtime",
@@ -149,6 +155,12 @@ async def process_audio_file(
     speech_trim_end_padding_ms: int | None = 800,
     disable_companion_fast_path: bool = False,
     latest_output_path: str | None = None,
+    decision_mode: str = "openclaw",
+    local_demo_link: str = "fast1",
+    local_demo_send_to_robot: bool = False,
+    local_demo_allow_motion: bool = False,
+    gateway_url: str = "ws://127.0.0.1:8765/agent",
+    local_demo_reminders_path: str | None = None,
 ) -> dict:
     """Run one microphone WAV through VAD/ASR and then link-1 OpenClaw routing."""
 
@@ -177,6 +189,31 @@ async def process_audio_file(
     event["payload"]["session_id"] = session_id
     if disable_companion_fast_path:
         event["payload"]["disable_companion_fast_path"] = True
+    if decision_mode == "local_demo":
+        output = build_fast_demo_voice_output(transcript, event, link=local_demo_link)
+        _write_latest_output(latest_output_path, output)
+        execution = await execute_robot_plan(
+            output.get("fast_demo_decision") if isinstance(output.get("fast_demo_decision"), dict) else {},
+            gateway_url=gateway_url,
+            send_to_robot=local_demo_send_to_robot,
+            allow_motion=local_demo_allow_motion,
+        )
+        output["robot_execution"] = execution
+        output["executed_actions"] = execution.get("executed_actions", [])
+        output["skipped_actions"] = execution.get("skipped_actions", [])
+        reminder_record = build_reminder_record(
+            output.get("fast_demo_decision") if isinstance(output.get("fast_demo_decision"), dict) else {},
+            transcript=transcript,
+            send_to_robot=local_demo_send_to_robot,
+            allow_motion=local_demo_allow_motion,
+            gateway_url=gateway_url,
+        )
+        if reminder_record is not None:
+            _append_fast_demo_reminder(local_demo_reminders_path, reminder_record)
+            output["scheduled_reminder"] = reminder_record
+        return output
+    if runtime is None:
+        raise RuntimeError("openclaw decision mode requires a runtime")
     _write_latest_output(latest_output_path, _openclaw_pending_output(transcript, event))
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
@@ -203,6 +240,11 @@ async def run_text_loop(
     prompt: bool = True,
     latest_output_path: str | None = None,
     disable_companion_fast_path: bool = False,
+    decision_mode: str = "openclaw",
+    local_demo_link: str = "fast1",
+    local_demo_send_to_robot: bool = False,
+    local_demo_allow_motion: bool = False,
+    local_demo_reminders_path: str | None = None,
 ) -> int:
     """Run the resident text loop until EOF or Ctrl+C.
 
@@ -212,11 +254,15 @@ async def run_text_loop(
     input_stream = input_stream or sys.stdin
     output_stream = output_stream or sys.stdout
     error_stream = error_stream or sys.stderr
-    runtime = runtime_factory(
-        db_path=db_path,
-        robot_ws_url=gateway_url,
-        verbose=verbose,
-    )
+    if decision_mode not in DECISION_MODES:
+        raise ValueError(f"unsupported_decision_mode:{decision_mode}")
+    runtime = None
+    if decision_mode == "openclaw":
+        runtime = runtime_factory(
+            db_path=db_path,
+            robot_ws_url=gateway_url,
+            verbose=verbose,
+        )
     handled_count = 0
     try:
         while True:
@@ -364,6 +410,12 @@ async def run_local_mic_loop(
                 speech_trim_end_padding_ms=speech_trim_end_padding_ms,
                 disable_companion_fast_path=disable_companion_fast_path,
                 latest_output_path=latest_output_path,
+                decision_mode=decision_mode,
+                local_demo_link=local_demo_link,
+                local_demo_send_to_robot=local_demo_send_to_robot,
+                local_demo_allow_motion=local_demo_allow_motion,
+                gateway_url=gateway_url,
+                local_demo_reminders_path=local_demo_reminders_path,
             )
             if output.get("event_type") == "asr.transcript":
                 handled_count += 1
@@ -379,7 +431,7 @@ async def run_local_mic_loop(
         print("\nvoice_runtime local_mic stopped.", file=error_stream, flush=True)
         return handled_count
     finally:
-        close = getattr(runtime, "close", None)
+        close = getattr(runtime, "close", None) if runtime is not None else None
         if callable(close):
             close()
 
@@ -479,6 +531,27 @@ def _write_silence_wav(path: Path, *, sample_rate: int = 16000, duration_seconds
         wav.writeframes(samples)
 
 
+def _append_fast_demo_reminder(path: str | None, record: dict[str, Any]) -> None:
+    if not path:
+        return
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = json.loads(target.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        existing = {}
+    items = existing.get("items") if isinstance(existing, dict) and isinstance(existing.get("items"), list) else []
+    items.append(record)
+    payload = {
+        "schema_version": "xiaoan.fast_demo_reminders.v1",
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "items": items,
+    }
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(target)
+
+
 def prewarm_asr_model(
     *,
     asr_backend: str = "sensevoice",
@@ -567,6 +640,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Route ASR transcripts to OpenClaw without local companion care pre-response.",
     )
+    parser.add_argument(
+        "--decision-mode",
+        choices=sorted(DECISION_MODES),
+        default="openclaw",
+        help="Use OpenClaw routing or Integration Console local Fast Demo decisions after ASR.",
+    )
+    parser.add_argument(
+        "--local-demo-link",
+        choices=["fast1", "fast3"],
+        default="fast1",
+        help="Fast Demo voice link identity when --decision-mode local_demo is used.",
+    )
+    parser.add_argument(
+        "--local-demo-send-to-robot",
+        action="store_true",
+        help="Send Fast Demo expression/TTS commands to the robot after local decision.",
+    )
+    parser.add_argument(
+        "--local-demo-allow-motion",
+        action="store_true",
+        help="Allow Fast Demo motion steps. Motion parameters remain fixed and conservative.",
+    )
+    parser.add_argument(
+        "--local-demo-reminders-path",
+        default=None,
+        help="Append Fast Demo reminder records to this JSON file when reminder intent is captured.",
+    )
     return parser.parse_args(argv)
 
 
@@ -620,6 +720,11 @@ async def main(args: argparse.Namespace | None = None) -> int:
             once=args.once,
             latest_output_path=args.latest_output,
             disable_companion_fast_path=args.disable_companion_fast_path,
+            decision_mode=args.decision_mode,
+            local_demo_link=args.local_demo_link,
+            local_demo_send_to_robot=args.local_demo_send_to_robot,
+            local_demo_allow_motion=args.local_demo_allow_motion,
+            local_demo_reminders_path=args.local_demo_reminders_path,
         )
         return 0
     await run_text_loop(

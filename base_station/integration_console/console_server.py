@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse, urlsplit
 
+from base_station.integration_console.fast_demo_brain import build_reminder_due_decision, decide_visual, decide_voice
+
 DEFAULT_RUNTIME_DIR = Path("runtime")
 DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
 DEFAULT_WS_URL = "ws://127.0.0.1:8765/agent"
@@ -49,6 +51,8 @@ EXPRESSIONS = {
     "sleeping",
 }
 LOCAL_SOUNDS = {"care_01", "success_ding"}
+STANDARD_LINKS = ("link1", "link2", "link3")
+FAST_DEMO_LINKS = ("fast1", "fast2", "fast3")
 
 
 def _now_iso() -> str:
@@ -152,6 +156,10 @@ def _timestamp_age_ms(value: Any) -> int | None:
     return int(max(0.0, time.time() - timestamp) * 1000)
 
 
+def _iso_timestamp(value: Any) -> float | None:
+    return _parse_iso_timestamp(value)
+
+
 def _fresh(info: dict[str, Any], max_age_ms: int) -> bool:
     return bool(
         info.get("exists")
@@ -242,6 +250,14 @@ class IntegrationConsoleApp:
         return self.event_dir / "visual"
 
     @property
+    def fast_demo_visual_dir(self) -> Path:
+        return self.event_dir / "fast_demo" / "visual"
+
+    @property
+    def fast_demo_reminders_path(self) -> Path:
+        return self.event_dir / "fast_demo" / "reminders.json"
+
+    @property
     def process_log_dir(self) -> Path:
         return self.event_dir / "process_logs"
 
@@ -280,7 +296,13 @@ class IntegrationConsoleApp:
         return {"ok": True, "path": str(path), "audio_stats": data}
 
     def visual_state(self) -> dict[str, Any]:
-        path = self.visual_dir / "latest_state.json"
+        return self._visual_state_from_dir(self.visual_dir)
+
+    def fast_demo_visual_state(self) -> dict[str, Any]:
+        return self._visual_state_from_dir(self.fast_demo_visual_dir)
+
+    def _visual_state_from_dir(self, visual_dir: Path) -> dict[str, Any]:
+        path = visual_dir / "latest_state.json"
         data, error = _load_json_file(path)
         info = _file_info(path)
         if data is None:
@@ -291,8 +313,8 @@ class IntegrationConsoleApp:
                 "age_ms": info["age_ms"],
                 "state": {},
                 "files": {
-                    "latest_image": _file_info(self.visual_dir / "latest_annotated.jpg"),
-                    "trigger_image": _file_info(self.visual_dir / "vlm_trigger.jpg"),
+                    "latest_image": _file_info(visual_dir / "latest_annotated.jpg"),
+                    "trigger_image": _file_info(visual_dir / "vlm_trigger.jpg"),
                 },
             }
         age_ms = info["age_ms"]
@@ -304,8 +326,8 @@ class IntegrationConsoleApp:
             "age_ms": age_ms,
             "state": data,
             "files": {
-                "latest_image": _file_info(self.visual_dir / "latest_annotated.jpg"),
-                "trigger_image": _file_info(self.visual_dir / "vlm_trigger.jpg"),
+                "latest_image": _file_info(visual_dir / "latest_annotated.jpg"),
+                "trigger_image": _file_info(visual_dir / "vlm_trigger.jpg"),
             },
         }
 
@@ -364,7 +386,7 @@ class IntegrationConsoleApp:
     def link_process_states(self) -> dict[str, Any]:
         return {
             link: self.link_process_state(link)
-            for link in ("link1", "link2", "link3")
+            for link in (*STANDARD_LINKS, *FAST_DEMO_LINKS)
         }
 
     def voice_prewarm_command(self) -> list[str]:
@@ -527,6 +549,74 @@ class IntegrationConsoleApp:
             return command
         raise ValueError(f"unsupported_link:{link}")
 
+    def fast_demo_command(self, link: str, body: dict[str, Any] | None = None) -> list[str]:
+        body = body or {}
+        if link in {"fast1", "fast3"}:
+            normal_link = "link1" if link == "fast1" else "link3"
+            duration = self._env_text(f"XIAOAN_{normal_link.upper()}_MIC_WINDOW", "6.0")
+            command = [
+                sys.executable,
+                "-m",
+                "base_station.monitor.voice_runtime",
+                "--source",
+                "local_mic",
+                "--gateway-url",
+                self.ws_url,
+                "--session-id",
+                f"integration-console-{link}",
+                "--duration",
+                duration,
+                "--asr-language",
+                self._env_text(f"XIAOAN_{normal_link.upper()}_ASR_LANGUAGE", "zh"),
+                "--latest-output",
+                str(self.link_voice_output_path(link)),
+                "--once",
+                "--decision-mode",
+                "local_demo",
+                "--local-demo-link",
+                link,
+                "--local-demo-reminders-path",
+                str(self.fast_demo_reminders_path),
+                "--verbose",
+            ]
+            if bool(body.get("send_to_robot", False)):
+                command.append("--local-demo-send-to-robot")
+            if bool(body.get("allow_motion", False)):
+                command.append("--local-demo-allow-motion")
+            return command
+        if link == "fast2":
+            host, port = self._ws_host_port()
+            command = [
+                sys.executable,
+                "-m",
+                "base_station.monitor.emotion_runtime",
+                "--source",
+                "ws_video_observer",
+                "--host",
+                host,
+                "--port",
+                str(port),
+                "--count",
+                "None",
+                "--enable-vlm-gate",
+                "--model-backend",
+                self._env_text("XIAOAN_LINK2_MODEL_BACKEND", "openface_ov"),
+                "--vlm-backend",
+                self._env_text("XIAOAN_LINK2_VLM_BACKEND", "openvino_qwen_vl"),
+                "--vlm-model-path",
+                self._env_text("XIAOAN_LINK2_VLM_MODEL_PATH", DEFAULT_QWEN_VL_MODEL_PATH),
+                "--visual-trace-dir",
+                str(self.fast_demo_visual_dir),
+                "--visual-trace-fps",
+                self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "1.0"),
+                "--no-agent",
+                "--verbose",
+            ]
+            if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
+                command.append("--force-vlm")
+            return command
+        raise ValueError(f"unsupported_fast_demo_link:{link}")
+
     def link_environment(self, link: str) -> dict[str, str]:
         env = dict(os.environ)
         if link in {"link1", "link2", "link3"}:
@@ -535,6 +625,17 @@ class IntegrationConsoleApp:
             env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
         if link == "link1":
             env.setdefault("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", "1")
+        return env
+
+    def fast_demo_environment(self) -> dict[str, str]:
+        env = dict(os.environ)
+        for key in (
+            "XIAO_AN_OPENCLAW_BACKEND",
+            "XIAO_AN_OPENCLAW_GATEWAY_URL",
+            "XIAO_AN_OPENCLAW_AGENT",
+            "XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION",
+        ):
+            env.pop(key, None)
         return env
 
     def start_link(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -612,6 +713,182 @@ class IntegrationConsoleApp:
                 "state": self.link_process_state(link),
         }
 
+    def start_fast_demo(self, body: dict[str, Any]) -> dict[str, Any]:
+        link = str(body.get("link") or "").strip()
+        try:
+            command = self.fast_demo_command(link, body)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        state = self.link_process_state(link)
+        if state["running"]:
+            return {"ok": True, "link": link, "state": state, "already_running": True}
+
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / f"{link}.log"
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            process = subprocess.Popen(
+                command,
+                cwd=_repo_root(),
+                env=self.fast_demo_environment(),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        self.link_processes[link] = process
+        request_id = uuid.uuid4().hex[:12]
+        self.log_event(
+            event_type="fast_demo.start",
+            request_id=request_id,
+            action=link,
+            payload_summary={
+                "link": link,
+                "send_to_robot": bool(body.get("send_to_robot", False)),
+                "allow_motion": bool(body.get("allow_motion", False)),
+            },
+            raw_response_summary={"pid": process.pid, "command": command, "log_path": str(log_path)},
+        )
+        time.sleep(0.1)
+        return {
+            "ok": True,
+            "link": link,
+            "request_id": request_id,
+            "state": self.link_process_state(link),
+            "command_preview": " ".join(command),
+        }
+
+    def stop_fast_demo(self, body: dict[str, Any]) -> dict[str, Any]:
+        link = str(body.get("link") or "").strip()
+        if link not in FAST_DEMO_LINKS:
+            return {"ok": False, "error": f"unsupported_fast_demo_link:{link}"}
+        process = self.link_processes.get(link)
+        if process is None:
+            return {"ok": True, "link": link, "state": self.link_process_state(link), "already_stopped": True}
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        self.link_processes.pop(link, None)
+        request_id = uuid.uuid4().hex[:12]
+        self.log_event(
+            event_type="fast_demo.stop",
+            request_id=request_id,
+            action=link,
+            payload_summary={"link": link},
+            raw_response_summary={"pid": process.pid, "returncode": process.returncode},
+        )
+        return {
+            "ok": True,
+            "link": link,
+            "request_id": request_id,
+            "state": self.link_process_state(link),
+        }
+
+    def execute_fast_demo_plan(self, body: dict[str, Any]) -> dict[str, Any]:
+        link = str(body.get("link") or "").strip()
+        if link != "fast2":
+            return {"ok": False, "error": f"unsupported_fast_demo_execute_link:{link}"}
+        visual = self.fast_demo_visual_state()
+        if not visual.get("ok"):
+            return {"ok": False, "error": visual.get("reason") or "visual_state_unavailable"}
+        decision = decide_visual(visual.get("state") if isinstance(visual.get("state"), dict) else {})
+        plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
+        send_to_robot = bool(body.get("send_to_robot", False))
+        allow_motion = bool(body.get("allow_motion", False))
+        request_id = uuid.uuid4().hex[:12]
+        steps: list[dict[str, Any]] = []
+        if not send_to_robot:
+            for step in (plan.get("steps") if isinstance(plan.get("steps"), list) else []):
+                if isinstance(step, dict):
+                    steps.append({"name": step.get("kind"), "ok": True, "skipped": True, "reason": "send_to_robot_disabled"})
+            return {
+                "ok": True,
+                "link": link,
+                "request_id": request_id,
+                "decision": self._public_fast_demo_decision(decision),
+                "steps": steps,
+            }
+        for step in (plan.get("steps") if isinstance(plan.get("steps"), list) else []):
+            if not isinstance(step, dict):
+                continue
+            kind = str(step.get("kind") or "")
+            started = time.time()
+            if kind == "expression":
+                result = self.send_expression({
+                    "expression": step.get("expression"),
+                    "duration_ms": step.get("duration_ms"),
+                    "loop": step.get("loop", False),
+                })
+            elif kind == "motion":
+                if not allow_motion:
+                    steps.append({
+                        "name": f"motion:{step.get('action')}",
+                        "ok": True,
+                        "skipped": True,
+                        "reason": "motion_disabled",
+                    })
+                    continue
+                action_id = f"fast-demo-{uuid.uuid4().hex[:8]}"
+                result = self.send_motion({
+                    "action": step.get("action"),
+                    "action_id": action_id,
+                    "params": step.get("params") if isinstance(step.get("params"), dict) else {},
+                    "timeout_ms": step.get("timeout_ms"),
+                    "bench": False,
+                })
+                steps.append({
+                    "name": kind,
+                    "ok": bool(result.get("ok")),
+                    "duration_ms": int((time.time() - started) * 1000),
+                    "result": result,
+                })
+                if result.get("ok") and step.get("action") != "stop":
+                    self._wait_motion_completed(
+                        steps,
+                        action_id,
+                        timeout_ms=int(step.get("timeout_ms") or 1200) + 600,
+                    )
+                continue
+            elif kind == "tts":
+                result = self.send_tts({
+                    "text": step.get("text"),
+                    "duration_ms": step.get("duration_ms"),
+                })
+            elif kind == "local_sound":
+                result = self.send_local_sound({"sound": step.get("sound"), "volume": step.get("volume", 0.8)})
+            else:
+                result = {"ok": False, "error": f"unsupported_fast_demo_step:{kind}"}
+            steps.append({
+                "name": kind,
+                "ok": bool(result.get("ok")),
+                "duration_ms": int((time.time() - started) * 1000),
+                "result": result,
+            })
+        ok = all(step.get("ok") for step in steps)
+        self.log_event(
+            event_type="fast_demo.execute",
+            request_id=request_id,
+            action=link,
+            payload_summary={"link": link, "send_to_robot": send_to_robot, "allow_motion": allow_motion},
+            result="ok" if ok else "failed",
+            raw_response_summary={"decision": self._public_fast_demo_decision(decision), "steps": steps},
+        )
+        return {
+            "ok": ok,
+            "link": link,
+            "request_id": request_id,
+            "decision": self._public_fast_demo_decision(decision),
+            "steps": steps,
+        }
+
     def state(self) -> dict[str, Any]:
         ws_state = read_ws_state(self.runtime_dir)
         visual_state = self.visual_state()
@@ -666,6 +943,7 @@ class IntegrationConsoleApp:
             "last_audio_playback_done": raw_state.get("last_audio_playback_done"),
             "last_error": raw_state.get("last_error"),
         }
+        reminder_result = self.process_due_fast_demo_reminders()
         media = {
             "latest_image": latest_image,
             "latest_audio": latest_audio,
@@ -685,6 +963,7 @@ class IntegrationConsoleApp:
             processes=process_states,
             link_voice=link_voice,
         )
+        fast_demo = self.fast_demo_state(robot=robot, processes=process_states)
 
         return {
             "ok": True,
@@ -699,6 +978,8 @@ class IntegrationConsoleApp:
             "openclaw_dashboard": dashboard_state,
             "visual": visual_state,
             "links": links,
+            "fast_demo": fast_demo,
+            "fast_demo_reminders": self.fast_demo_reminders_state(last_result=reminder_result),
             "processes": process_states,
             "tools": self.tool_catalog(),
             "recent_events": self.recent_events(limit=STATE_EVENT_LIMIT),
@@ -873,6 +1154,294 @@ class IntegrationConsoleApp:
                 "voice": link3_voice,
                 "voice_phase": link3_phase,
             },
+        }
+
+    def fast_demo_state(
+        self,
+        *,
+        robot: dict[str, Any],
+        processes: dict[str, Any],
+    ) -> dict[str, Any]:
+        voice = {
+            link: self.link_voice_state(link)
+            for link in ("fast1", "fast3")
+        }
+        fast_visual = self.fast_demo_visual_state()
+        fast1 = self._fast_demo_voice_link_state("fast1", voice.get("fast1") or {}, processes, robot)
+        fast3 = self._fast_demo_voice_link_state("fast3", voice.get("fast3") or {}, processes, robot)
+        fast2 = self._fast_demo_visual_link_state(fast_visual, processes)
+        return {
+            "public_label": "智能大脑回复",
+            "voice": voice,
+            "visual": fast_visual,
+            "fast1": fast1,
+            "fast2": fast2,
+            "fast3": fast3,
+        }
+
+    def fast_demo_reminders_state(self, *, last_result: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = self._load_fast_demo_reminders()
+        items = payload.get("items") if isinstance(payload.get("items"), list) else []
+        pending = [item for item in items if isinstance(item, dict) and item.get("status") == "pending"]
+        fired = [item for item in items if isinstance(item, dict) and item.get("status") == "fired"]
+        return {
+            "ok": True,
+            "path": str(self.fast_demo_reminders_path),
+            "count": len(items),
+            "pending_count": len(pending),
+            "fired_count": len(fired),
+            "next_due_at": min((str(item.get("due_at")) for item in pending if item.get("due_at")), default=None),
+            "items": items[-10:],
+            "last_result": last_result or {},
+        }
+
+    def process_due_fast_demo_reminders(self) -> dict[str, Any]:
+        payload = self._load_fast_demo_reminders()
+        items = payload.get("items") if isinstance(payload.get("items"), list) else []
+        if not items:
+            return {"ok": True, "processed": 0, "due": 0}
+        now_ts = time.time()
+        processed = 0
+        due_count = 0
+        results: list[dict[str, Any]] = []
+        changed = False
+        for item in items:
+            if not isinstance(item, dict) or item.get("status") != "pending":
+                continue
+            due_ts = _iso_timestamp(item.get("due_at"))
+            if due_ts is None or due_ts > now_ts:
+                continue
+            due_count += 1
+            decision = build_reminder_due_decision(item)
+            execution = self._execute_fast_demo_decision_plan(
+                decision,
+                send_to_robot=bool(item.get("send_to_robot", False)),
+                allow_motion=bool(item.get("allow_motion", False)),
+            )
+            item["status"] = "fired"
+            item["fired_at"] = _now_iso()
+            item["fire_decision"] = self._public_fast_demo_decision(decision)
+            item["fire_execution"] = execution
+            results.append({"id": item.get("id"), "ok": execution.get("ok"), "execution": execution})
+            processed += 1
+            changed = True
+        if changed:
+            payload["updated_at"] = _now_iso()
+            payload["items"] = items
+            _atomic_write_json(self.fast_demo_reminders_path, payload)
+        return {"ok": True, "processed": processed, "due": due_count, "results": results}
+
+    def _load_fast_demo_reminders(self) -> dict[str, Any]:
+        data, _ = _load_json_file(self.fast_demo_reminders_path)
+        if data is None:
+            return {
+                "schema_version": "xiaoan.fast_demo_reminders.v1",
+                "updated_at": None,
+                "items": [],
+            }
+        if not isinstance(data.get("items"), list):
+            data["items"] = []
+        return data
+
+    def _execute_fast_demo_decision_plan(
+        self,
+        decision: dict[str, Any],
+        *,
+        send_to_robot: bool,
+        allow_motion: bool,
+    ) -> dict[str, Any]:
+        plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
+        steps: list[dict[str, Any]] = []
+        if not send_to_robot:
+            for step in (plan.get("steps") if isinstance(plan.get("steps"), list) else []):
+                if isinstance(step, dict):
+                    steps.append({"name": step.get("kind"), "ok": True, "skipped": True, "reason": "send_to_robot_disabled"})
+            return {"ok": True, "steps": steps}
+        for step in (plan.get("steps") if isinstance(plan.get("steps"), list) else []):
+            if not isinstance(step, dict):
+                continue
+            kind = str(step.get("kind") or "")
+            started = time.time()
+            if kind == "expression":
+                result = self.send_expression({
+                    "expression": step.get("expression"),
+                    "duration_ms": step.get("duration_ms"),
+                    "loop": step.get("loop", False),
+                })
+            elif kind == "motion":
+                if not allow_motion:
+                    steps.append({
+                        "name": f"motion:{step.get('action')}",
+                        "ok": True,
+                        "skipped": True,
+                        "reason": "motion_disabled",
+                    })
+                    continue
+                action_id = f"fast-demo-{uuid.uuid4().hex[:8]}"
+                result = self.send_motion({
+                    "action": step.get("action"),
+                    "action_id": action_id,
+                    "params": step.get("params") if isinstance(step.get("params"), dict) else {},
+                    "timeout_ms": step.get("timeout_ms"),
+                    "bench": False,
+                })
+                steps.append({
+                    "name": kind,
+                    "ok": bool(result.get("ok")),
+                    "duration_ms": int((time.time() - started) * 1000),
+                    "result": result,
+                })
+                if result.get("ok") and step.get("action") != "stop":
+                    self._wait_motion_completed(
+                        steps,
+                        action_id,
+                        timeout_ms=int(step.get("timeout_ms") or 1200) + 600,
+                    )
+                continue
+            elif kind == "tts":
+                result = self.send_tts({"text": step.get("text"), "duration_ms": step.get("duration_ms")})
+            elif kind == "local_sound":
+                result = self.send_local_sound({"sound": step.get("sound"), "volume": step.get("volume", 0.8)})
+            else:
+                result = {"ok": False, "error": f"unsupported_fast_demo_step:{kind}"}
+            steps.append({
+                "name": kind,
+                "ok": bool(result.get("ok")),
+                "duration_ms": int((time.time() - started) * 1000),
+                "result": result,
+            })
+        return {"ok": all(step.get("ok") for step in steps), "steps": steps}
+
+    def _fast_demo_voice_link_state(
+        self,
+        link: str,
+        voice_state: dict[str, Any],
+        processes: dict[str, Any],
+        robot: dict[str, Any],
+    ) -> dict[str, Any]:
+        process = processes.get(link) if isinstance(processes.get(link), dict) else {}
+        output = self._display_voice_output(
+            voice_state.get("output") if isinstance(voice_state.get("output"), dict) else {}
+        )
+        phase = self._voice_phase(output, process)
+        asr_text = self._voice_text(output)
+        decision = output.get("fast_demo_decision") if isinstance(output.get("fast_demo_decision"), dict) else {}
+        if asr_text and not decision:
+            try:
+                decision = decide_voice(link, asr_text)
+            except ValueError:
+                decision = {}
+        brain_text = self._voice_reply_text(output) or str(decision.get("reply_text") or "").strip()
+        audio = self._voice_audio_info(output)
+        voice_fresh = bool(
+            voice_state.get("ok")
+            and voice_state.get("age_ms") is not None
+            and int(voice_state.get("age_ms") or 0) <= 30000
+        )
+        audio_fresh = voice_fresh or _fresh(audio, 30000)
+        running = bool(process.get("running"))
+        completed_once = bool(process.get("status") == "exited" and process.get("returncode") == 0 and voice_state.get("ok"))
+        robot_plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
+        execution = output.get("robot_execution") if isinstance(output.get("robot_execution"), dict) else {}
+        steps = [
+            _step("voice runtime", running or completed_once, process.get("pid")),
+            _step("麦克风", audio_fresh, audio.get("updated_at") or voice_state.get("updated_at")),
+            _step("ASR 文本", bool(asr_text), asr_text),
+            _step("智能大脑回复", bool(brain_text), brain_text),
+            _step("表情/TTS/动作计划", bool(robot_plan.get("steps")), self._fast_demo_plan_summary(robot_plan, execution)),
+        ]
+        return {
+            "status": self._status_from_steps(steps) if (running or completed_once or voice_state.get("ok")) else "idle",
+            "done": all(step["ok"] for step in steps),
+            "steps": steps,
+            "asr_text": asr_text,
+            "brain_text": brain_text,
+            "decision": self._public_fast_demo_decision(decision),
+            "robot_plan": robot_plan,
+            "robot_execution": execution or self._robot_execution_summary(robot),
+            "voice": voice_state,
+            "voice_phase": phase,
+        }
+
+    def _fast_demo_visual_link_state(
+        self,
+        visual: dict[str, Any],
+        processes: dict[str, Any],
+    ) -> dict[str, Any]:
+        process = processes.get("fast2") if isinstance(processes.get("fast2"), dict) else {}
+        running = bool(process.get("running"))
+        trace = visual.get("state") if isinstance(visual.get("state"), dict) else {}
+        decision = decide_visual(trace)
+        brain_text = str(decision.get("reply_text") or "").strip() if visual.get("ok") else ""
+        robot_plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
+        files = visual.get("files") if isinstance(visual.get("files"), dict) else {}
+        latest_image = files.get("latest_image") if isinstance(files.get("latest_image"), dict) else {}
+        visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
+        steps = [
+            _step("emotion runtime", running, process.get("pid")),
+            _step("ws_video 分析快照", _fresh(latest_image, FRESH_VISUAL_MS), visual.get("freshness")),
+            _step("视觉模型推理", visual_fresh, self._fast_demo_visual_summary(trace)),
+            _step("智能大脑回复", bool(brain_text), brain_text),
+            _step("表情/TTS/动作计划", bool(robot_plan.get("steps")) and bool(brain_text), self._fast_demo_plan_summary(robot_plan, {})),
+        ]
+        return {
+            "status": self._status_from_steps(steps) if (running or visual.get("ok")) else "idle",
+            "done": all(step["ok"] for step in steps),
+            "steps": steps,
+            "visual": visual,
+            "brain_text": brain_text,
+            "decision": self._public_fast_demo_decision(decision) if visual.get("ok") else {},
+            "robot_plan": robot_plan if visual.get("ok") else {},
+        }
+
+    @staticmethod
+    def _public_fast_demo_decision(decision: dict[str, Any]) -> dict[str, Any]:
+        if not decision:
+            return {}
+        return {
+            "public_label": decision.get("public_label") or "智能大脑回复",
+            "intent": decision.get("intent"),
+            "confidence": decision.get("confidence"),
+            "reason": decision.get("reason"),
+            "reply_text": decision.get("reply_text"),
+            "trigger": decision.get("trigger") if isinstance(decision.get("trigger"), dict) else {},
+        }
+
+    @staticmethod
+    def _fast_demo_plan_summary(plan: dict[str, Any], execution: dict[str, Any]) -> dict[str, Any]:
+        steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+        return {
+            "allow_motion_required": bool(plan.get("allow_motion_required")),
+            "steps": [
+                {
+                    "kind": step.get("kind"),
+                    "action": step.get("action") or step.get("expression") or step.get("sound") or ("tts" if step.get("kind") == "tts" else None),
+                }
+                for step in steps
+                if isinstance(step, dict)
+            ],
+            "executed_actions": execution.get("executed_actions") if isinstance(execution.get("executed_actions"), list) else [],
+            "skipped_actions": execution.get("skipped_actions") if isinstance(execution.get("skipped_actions"), list) else [],
+        }
+
+    @staticmethod
+    def _fast_demo_visual_summary(trace: dict[str, Any]) -> dict[str, Any]:
+        observation = trace.get("observation") if isinstance(trace.get("observation"), dict) else {}
+        cv = trace.get("cv_sample") if isinstance(trace.get("cv_sample"), dict) else {}
+        gate = trace.get("gate") if isinstance(trace.get("gate"), dict) else {}
+        gate_result = gate.get("result") if isinstance(gate.get("result"), dict) else {}
+        vlm = trace.get("vlm") if isinstance(trace.get("vlm"), dict) else {}
+        vlm_result = vlm.get("result") if isinstance(vlm.get("result"), dict) else {}
+        return {
+            "frame_id": trace.get("frame_id"),
+            "face_detected": observation.get("face_detected"),
+            "emotion_tag": cv.get("emotion_tag"),
+            "confidence": cv.get("confidence"),
+            "fatigue_score": cv.get("fatigue_score"),
+            "gate_should_trigger": gate_result.get("should_trigger"),
+            "gate_reason": gate_result.get("reason"),
+            "vlm_status": vlm.get("status"),
+            "vlm_label": vlm_result.get("expression_label") or vlm_result.get("emotion_tag"),
         }
 
     def link_voice_state(self, link: str) -> dict[str, Any]:
@@ -1639,6 +2208,12 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.start_link(body))
                 elif path == "/api/links/stop":
                     self._write_json(app.stop_link(body))
+                elif path == "/api/fast-demo/start":
+                    self._write_json(app.start_fast_demo(body))
+                elif path == "/api/fast-demo/stop":
+                    self._write_json(app.stop_fast_demo(body))
+                elif path == "/api/fast-demo/execute":
+                    self._write_json(app.execute_fast_demo_plan(body))
                 elif path == "/api/tools/run":
                     self._write_json(app.run_tool(body))
                 elif path == "/api/logs/export":

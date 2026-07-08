@@ -31,6 +31,7 @@
       <button class="tab" data-tab="link1">链路一</button>
       <button class="tab" data-tab="link2">链路二</button>
       <button class="tab" data-tab="link3">链路三</button>
+      <button class="tab" data-tab="fast-demo">快速演示</button>
       <button class="tab" data-tab="logs">日志</button>
     </nav>
 
@@ -300,6 +301,139 @@
           <pre class="textbox" id="link3FollowUpText">-</pre>
         </article>
       </div>
+    </section>
+
+    <section class="panel" id="tab-fast-demo">
+      <div class="chain-header">
+        <div>
+          <div class="section-label">FAST DEMO MODE</div>
+          <h2>快速演示模式</h2>
+        </div>
+        <label class="run-switch"><input id="fastDemoSendRobotSwitch" type="checkbox"> 发送到机器人</label>
+        <label class="run-switch"><input id="fastDemoAllowMotionSwitch" type="checkbox"> 允许运动</label>
+      </div>
+
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>本地提醒调度</h2>
+          <div class="kv" id="fastReminderKv"></div>
+        </article>
+        <article class="card">
+          <h2>最近提醒</h2>
+          <pre class="jsonbox compact-json" id="fastReminderJson">{}</pre>
+        </article>
+      </div>
+
+      <section class="fast-demo-block">
+        <div class="chain-header inline-chain-header">
+          <div>
+            <div class="section-label">FAST LINK 1</div>
+            <h2>麦克风 → ASR → 智能大脑回复 → 屏幕/机器人</h2>
+          </div>
+          <label class="run-switch"><input id="fast1RunSwitch" type="checkbox"> 运行一次</label>
+          <span class="status-pill unavailable" id="fast1Status">IDLE</span>
+        </div>
+        <div class="chain-flow" id="fast1Steps"></div>
+        <div class="grid three">
+          <article class="card">
+            <h2>麦克风运行状态</h2>
+            <div class="kv" id="fast1MicKv"></div>
+          </article>
+          <article class="card">
+            <h2>ASR 文本</h2>
+            <pre class="textbox" id="fast1AsrText">-</pre>
+          </article>
+          <article class="card">
+            <h2>智能大脑回复</h2>
+            <pre class="textbox" id="fast1BrainText">-</pre>
+          </article>
+        </div>
+        <div class="grid two chain-detail-row">
+          <article class="card">
+            <h2>决策摘要</h2>
+            <pre class="jsonbox compact-json" id="fast1DecisionJson">{}</pre>
+          </article>
+          <article class="card">
+            <h2>机器人计划 / 执行</h2>
+            <pre class="jsonbox compact-json" id="fast1RobotJson">{}</pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="fast-demo-block">
+        <div class="chain-header inline-chain-header">
+          <div>
+            <div class="section-label">FAST LINK 2</div>
+            <h2>ws_video → emotion_runtime → 视觉分析 → 智能大脑回复</h2>
+          </div>
+          <label class="run-switch"><input id="fast2RunSwitch" type="checkbox"> 运行模式</label>
+          <span class="status-pill unavailable" id="fast2Status">IDLE</span>
+        </div>
+        <div class="chain-flow" id="fast2Steps"></div>
+        <div class="grid three">
+          <article class="card">
+            <h2>视觉模型状态</h2>
+            <pre class="jsonbox compact-json" id="fast2VisualJson">{}</pre>
+          </article>
+          <article class="card">
+            <h2>智能大脑回复</h2>
+            <pre class="textbox" id="fast2BrainText">-</pre>
+          </article>
+          <article class="card">
+            <h2>机器人计划</h2>
+            <pre class="jsonbox compact-json" id="fast2RobotJson">{}</pre>
+            <div class="actions">
+              <button id="fast2ExecuteBtn">执行当前视觉计划</button>
+            </div>
+          </article>
+        </div>
+        <div class="grid two chain-detail-row">
+          <article class="card">
+            <h2>决策摘要</h2>
+            <pre class="jsonbox compact-json" id="fast2DecisionJson">{}</pre>
+          </article>
+          <article class="card">
+            <h2>视觉状态文件</h2>
+            <pre class="jsonbox compact-json" id="fast2StateJson">{}</pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="fast-demo-block">
+        <div class="chain-header inline-chain-header">
+          <div>
+            <div class="section-label">FAST LINK 3</div>
+            <h2>麦克风 → ASR → 智能大脑回复 → 秒级机器人响应</h2>
+          </div>
+          <label class="run-switch"><input id="fast3RunSwitch" type="checkbox"> 运行一次</label>
+          <span class="status-pill unavailable" id="fast3Status">IDLE</span>
+        </div>
+        <div class="chain-flow" id="fast3Steps"></div>
+        <div class="grid three">
+          <article class="card">
+            <h2>麦克风运行状态</h2>
+            <div class="kv" id="fast3MicKv"></div>
+          </article>
+          <article class="card">
+            <h2>ASR 文本</h2>
+            <pre class="textbox" id="fast3AsrText">-</pre>
+          </article>
+          <article class="card">
+            <h2>智能大脑回复</h2>
+            <pre class="textbox" id="fast3BrainText">-</pre>
+          </article>
+        </div>
+        <div class="grid two chain-detail-row">
+          <article class="card">
+            <h2>决策摘要</h2>
+            <pre class="jsonbox compact-json" id="fast3DecisionJson">{}</pre>
+          </article>
+          <article class="card">
+            <h2>机器人计划 / 执行</h2>
+            <pre class="jsonbox compact-json" id="fast3RobotJson">{}</pre>
+          </article>
+        </div>
+      </section>
     </section>
 
     <section class="panel" id="tab-audio">

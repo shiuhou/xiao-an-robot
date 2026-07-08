@@ -7,13 +7,18 @@ import unittest
 from unittest import mock
 
 from base_station.ws_server.tts_stream import (
+    TTS_COMMAND_ENV,
     TTS_RATE_ENV,
     TTS_VOICE_ENV,
     TTS_TARGET_PEAK_ENV,
+    default_edge_tts_command_template,
+    default_edge_tts_script_path,
     windows_sapi_script,
+    external_tts_backend_configured,
     limit_pcm_peak_s16le,
     normalize_pcm_peak_s16le,
     tts_target_peak_from_env,
+    tts_command_template_from_env,
 )
 
 
@@ -76,6 +81,19 @@ class TtsStreamTest(unittest.TestCase):
 
         self.assertIn(TTS_RATE_ENV, script)
         self.assertIn("$synth.Rate", script)
+
+    def test_default_external_tts_command_targets_runtime_edge_tts_script(self) -> None:
+        command = default_edge_tts_command_template()
+
+        self.assertTrue(str(default_edge_tts_script_path()).endswith("runtime/tts_probe/edge_tts_to_wav.py"))
+        self.assertIn("edge_tts_to_wav.py", command)
+        self.assertIn("{text_file}", command)
+        self.assertIn("{wav_file}", command)
+
+    def test_external_tts_command_env_overrides_default_edge_script(self) -> None:
+        with mock.patch.dict("os.environ", {TTS_COMMAND_ENV: "custom_tts {text_file} {wav_file}"}, clear=False):
+            self.assertEqual(tts_command_template_from_env(), "custom_tts {text_file} {wav_file}")
+            self.assertTrue(external_tts_backend_configured())
 
 
 if __name__ == "__main__":

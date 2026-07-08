@@ -39,7 +39,7 @@ Local rules are allowed only as explicitly labeled fallback diagnostics.
 | Current speaker power notes | MAX98357A VIN=5V, GND common, SD tied to 3V3, speaker on SPK+ and SPK- |
 | ESP stream gain | `MERGETEST_SPEAKER_STREAM_GAIN=32` |
 | Base TTS peak | `XIAOAN_TTS_TARGET_PEAK=800` |
-| Base TTS voice | `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'` |
+| Base TTS backend | default `runtime/tts_probe/edge_tts_to_wav.py` on Linux; override with `XIAOAN_TTS_COMMAND` |
 | TTS transport | base station synthesizes mono PCM and streams it over `/control` after `audio.play_tts` metadata |
 | Robot mic | Not the public demo input. Disabled in the current P0 `*_din41` firmware. Keep robot `/audio` only as fallback/diagnostics. |
 | Base mic | Primary public demo voice input. Its ASR output must become OpenClaw context. |
@@ -57,9 +57,7 @@ Important pin clarification:
 Use this exact base-station environment for the current spoken TTS baseline:
 
 ```powershell
-$env:XIAOAN_CONTROL_TTS_STREAM='1'
 $env:XIAOAN_TTS_TARGET_PEAK='800'
-$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
 

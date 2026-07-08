@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from base_station.ws_server import server as ws_server
 
@@ -66,6 +67,20 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_BYTES, 2048)
         self.assertGreater(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.75)
         self.assertLess(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 1.0)
+
+    def test_control_tts_stream_defaults_to_configured_backend(self) -> None:
+        with (
+            mock.patch.dict("os.environ", {}, clear=True),
+            mock.patch("base_station.ws_server.server.external_tts_backend_configured", return_value=True),
+        ):
+            self.assertTrue(ws_server.control_tts_stream_enabled())
+
+    def test_control_tts_stream_can_be_explicitly_disabled(self) -> None:
+        with (
+            mock.patch.dict("os.environ", {ws_server.CONTROL_TTS_STREAM_ENV: "0"}, clear=True),
+            mock.patch("base_station.ws_server.server.external_tts_backend_configured", return_value=True),
+        ):
+            self.assertFalse(ws_server.control_tts_stream_enabled())
 
 
 if __name__ == "__main__":

@@ -7,11 +7,13 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import time
 import uuid
 import wave
 
 DEFAULT_TTS_TARGET_PEAK = 24000
+TTS_COMMAND_ENV = "XIAOAN_TTS_COMMAND"
 TTS_TARGET_PEAK_ENV = "XIAOAN_TTS_TARGET_PEAK"
 TTS_VOICE_ENV = "XIAOAN_TTS_VOICE"
 TTS_RATE_ENV = "XIAOAN_TTS_RATE"
@@ -88,6 +90,32 @@ def tts_target_peak_from_env() -> int:
     except ValueError:
         return DEFAULT_TTS_TARGET_PEAK
     return max(1, min(value, 32767))
+
+
+def default_edge_tts_script_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "runtime" / "tts_probe" / "edge_tts_to_wav.py"
+
+
+def default_edge_tts_command_template() -> str:
+    script_path = default_edge_tts_script_path()
+    return (
+        f"{shlex.quote(sys.executable)} "
+        f"{shlex.quote(str(script_path))} "
+        "{text_file} {wav_file}"
+    )
+
+
+def tts_command_template_from_env() -> str:
+    command_template = os.environ.get(TTS_COMMAND_ENV, "").strip()
+    if command_template:
+        return command_template
+    if default_edge_tts_script_path().exists():
+        return default_edge_tts_command_template()
+    return ""
+
+
+def external_tts_backend_configured() -> bool:
+    return bool(tts_command_template_from_env())
 
 
 def windows_sapi_script() -> str:
@@ -170,9 +198,11 @@ def _run_windows_sapi(text_path: Path, wav_path: Path) -> None:
 
 
 def _run_external_tts_command(text_path: Path, wav_path: Path) -> None:
-    command_template = os.environ.get("XIAOAN_TTS_COMMAND", "").strip()
+    command_template = tts_command_template_from_env()
     if not command_template:
-        raise RuntimeError("No TTS backend configured. Set XIAOAN_TTS_COMMAND on non-Windows hosts.")
+        raise RuntimeError(
+            "No TTS backend configured. Set XIAOAN_TTS_COMMAND or create runtime/tts_probe/edge_tts_to_wav.py."
+        )
 
     command = [
         part.format(text_file=str(text_path), wav_file=str(wav_path))

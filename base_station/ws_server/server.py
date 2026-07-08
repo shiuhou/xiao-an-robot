@@ -39,7 +39,7 @@ from .protocol import (
     make_welcome,
     parse_message,
 )
-from .tts_stream import TtsPcmStream, synthesize_tts_pcm_stream
+from .tts_stream import TtsPcmStream, external_tts_backend_configured, synthesize_tts_pcm_stream
 
 logging.basicConfig(
     level=logging.INFO,
@@ -206,7 +206,10 @@ def record_ws_event(
 
 
 def control_tts_stream_enabled() -> bool:
-    return os.getenv(CONTROL_TTS_STREAM_ENV, "").strip().lower() in TRUE_ENV_VALUES
+    raw = os.getenv(CONTROL_TTS_STREAM_ENV)
+    if raw is None or not raw.strip():
+        return external_tts_backend_configured()
+    return raw.strip().lower() in TRUE_ENV_VALUES
 
 
 def pcm_stream_chunk_duration_seconds(pcm_stream: TtsPcmStream, chunk_bytes: int) -> float:

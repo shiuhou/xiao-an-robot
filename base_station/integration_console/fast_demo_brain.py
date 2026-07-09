@@ -33,7 +33,22 @@ EXPRESSION_ALIASES = {
     "surprised": ("惊讶", "吃惊", "惊喜", "震惊", "surprised", "error"),
     "sleeping": ("睡觉", "睡眠", "睡着", "休眠", "睡觉表情", "sleeping"),
 }
-EXPRESSION_COMMAND_MARKERS = ("表情", "脸", "切换", "换成", "换到", "变成", "显示", "做个", "做一个", "来个")
+EXPRESSION_COMMAND_MARKERS = (
+    "表情",
+    "脸",
+    "切换",
+    "换成",
+    "换到",
+    "变成",
+    "显示",
+    "做个",
+    "做一个",
+    "来个",
+    "装作",
+    "假装",
+    "演一下",
+    "表演",
+)
 
 LINK1_REPLIES = {
     "capture_schedule": (
@@ -107,6 +122,9 @@ LINK3_REPLIES = {
         "在呢在呢，小安收到召唤。",
         "嗨，我在这里。今天也准备好陪你一起工作啦。",
     ),
+    "status_intro": (
+        "我现在电量 87%，网络正常，今天已经准备好陪你开始工作。",
+    ),
     "stop_motion": (
         "好，我停下啦。你一句话，我就乖乖刹住。",
         "收到，马上停住。",
@@ -122,6 +140,18 @@ LINK3_REPLIES = {
         "收到，小安先帮你稳稳接住这句话。",
         "嗯嗯，我在听，你可以继续说。",
     ),
+}
+
+EXPRESSION_PERFORMANCE_REPLIES = {
+    "happy": "嘿嘿，我现在是开心模式，准备把气氛点亮一点。",
+    "caring": "我切到关心模式啦。你慢慢来，我会温柔一点陪着你。",
+    "tired": "我现在装作有点困，眼睛都快要自动进入省电模式啦。",
+    "thinking": "我进入思考模式。让我认真想一想，再给你一个稳妥答案。",
+    "speaking": "我切到说话模式啦。现在轮到小安认真播报。",
+    "idle": "我回到待命表情啦。安静在线，有事你叫我。",
+    "sad": "我现在是难过表情。没关系，我会慢慢把情绪接住。",
+    "surprised": "哇，我现在很惊讶。这个反应够明显了吗？",
+    "sleeping": "我进入睡觉表情啦。呼，小安先假装休眠三秒钟。",
 }
 
 
@@ -147,6 +177,13 @@ def iter_fast_demo_tts_texts(*, include_visual_normal: bool = True) -> list[dict
                     "variant": str(index),
                     "text": text,
                 })
+    for expression, text in EXPRESSION_PERFORMANCE_REPLIES.items():
+        items.append({
+            "link": "fast3",
+            "intent": "set_expression",
+            "variant": expression,
+            "text": text,
+        })
     return items
 
 
@@ -563,10 +600,21 @@ def _decide_link3(transcript: str) -> dict[str, Any]:
             intent="set_expression",
             confidence=0.9,
             reason="matched_expression_name",
-            reply=_pick_reply("set_expression", transcript, LINK3_REPLIES["set_expression"]),
+            reply=_pick_expression_reply(expression, transcript),
             expression=expression,
             motion=False,
             trigger={"transcript": transcript, "expression": expression},
+        )
+    if _has_any(text, ("状态怎么样", "现在状态", "电量", "网络正常", "准备好了吗", "准备好没有", "自我介绍")):
+        return _decision(
+            link="fast3",
+            intent="status_intro",
+            confidence=0.88,
+            reason="matched_status_intro_keyword",
+            reply=LINK3_REPLIES["status_intro"][0],
+            expression="speaking",
+            motion=False,
+            trigger={"transcript": transcript, "preset": True},
         )
     if _has_any(text, ("累", "困", "压力", "难受", "焦虑", "陪我", "休息", "出来", "过来")):
         return _decision(
@@ -662,6 +710,13 @@ def match_requested_expression(text: str) -> str | None:
         if has_command_marker or any(f"{alias}表情" in text or f"{alias}脸" in text for alias in aliases):
             return expression
     return None
+
+
+def _pick_expression_reply(expression: str, seed_text: str) -> str:
+    reply = EXPRESSION_PERFORMANCE_REPLIES.get(expression)
+    if reply:
+        return reply
+    return _pick_reply("set_expression", seed_text, LINK3_REPLIES["set_expression"])
 
 
 def _pick_reply(intent: str, seed_text: str, replies: tuple[str, ...]) -> str:

@@ -703,6 +703,72 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
         self.assertTrue(any(step.get("reason") == "motion_disabled" for step in result["steps"]))
 
+    def test_fast2_visual_care_auto_executes_when_robot_send_enabled(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            app = IntegrationConsoleApp(runtime_dir=runtime, command_sender=sender)
+            app.fast_demo_options["fast2"] = {"send_to_robot": True, "allow_motion": False}
+            visual = {
+                "ok": True,
+                "age_ms": 0,
+                "freshness": {"age_ms": 0},
+                "files": {"latest_image": {"exists": True, "mtime": 123.0, "age_ms": 0}},
+                "state": {
+                    "frame_id": 42,
+                    "observation": {"face_detected": True},
+                    "cv_sample": {"emotion_tag": "tired", "confidence": 0.92, "fatigue_score": 0.84},
+                    "gate": {"result": {"should_trigger": True, "reason": "fatigue"}},
+                    "vlm": {"status": "done", "request_id": "req-1", "result": {"expression_label": "tired"}},
+                },
+            }
+
+            state = app._fast_demo_visual_link_state(visual, {"fast2": {"running": True, "pid": 123}})
+            deadline = time.time() + 2
+            while len(sent) < 2 and time.time() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual(state["decision"]["intent"], "visual_care")
+        self.assertEqual(state["robot_execution"]["status"], "started")
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
+
+    def test_fast2_visual_care_auto_executes_motion_only_when_allowed(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, command_sender=sender)
+            app.fast_demo_options["fast2"] = {"send_to_robot": True, "allow_motion": True}
+            app._wait_motion_completed = lambda *args, **kwargs: None  # type: ignore[method-assign]
+            visual = {
+                "ok": True,
+                "age_ms": 0,
+                "freshness": {"age_ms": 0},
+                "files": {"latest_image": {"exists": True, "mtime": 124.0, "age_ms": 0}},
+                "state": {
+                    "frame_id": 43,
+                    "observation": {"face_detected": True},
+                    "cv_sample": {"emotion_tag": "tired", "confidence": 0.92, "fatigue_score": 0.84},
+                    "gate": {"result": {"should_trigger": True, "reason": "fatigue"}},
+                    "vlm": {"status": "done", "request_id": "req-2", "result": {"expression_label": "tired"}},
+                },
+            }
+
+            app._fast_demo_visual_link_state(visual, {"fast2": {"running": True, "pid": 123}})
+            deadline = time.time() + 2
+            while len(sent) < 3 and time.time() < deadline:
+                time.sleep(0.01)
+
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "motion.execute", "audio.play_tts"])
+
     def test_process_due_fast_demo_reminder_moves_out_once(self) -> None:
         sent: list[dict] = []
 

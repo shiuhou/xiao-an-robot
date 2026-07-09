@@ -46,6 +46,7 @@ AGENT_TTS_ACK_TIMEOUT_SECONDS = 75.0
 FRESH_IMAGE_MS = 3000
 FRESH_AUDIO_MS = 5000
 FRESH_VISUAL_MS = 3000
+FAST2_AUTO_CARE_COOLDOWN_SECONDS = 20.0
 MOTION_ACTIONS = {"move_out_of_dock", "move_back_to_dock", "turn", "stop"}
 EXPRESSIONS = {
     "happy",
@@ -247,7 +248,16 @@ class IntegrationConsoleApp:
         self.last_audio_sent_at = 0.0
         self.command_sender = command_sender
         self.link_processes: dict[str, subprocess.Popen[Any]] = {}
+        self.fast_demo_options: dict[str, dict[str, bool]] = {
+            link: {"send_to_robot": False, "allow_motion": False}
+            for link in FAST_DEMO_LINKS
+        }
         self.fast_demo_reminder_lock = threading.Lock()
+        self.fast2_auto_care_lock = threading.Lock()
+        self.fast2_auto_care_running = False
+        self.fast2_auto_care_last_key: str | None = None
+        self.fast2_auto_care_last_started_monotonic = 0.0
+        self.fast2_auto_care_last_result: dict[str, Any] | None = None
         self.voice_prewarm_process: subprocess.Popen[Any] | None = None
         self.voice_prewarm_started_at: str | None = None
         self.fast_demo_tts_prewarm_process: subprocess.Popen[Any] | None = None
@@ -837,6 +847,10 @@ class IntegrationConsoleApp:
             command = self.fast_demo_command(link, body)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
+        self.fast_demo_options[link] = {
+            "send_to_robot": bool(body.get("send_to_robot", False)),
+            "allow_motion": bool(body.get("allow_motion", False)),
+        }
         state = self.link_process_state(link)
         if state["running"]:
             return {"ok": True, "link": link, "state": state, "already_running": True}
@@ -1454,6 +1468,147 @@ class IntegrationConsoleApp:
             })
         return {"ok": all(step.get("ok") for step in steps), "steps": steps}
 
+    def _maybe_start_fast2_auto_care(
+        self,
+        decision: dict[str, Any],
+        visual: dict[str, Any],
+        *,
+        running: bool,
+    ) -> dict[str, Any]:
+        if not running or decision.get("intent") != "visual_care":
+            return self.fast2_auto_care_last_result or {"ok": True, "status": "idle"}
+        options = self.fast_demo_options.get("fast2", {})
+        if not bool(options.get("send_to_robot", False)):
+            return {
+                "ok": True,
+                "status": "disabled",
+                "reason": "send_to_robot_disabled",
+                "last_result": self.fast2_auto_care_last_result,
+            }
+        key = self._fast2_auto_care_key(decision, visual)
+        now = time.monotonic()
+        with self.fast2_auto_care_lock:
+            if self.fast2_auto_care_running:
+                return {
+                    "ok": True,
+                    "status": "running",
+                    "trigger_key": self.fast2_auto_care_last_key,
+                    "last_result": self.fast2_auto_care_last_result,
+                }
+            if key == self.fast2_auto_care_last_key:
+                return {
+                    "ok": True,
+                    "status": "already_handled",
+                    "trigger_key": key,
+                    "last_result": self.fast2_auto_care_last_result,
+                }
+            if now - self.fast2_auto_care_last_started_monotonic < FAST2_AUTO_CARE_COOLDOWN_SECONDS:
+                return {
+                    "ok": True,
+                    "status": "cooldown",
+                    "trigger_key": key,
+                    "cooldown_seconds": FAST2_AUTO_CARE_COOLDOWN_SECONDS,
+                    "last_result": self.fast2_auto_care_last_result,
+                }
+            self.fast2_auto_care_running = True
+            self.fast2_auto_care_last_key = key
+            self.fast2_auto_care_last_started_monotonic = now
+
+        frozen_decision = json.loads(json.dumps(decision, ensure_ascii=False))
+        frozen_options = {
+            "send_to_robot": bool(options.get("send_to_robot", False)),
+            "allow_motion": bool(options.get("allow_motion", False)),
+        }
+        thread = threading.Thread(
+            target=self._run_fast2_auto_care,
+            args=(frozen_decision, frozen_options, key),
+            name="fast2-auto-care",
+            daemon=True,
+        )
+        thread.start()
+        return {
+            "ok": True,
+            "status": "started",
+            "trigger_key": key,
+            "send_to_robot": frozen_options["send_to_robot"],
+            "allow_motion": frozen_options["allow_motion"],
+            "last_result": self.fast2_auto_care_last_result,
+        }
+
+    def _run_fast2_auto_care(
+        self,
+        decision: dict[str, Any],
+        options: dict[str, bool],
+        trigger_key: str,
+    ) -> None:
+        request_id = uuid.uuid4().hex[:12]
+        try:
+            execution = self._execute_fast_demo_decision_plan(
+                decision,
+                send_to_robot=bool(options.get("send_to_robot", False)),
+                allow_motion=bool(options.get("allow_motion", False)),
+            )
+            result = {
+                "ok": bool(execution.get("ok")),
+                "status": "done" if execution.get("ok") else "failed",
+                "link": "fast2",
+                "request_id": request_id,
+                "trigger_key": trigger_key,
+                "send_to_robot": bool(options.get("send_to_robot", False)),
+                "allow_motion": bool(options.get("allow_motion", False)),
+                "decision": self._public_fast_demo_decision(decision),
+                "steps": execution.get("steps", []),
+            }
+            self.log_event(
+                event_type="fast_demo.auto_care",
+                request_id=request_id,
+                action="fast2",
+                payload_summary={
+                    "trigger_key": trigger_key,
+                    "send_to_robot": result["send_to_robot"],
+                    "allow_motion": result["allow_motion"],
+                },
+                result="ok" if result["ok"] else "failed",
+                raw_response_summary=result,
+            )
+        except Exception as exc:  # pragma: no cover - defensive background guard
+            result = {
+                "ok": False,
+                "status": "error",
+                "link": "fast2",
+                "request_id": request_id,
+                "trigger_key": trigger_key,
+                "error": str(exc),
+            }
+            self.log_event(
+                event_type="fast_demo.auto_care",
+                request_id=request_id,
+                action="fast2",
+                payload_summary={"trigger_key": trigger_key},
+                result="error",
+                raw_response_summary=result,
+            )
+        with self.fast2_auto_care_lock:
+            self.fast2_auto_care_last_result = result
+            self.fast2_auto_care_running = False
+
+    @staticmethod
+    def _fast2_auto_care_key(decision: dict[str, Any], visual: dict[str, Any]) -> str:
+        trace = visual.get("state") if isinstance(visual.get("state"), dict) else {}
+        files = visual.get("files") if isinstance(visual.get("files"), dict) else {}
+        latest_image = files.get("latest_image") if isinstance(files.get("latest_image"), dict) else {}
+        vlm = trace.get("vlm") if isinstance(trace.get("vlm"), dict) else {}
+        trigger = decision.get("trigger") if isinstance(decision.get("trigger"), dict) else {}
+        parts = [
+            str(vlm.get("request_id") or ""),
+            str(vlm.get("trigger_frame_id") or ""),
+            str(trace.get("frame_id") or ""),
+            str(latest_image.get("mtime") or ""),
+            json.dumps(trigger, ensure_ascii=False, sort_keys=True),
+        ]
+        digest = uuid.uuid5(uuid.NAMESPACE_URL, "|".join(parts)).hex[:12]
+        return f"fast2-care-{digest}"
+
     def _fast_demo_voice_link_state(
         self,
         link: str,
@@ -1519,12 +1674,17 @@ class IntegrationConsoleApp:
         decision = decide_visual(trace) if visual_fresh else {}
         brain_text = str(decision.get("reply_text") or "").strip() if visual_fresh else ""
         robot_plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
+        auto_execution = (
+            self._maybe_start_fast2_auto_care(decision, visual, running=running)
+            if visual_fresh
+            else (self.fast2_auto_care_last_result or {"ok": True, "status": "idle"})
+        )
         steps = [
             _step("emotion runtime", running, process.get("pid")),
             _step("ws_video 分析快照", _fresh(latest_image, FRESH_VISUAL_MS), visual.get("freshness")),
             _step("视觉模型推理", visual_fresh, self._fast_demo_visual_summary(trace, visual_fresh=visual_fresh)),
             _step("智能大脑回复", bool(brain_text), brain_text),
-            _step("表情/TTS/动作计划", bool(robot_plan.get("steps")) and bool(brain_text), self._fast_demo_plan_summary(robot_plan, {})),
+            _step("表情/TTS/动作计划", bool(robot_plan.get("steps")) and bool(brain_text), self._fast_demo_plan_summary(robot_plan, auto_execution)),
         ]
         return {
             "status": self._status_from_steps(steps) if (running or visual_fresh) else "idle",
@@ -1534,6 +1694,7 @@ class IntegrationConsoleApp:
             "brain_text": brain_text,
             "decision": self._public_fast_demo_decision(decision) if visual_fresh else {},
             "robot_plan": robot_plan if visual_fresh else {},
+            "robot_execution": auto_execution,
         }
 
     @staticmethod

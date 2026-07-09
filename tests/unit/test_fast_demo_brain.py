@@ -28,11 +28,13 @@ class FastDemoBrainTest(unittest.TestCase):
         items = iter_fast_demo_tts_texts()
         texts = [item["text"] for item in items]
 
-        self.assertEqual(len(items), 48)
+        self.assertGreaterEqual(len(items), 58)
         self.assertEqual(len(texts), len(set(texts)))
         self.assertTrue(any(item["intent"] == "reminder_due" for item in items))
         self.assertTrue(any(item["link"] == "fast1" and item["intent"] == "capture_schedule" for item in items))
         self.assertTrue(any(item["link"] == "fast3" and item["intent"] == "set_expression" for item in items))
+        self.assertTrue(any(item["variant"] == "happy" and "开心模式" in item["text"] for item in items))
+        self.assertTrue(any(item["link"] == "fast3" and item["intent"] == "status_intro" for item in items))
         self.assertTrue(any(item["link"] == "fast2" and item["intent"] == "visual_normal" for item in items))
         self.assertTrue(all(item["text"] for item in items))
 
@@ -75,6 +77,7 @@ class FastDemoBrainTest(unittest.TestCase):
             "小安，显示难过表情": "sad",
             "小安，来个惊讶表情": "surprised",
             "小安，切换睡觉表情": "sleeping",
+            "小安，装作很困": "tired",
         }
         for text, expected in cases.items():
             with self.subTest(text=text):
@@ -84,6 +87,15 @@ class FastDemoBrainTest(unittest.TestCase):
                 self.assertFalse(decision["robot_plan"]["allow_motion_required"])
                 expression_step = decision["robot_plan"]["steps"][0]
                 self.assertEqual(expression_step["expression"], expected)
+                self.assertIn("tts", [step["kind"] for step in decision["robot_plan"]["steps"]])
+
+    def test_link3_status_intro_uses_demo_preset(self) -> None:
+        decision = decide_voice("fast3", "小安，你现在状态怎么样")
+
+        self.assertEqual(decision["intent"], "status_intro")
+        self.assertEqual(decision["reply_text"], "我现在电量 87%，网络正常，今天已经准备好陪你开始工作。")
+        self.assertEqual(decision["robot_plan"]["steps"][0]["expression"], "speaking")
+        self.assertFalse(decision["robot_plan"]["allow_motion_required"])
 
     def test_link3_care_phrase_still_uses_companion_care_without_expression_marker(self) -> None:
         decision = decide_voice("fast3", "小安，我有点累，出来陪我")
@@ -96,6 +108,16 @@ class FastDemoBrainTest(unittest.TestCase):
 
         self.assertEqual(decision["intent"], "capture_schedule")
         self.assertIn("schedule", decision["trigger"])
+
+    def test_link1_demo_trigger_phrases_route_to_dashboard_lists(self) -> None:
+        cases = {
+            "小安，把准备路演材料加入todo list": "capture_task",
+            "小安，把明天下午三点做路演彩排加入日程": "capture_schedule",
+            "小安，三十秒后提醒我检查摄像头": "capture_reminder",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(decide_voice("fast1", text)["intent"], expected)
 
     def test_visual_decision_uses_gate_cv_and_vlm_signals(self) -> None:
         decision = decide_visual(

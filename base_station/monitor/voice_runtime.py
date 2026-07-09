@@ -23,6 +23,7 @@ from base_station.integration_console.fast_demo_brain import (
     build_fast_demo_voice_output,
     build_reminder_record,
     execute_robot_plan,
+    publish_fast_demo_dashboard_capture,
 )
 from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output, create_asr_backend
 from base_station.perception.asr import SenseVoiceASRBackend
@@ -205,6 +206,12 @@ async def process_audio_file(
         output["robot_execution"] = execution
         output["executed_actions"] = execution.get("executed_actions", [])
         output["skipped_actions"] = execution.get("skipped_actions", [])
+        dashboard_capture = publish_fast_demo_dashboard_capture(
+            output.get("fast_demo_decision") if isinstance(output.get("fast_demo_decision"), dict) else {},
+            transcript,
+        )
+        if dashboard_capture is not None:
+            output["dashboard_capture"] = dashboard_capture
         reminder_record = build_reminder_record(
             output.get("fast_demo_decision") if isinstance(output.get("fast_demo_decision"), dict) else {},
             transcript=transcript,

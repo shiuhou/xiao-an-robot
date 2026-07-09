@@ -579,10 +579,18 @@ class IntegrationConsoleApp:
             return default
         return value.strip().lower() in {"1", "true", "yes", "on"}
 
+    @staticmethod
+    def _first_env_text(*names: str) -> str:
+        for name in names:
+            value = os.environ.get(name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return ""
+
     def link_command(self, link: str) -> list[str]:
         if link in {"link1", "link3"}:
             duration = self._env_text(f"XIAOAN_{link.upper()}_MIC_WINDOW", "6.0")
-            return [
+            command = [
                 sys.executable,
                 "-m",
                 "base_station.monitor.voice_runtime",
@@ -602,6 +610,13 @@ class IntegrationConsoleApp:
                 *(["--disable-companion-fast-path"] if link == "link1" else []),
                 "--verbose",
             ]
+            mic_device = self._first_env_text(
+                f"XIAOAN_{link.upper()}_MIC_DEVICE",
+                "XIAOAN_MIC_DEVICE",
+            )
+            if mic_device:
+                command.extend(["--device", mic_device])
+            return command
         if link == "link2":
             host, port = self._ws_host_port()
             command = [
@@ -627,6 +642,8 @@ class IntegrationConsoleApp:
                 str(self.visual_dir),
                 "--visual-trace-fps",
                 self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "1.0"),
+                "--vlm-max-new-tokens",
+                self._env_text("XIAOAN_LINK2_VLM_MAX_NEW_TOKENS", "128"),
                 "--verbose",
             ]
             if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
@@ -672,6 +689,14 @@ class IntegrationConsoleApp:
                 command.append("--local-demo-send-to-robot")
             if bool(body.get("allow_motion", False)):
                 command.append("--local-demo-allow-motion")
+            mic_device = self._first_env_text(
+                f"XIAOAN_{link.upper()}_MIC_DEVICE",
+                "XIAOAN_FAST_DEMO_MIC_DEVICE",
+                f"XIAOAN_{normal_link.upper()}_MIC_DEVICE",
+                "XIAOAN_MIC_DEVICE",
+            )
+            if mic_device:
+                command.extend(["--device", mic_device])
             return command
         if link == "fast2":
             host, port = self._ws_host_port()
@@ -700,6 +725,8 @@ class IntegrationConsoleApp:
                 self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "5.0"),
                 "--vlm-min-interval-seconds",
                 self._env_text("XIAOAN_LINK2_VLM_MIN_INTERVAL_SECONDS", "8.0"),
+                "--vlm-max-new-tokens",
+                self._env_text("XIAOAN_LINK2_VLM_MAX_NEW_TOKENS", "64"),
                 "--no-agent",
                 "--verbose",
             ]

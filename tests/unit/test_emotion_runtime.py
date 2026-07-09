@@ -306,12 +306,15 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
             "openvino_qwen_vl",
             "--vlm-model-path",
             "models/qwen-vl-openvino",
+            "--vlm-max-new-tokens",
+            "48",
             "--force-vlm",
         ])
 
         self.assertTrue(args.enable_vlm_gate)
         self.assertEqual(args.vlm_backend, "openvino_qwen_vl")
         self.assertEqual(args.vlm_model_path, "models/qwen-vl-openvino")
+        self.assertEqual(args.vlm_max_new_tokens, 48)
         self.assertTrue(args.force_vlm)
 
     async def test_vlm_gate_disabled_keeps_default_camera_flow(self) -> None:
@@ -419,11 +422,13 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
             pattern="neutral",
             vlm_model_path="models/qwen-vl-openvino",
             device="GPU",
+            vlm_max_new_tokens=48,
         )
 
         self.assertIsInstance(model, OpenVINOQwenVLEmotionModel)
         self.assertEqual(model.runner.model_dir, "models/qwen-vl-openvino")
         self.assertEqual(model.runner.device, "GPU")
+        self.assertEqual(model.runner.max_new_tokens, 48)
 
     async def test_openvino_qwen_vl_is_legal_model_backend_arg(self) -> None:
         args = parse_args(["--model-backend", "openvino_qwen_vl"])

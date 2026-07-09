@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 import hashlib
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 from agent.core.gateway import RobotGateway, RobotGatewayError
@@ -17,8 +19,28 @@ SCHEMA_VERSION = "xiaoan.fast_demo_decision.v1"
 VOICE_LINKS = {"fast1", "fast3"}
 REMINDER_SCHEMA_VERSION = "xiaoan.fast_demo_reminder.v1"
 POST_MOTION_TTS_SETTLE_SECONDS = 0.35
+OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
+DEFAULT_OPENCLAW_DASHBOARD_PATH = Path.home() / ".openclaw" / "workspace-xiaoan-runtime" / "state" / "dashboard.json"
+SUPPORTED_EXPRESSIONS = ("happy", "caring", "tired", "thinking", "speaking", "idle", "sad", "surprised", "sleeping")
+EXPRESSION_ALIASES = {
+    "happy": ("开心", "高兴", "快乐", "微笑", "笑脸", "开心脸", "开心表情", "高兴表情", "happy"),
+    "caring": ("关心", "关怀", "照顾", "陪伴", "温柔", "关心表情", "关怀表情", "caring"),
+    "tired": ("疲惫", "累", "困", "疲劳", "困倦", "累脸", "疲惫表情", "tired"),
+    "thinking": ("思考", "思考中", "想一想", "想想", "认真", "思考表情", "thinking", "listening"),
+    "speaking": ("说话", "讲话", "播报", "发言", "说话表情", "speaking"),
+    "idle": ("待机", "待命", "普通", "默认", "平静", "中性", "空闲", "idle", "neutral"),
+    "sad": ("难过", "伤心", "悲伤", "委屈", "低落", "sad"),
+    "surprised": ("惊讶", "吃惊", "惊喜", "震惊", "surprised", "error"),
+    "sleeping": ("睡觉", "睡眠", "睡着", "休眠", "睡觉表情", "sleeping"),
+}
+EXPRESSION_COMMAND_MARKERS = ("表情", "脸", "切换", "换成", "换到", "变成", "显示", "做个", "做一个", "来个")
 
 LINK1_REPLIES = {
+    "capture_schedule": (
+        "日程我加上啦，到时候你看屏幕就能看到。",
+        "收到，这个安排我放到今天日程里。",
+        "好的，我把这件事排进日程。",
+    ),
     "capture_reminder": (
         "我记好啦。到点我会带着小提醒出来找你。",
         "提醒已经收进小安的小闹钟啦，时间一到我就冒出来。",
@@ -70,6 +92,11 @@ LINK2_REPLIES = {
 }
 
 LINK3_REPLIES = {
+    "set_expression": (
+        "好，表情换好啦。",
+        "收到，我换个表情。",
+        "可以，我现在切过去。",
+    ),
     "companion_care": (
         "我来啦。你先别硬撑，肩膀松一点，我陪你待一会儿。",
         "听起来你需要缓一缓。小安出来陪你，我们先慢慢呼一口气。",
@@ -438,6 +465,17 @@ def _decide_link1(transcript: str) -> dict[str, Any]:
             expression="thinking",
             motion=False,
         )
+    if _has_any(text, ("日程", "日历", "行程", "schedule", "calendar")):
+        return _decision(
+            link="fast1",
+            intent="capture_schedule",
+            confidence=0.88,
+            reason="matched_schedule_keyword",
+            reply=_pick_reply("capture_schedule", transcript, LINK1_REPLIES["capture_schedule"]),
+            expression="happy",
+            motion=False,
+            trigger={"transcript": transcript, "schedule": parse_reminder_due_at(transcript)},
+        )
     if _has_any(text, ("提醒", "待会", "等会", "过会", "明天", "几点", "分钟后", "小时后", "闹钟", "到点")):
         return _decision(
             link="fast1",
@@ -517,6 +555,18 @@ def _decide_link3(transcript: str) -> dict[str, Any]:
             expression="idle",
             motion_step={"action": "move_back_to_dock", "params": {"speed": 0.54}, "timeout_ms": 1200},
             trigger={"transcript": transcript},
+        )
+    expression = match_requested_expression(text)
+    if expression is not None:
+        return _decision(
+            link="fast3",
+            intent="set_expression",
+            confidence=0.9,
+            reason="matched_expression_name",
+            reply=_pick_reply("set_expression", transcript, LINK3_REPLIES["set_expression"]),
+            expression=expression,
+            motion=False,
+            trigger={"transcript": transcript, "expression": expression},
         )
     if _has_any(text, ("累", "困", "压力", "难受", "焦虑", "陪我", "休息", "出来", "过来")):
         return _decision(
@@ -603,6 +653,17 @@ def _has_any(text: str, needles: tuple[str, ...]) -> bool:
     return any(needle in text for needle in needles)
 
 
+def match_requested_expression(text: str) -> str | None:
+    has_command_marker = _has_any(text, EXPRESSION_COMMAND_MARKERS)
+    for expression in SUPPORTED_EXPRESSIONS:
+        aliases = EXPRESSION_ALIASES.get(expression, ())
+        if not any(alias in text for alias in aliases):
+            continue
+        if has_command_marker or any(f"{alias}表情" in text or f"{alias}脸" in text for alias in aliases):
+            return expression
+    return None
+
+
 def _pick_reply(intent: str, seed_text: str, replies: tuple[str, ...]) -> str:
     if not replies:
         return ""
@@ -618,6 +679,184 @@ def _reminder_parse_result(due: datetime, base: datetime, time_text: str, confid
         "time_text": time_text,
         "time_parse_confidence": confidence,
     }
+
+
+def publish_fast_demo_dashboard_capture(
+    decision: dict[str, Any],
+    transcript: str,
+    *,
+    dashboard_path: str | Path | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Mirror Fast Link 1 captures into the dashboard state used by the dock UI."""
+
+    if decision.get("link") != "fast1":
+        return None
+    intent = str(decision.get("intent") or "")
+    if intent not in {"capture_task", "capture_schedule", "capture_reminder", "capture_note", "capture_meeting"}:
+        return None
+
+    path = Path(dashboard_path) if dashboard_path is not None else DEFAULT_OPENCLAW_DASHBOARD_PATH
+    timestamp = (now or datetime.now().astimezone()).replace(microsecond=0).isoformat()
+    data = _load_dashboard_state_file(path)
+    item = _dashboard_item_for_decision(decision, transcript, timestamp=timestamp)
+    if item is None:
+        return None
+
+    list_name = {
+        "capture_task": "todos",
+        "capture_schedule": "schedules",
+        "capture_reminder": "reminders",
+        "capture_note": "todos",
+        "capture_meeting": "schedules",
+    }[intent]
+    data.setdefault(list_name, [])
+    if not isinstance(data[list_name], list):
+        data[list_name] = []
+    data[list_name] = _upsert_dashboard_item(data[list_name], item)
+    data["mode"] = "completed"
+    data["status_text"] = str(decision.get("display_text") or decision.get("reply_text") or "小安已记录。")
+    data["latest_reply"] = {
+        "display_text": str(decision.get("display_text") or decision.get("reply_text") or ""),
+        "source": "fast_link1",
+        "updated_at": timestamp,
+    }
+    data["next_item"] = item
+    _write_dashboard_state_file(path, data)
+    return {"ok": True, "path": str(path), "list": list_name, "item": item}
+
+
+def _load_dashboard_state_file(path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    data = raw if isinstance(raw, dict) else {}
+    if data.get("schema") != OPENCLAW_DASHBOARD_SCHEMA:
+        data = {}
+    data.setdefault("schema", OPENCLAW_DASHBOARD_SCHEMA)
+    for key in ("todos", "schedules", "reminders"):
+        if not isinstance(data.get(key), list):
+            data[key] = []
+    return data
+
+
+def _write_dashboard_state_file(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _upsert_dashboard_item(items: list[Any], item: dict[str, Any]) -> list[dict[str, Any]]:
+    fingerprint = item.get("id")
+    cleaned = [existing for existing in items if isinstance(existing, dict) and existing.get("id") != fingerprint]
+    return [item, *cleaned][:20]
+
+
+def _dashboard_item_for_decision(decision: dict[str, Any], transcript: str, *, timestamp: str) -> dict[str, Any] | None:
+    intent = str(decision.get("intent") or "")
+    title = _capture_title(transcript, intent)
+    item_id = "fast-link1-" + hashlib.sha1(f"{intent}|{transcript}".encode("utf-8")).hexdigest()[:12]
+    base = {
+        "id": item_id,
+        "title": title,
+        "status": "pending",
+        "source": "fast_link1",
+        "created_at": timestamp,
+        "transcript": transcript,
+    }
+    if intent == "capture_task":
+        return {**base, "type": "todo", "priority": _priority_from_text(transcript)}
+    if intent == "capture_note":
+        return {**base, "type": "todo", "priority": "normal", "due_text": "语音笔记"}
+    if intent == "capture_schedule" or intent == "capture_meeting":
+        reminder = parse_reminder_due_at(transcript)
+        due = _parse_iso_datetime(str(reminder.get("due_at") or ""))
+        return {
+            **base,
+            "type": "schedule",
+            "date": due.date().isoformat() if due else "",
+            "time": due.strftime("%H:%M") if due else str(reminder.get("time_text") or "待补充"),
+        }
+    if intent == "capture_reminder":
+        trigger = decision.get("trigger") if isinstance(decision.get("trigger"), dict) else {}
+        reminder = trigger.get("reminder") if isinstance(trigger.get("reminder"), dict) else parse_reminder_due_at(transcript)
+        due_at = str(reminder.get("due_at") or "")
+        due = _parse_iso_datetime(due_at)
+        return {
+            **base,
+            "type": "alarm",
+            "due_at": due_at,
+            "time": due.strftime("%H:%M") if due else str(reminder.get("time_text") or ""),
+        }
+    return None
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _priority_from_text(text: str) -> str:
+    normalized = normalize_text(text)
+    if _has_any(normalized, ("紧急", "重要", "优先", "高优先级", "p0", "p1")):
+        return "high"
+    if _has_any(normalized, ("不急", "低优先级", "有空", "p3")):
+        return "low"
+    return "normal"
+
+
+def _capture_title(transcript: str, intent: str) -> str:
+    title = str(transcript or "").strip()
+    replacements = (
+        "小安",
+        "帮我",
+        "请",
+        "把",
+        "加入todo list",
+        "加入todolist",
+        "加入todo",
+        "加入待办清单",
+        "加入待办",
+        "加入任务",
+        "加到todo list",
+        "加到todolist",
+        "加到待办",
+        "加到日程",
+        "加入日程",
+        "加入日历",
+        "放进日程",
+        "添加到日程",
+        "添加日程",
+        "提醒我",
+        "提醒",
+        "记一下",
+        "记录一下",
+        "记录",
+        "保存",
+    )
+    for token in replacements:
+        title = title.replace(token, "")
+    title = re.sub(r"[，。,.!！?？]", " ", title)
+    title = re.sub(r"\s+", " ", title).strip()
+    if intent in {"capture_schedule", "capture_reminder", "capture_meeting"}:
+        title = _strip_time_phrase(title).strip()
+    return title or str(transcript or "").strip() or "语音事项"
+
+
+def _strip_time_phrase(text: str) -> str:
+    patterns = (
+        r"(今天|明天)?(上午|早上|下午|晚上|中午)?([0-9]{1,2}|[一二两三四五六七八九十]{1,3})点(半|([0-9]{1,2}|[一二两三四五六七八九十]{1,3})分?)?",
+        r"([0-9]+|[一二两三四五六七八九十]+)(秒钟?|分钟?|小时|钟头)后",
+        r"半小时后",
+    )
+    result = text
+    for pattern in patterns:
+        result = re.sub(pattern, "", result)
+    return re.sub(r"\s+", " ", result)
 
 
 def _parse_cn_number(raw: str | None) -> int | None:

@@ -89,6 +89,40 @@ class WebSocketVideoFrameSourceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(frame["source"], "ws_video_observer")
         self.assertEqual(frame["device_timestamp"], 88)
 
+    @unittest.skipIf(websockets is None, "websockets dependency is not installed")
+    async def test_observer_source_keeps_latest_frame_after_consumer_delay(self) -> None:
+        burst_sent = asyncio.Event()
+        packets = [make_packet(device_ts=ts) for ts in (1, 2, 3, 4)]
+
+        async def handler(websocket):
+            await websocket.send(packets[0])
+            await asyncio.sleep(0.01)
+            for packet in packets[1:]:
+                await websocket.send(packet)
+            burst_sent.set()
+            await asyncio.sleep(0.2)
+
+        server = await websockets.serve(handler, "127.0.0.1", 0)
+        host, port = server.sockets[0].getsockname()[:2]
+        try:
+            source = WebSocketVideoObserverSource(
+                url=f"ws://{host}:{port}/video-observer",
+                reconnect_delay_seconds=0.01,
+            )
+            frames = source.frames()
+            first_frame = await asyncio.wait_for(frames.__anext__(), timeout=1.0)
+            await asyncio.wait_for(burst_sent.wait(), timeout=1.0)
+            await asyncio.sleep(0.05)
+            latest_frame = await asyncio.wait_for(frames.__anext__(), timeout=1.0)
+            await frames.aclose()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+        self.assertEqual(first_frame["device_timestamp"], 1)
+        self.assertEqual(latest_frame["source"], "ws_video_observer")
+        self.assertEqual(latest_frame["device_timestamp"], 4)
+
 
 if __name__ == "__main__":
     unittest.main()

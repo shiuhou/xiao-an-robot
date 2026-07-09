@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import tempfile
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import unittest
 from unittest.mock import AsyncMock, patch
 
 from base_station.integration_console.fast_demo_brain import (
+    OPENCLAW_DASHBOARD_SCHEMA,
     PUBLIC_LABEL,
     build_fast_demo_voice_output,
     build_reminder_due_decision,
@@ -15,6 +19,7 @@ from base_station.integration_console.fast_demo_brain import (
     execute_robot_plan,
     iter_fast_demo_tts_texts,
     parse_reminder_due_at,
+    publish_fast_demo_dashboard_capture,
 )
 
 
@@ -23,9 +28,11 @@ class FastDemoBrainTest(unittest.TestCase):
         items = iter_fast_demo_tts_texts()
         texts = [item["text"] for item in items]
 
-        self.assertEqual(len(items), 42)
+        self.assertEqual(len(items), 48)
         self.assertEqual(len(texts), len(set(texts)))
         self.assertTrue(any(item["intent"] == "reminder_due" for item in items))
+        self.assertTrue(any(item["link"] == "fast1" and item["intent"] == "capture_schedule" for item in items))
+        self.assertTrue(any(item["link"] == "fast3" and item["intent"] == "set_expression" for item in items))
         self.assertTrue(any(item["link"] == "fast2" and item["intent"] == "visual_normal" for item in items))
         self.assertTrue(all(item["text"] for item in items))
 
@@ -56,6 +63,39 @@ class FastDemoBrainTest(unittest.TestCase):
         self.assertEqual(decision["intent"], "return_to_dock")
         motion = [step for step in decision["robot_plan"]["steps"] if step["kind"] == "motion"][0]
         self.assertEqual(motion["action"], "move_back_to_dock")
+
+    def test_link3_chinese_expression_names_switch_face_without_motion(self) -> None:
+        cases = {
+            "小安，切换开心表情": "happy",
+            "小安，换成关怀表情": "caring",
+            "小安，显示疲惫脸": "tired",
+            "小安，来个思考表情": "thinking",
+            "小安，切换说话表情": "speaking",
+            "小安，换成待命表情": "idle",
+            "小安，显示难过表情": "sad",
+            "小安，来个惊讶表情": "surprised",
+            "小安，切换睡觉表情": "sleeping",
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                decision = decide_voice("fast3", text)
+                self.assertEqual(decision["intent"], "set_expression")
+                self.assertEqual(decision["trigger"]["expression"], expected)
+                self.assertFalse(decision["robot_plan"]["allow_motion_required"])
+                expression_step = decision["robot_plan"]["steps"][0]
+                self.assertEqual(expression_step["expression"], expected)
+
+    def test_link3_care_phrase_still_uses_companion_care_without_expression_marker(self) -> None:
+        decision = decide_voice("fast3", "小安，我有点累，出来陪我")
+
+        self.assertEqual(decision["intent"], "companion_care")
+        self.assertTrue(decision["robot_plan"]["allow_motion_required"])
+
+    def test_link1_schedule_keyword_is_dashboard_schedule_intent(self) -> None:
+        decision = decide_voice("fast1", "小安，明天下午三点把汇报加入日程")
+
+        self.assertEqual(decision["intent"], "capture_schedule")
+        self.assertIn("schedule", decision["trigger"])
 
     def test_visual_decision_uses_gate_cv_and_vlm_signals(self) -> None:
         decision = decide_visual(
@@ -122,6 +162,44 @@ class FastDemoBrainTest(unittest.TestCase):
         motion = [step for step in due_decision["robot_plan"]["steps"] if step["kind"] == "motion"][0]
         self.assertEqual(motion["action"], "move_out_of_dock")
         self.assertEqual(motion["params"]["distance_cm"], 8.0)
+
+    def test_publish_fast_demo_dashboard_capture_writes_todo_schedule_and_reminder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dashboard_path = Path(temp_dir) / "state" / "dashboard.json"
+
+            task = decide_voice("fast1", "小安，把整理材料加入todo list")
+            task_result = publish_fast_demo_dashboard_capture(
+                task,
+                "小安，把整理材料加入todo list",
+                dashboard_path=dashboard_path,
+                now=datetime(2026, 7, 9, 19, 30, tzinfo=timezone.utc),
+            )
+            schedule = decide_voice("fast1", "小安，明天下午三点把汇报加入日程")
+            schedule_result = publish_fast_demo_dashboard_capture(
+                schedule,
+                "小安，明天下午三点把汇报加入日程",
+                dashboard_path=dashboard_path,
+                now=datetime(2026, 7, 9, 19, 31, tzinfo=timezone.utc),
+            )
+            reminder = decide_voice("fast1", "小安，三分钟后提醒我喝水")
+            reminder_result = publish_fast_demo_dashboard_capture(
+                reminder,
+                "小安，三分钟后提醒我喝水",
+                dashboard_path=dashboard_path,
+                now=datetime(2026, 7, 9, 19, 32, tzinfo=timezone.utc),
+            )
+
+            data = json.loads(dashboard_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(task_result["list"], "todos")
+        self.assertEqual(schedule_result["list"], "schedules")
+        self.assertEqual(reminder_result["list"], "reminders")
+        self.assertEqual(data["schema"], OPENCLAW_DASHBOARD_SCHEMA)
+        self.assertEqual(data["todos"][0]["title"], "整理材料")
+        self.assertEqual(data["schedules"][0]["title"], "汇报")
+        self.assertEqual(data["schedules"][0]["time"], "15:00")
+        self.assertEqual(data["reminders"][0]["title"], "喝水")
+        self.assertEqual(data["latest_reply"]["source"], "fast_link1")
 
     def test_execute_robot_plan_skips_motion_when_disabled(self) -> None:
         decision = decide_voice("fast3", "出来陪我")

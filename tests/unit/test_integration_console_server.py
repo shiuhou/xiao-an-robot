@@ -449,12 +449,28 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--disable-companion-fast-path", link3)
         self.assertIn("openface_ov", link2)
         self.assertIn("openvino_qwen_vl", link2)
+        self.assertEqual(link2[link2.index("--vlm-max-new-tokens") + 1], "128")
         self.assertEqual(
             link2[link2.index("--vlm-model-path") + 1],
             "base_station/models/Qwen2.5-VL-3B-OV-int4",
         )
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
+
+    def test_voice_link_commands_accept_mic_device_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            os.environ,
+            {
+                "XIAOAN_LINK1_MIC_DEVICE": "default",
+                "XIAOAN_FAST_DEMO_MIC_DEVICE": "plughw:0,0",
+            },
+        ):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            link1 = app.link_command("link1")
+            fast1 = app.fast_demo_command("fast1", {})
+
+        self.assertEqual(link1[link1.index("--device") + 1], "default")
+        self.assertEqual(fast1[fast1.index("--device") + 1], "plughw:0,0")
 
     def test_link_environment_defaults_to_openclaw_gateway(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {}, clear=True):
@@ -503,6 +519,7 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--force-vlm", fast2)
         self.assertEqual(fast2[fast2.index("--visual-trace-fps") + 1], "5.0")
         self.assertEqual(fast2[fast2.index("--vlm-min-interval-seconds") + 1], "8.0")
+        self.assertEqual(fast2[fast2.index("--vlm-max-new-tokens") + 1], "64")
         self.assertTrue(fast2[fast2.index("--visual-trace-dir") + 1].endswith("integration_console/fast_demo/visual"))
 
         self.assertEqual(fast3[fast3.index("--local-demo-link") + 1], "fast3")

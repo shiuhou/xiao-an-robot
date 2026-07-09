@@ -252,4 +252,4 @@ refreshState();
 refreshToday();
 setInterval(refreshClock, 1000);
 setInterval(refreshState, 5000);
-setInterval(refreshToday, 45000);
+setInterval(refreshToday, 3000);

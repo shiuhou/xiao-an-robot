@@ -397,6 +397,7 @@ function renderLink2CareVoice(careVoice) {
 function renderFastDemo() {
   const fast = state?.fast_demo || {};
   const reminders = state?.fast_demo_reminders || {};
+  renderStoryDemo(state?.fast_demo_story || {});
   ["fast1", "fast2", "fast3"].forEach((key) => {
     renderRunStatus(key, fast[key] || {});
     renderChainSteps(`${key}Steps`, fast[key]?.steps || []);
@@ -425,6 +426,56 @@ function renderFastDemo() {
     freshness: fast2.visual?.freshness,
     age_ms: fast2.visual?.age_ms,
     files: fast2.visual?.files,
+  });
+}
+
+function renderStoryDemo(story) {
+  const node = story?.current_node || {};
+  const choices = node.choices || [];
+  const voice = story?.voice || {};
+  const active = !!story?.active;
+  const status = story?.status || "idle";
+  const voiceEvent = voice.event_type || "-";
+  const voiceText = voice.text || "";
+  const isRecording = voiceEvent === "story.voice_recording" || voiceEvent === "voice.recording";
+  statusPill(
+    $("storyStatus"),
+    isRecording ? "live" : (active ? "live" : (status === "completed" ? "done" : "unavailable")),
+    isRecording ? "MIC ON" : (active ? "WAITING VOICE" : String(status || "IDLE").toUpperCase()),
+  );
+  kv("storyVoiceKv", [
+    ["mic", isRecording ? "正在收音，请现在说话" : "空闲"],
+    ["启动口令", active ? "说当前分支选项" : "小安，讲故事"],
+    ["最近 ASR", voiceText || "-"],
+    ["ASR event", voiceEvent],
+    ["audio", voice.event?.payload?.audio?.audio_path || voice.audio?.audio_path || "-"],
+  ]);
+  $("storyNodeText").textContent = node.text || "-";
+  $("storyJson").textContent = pretty({
+    active: story.active,
+    status: story.status,
+    current_node: node.id,
+    expression: node.expression,
+    choices,
+    history: story.history,
+    voice: story.voice,
+    last_execution: story.last_execution,
+  });
+  const choiceBox = $("storyChoiceButtons");
+  choiceBox.innerHTML = "";
+  if (!choices.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.textContent = active ? "请点击语音运行一次，说出你的选择" : "未开始时请点击语音运行一次，说：小安，讲故事";
+    choiceBox.append(empty);
+    return;
+  }
+  choices.forEach((choice) => {
+    const hint = document.createElement("div");
+    hint.className = "empty-state";
+    const aliases = Array.isArray(choice.aliases) && choice.aliases.length ? `（可说：${choice.aliases.join(" / ")}）` : "";
+    hint.textContent = `${choice.label || choice.id} ${aliases}`;
+    choiceBox.append(hint);
   });
 }
 
@@ -790,6 +841,33 @@ function bindEvents() {
       allow_motion: $("fastDemoAllowMotionSwitch").checked,
     });
     $("fast2RobotJson").textContent = pretty(result);
+  });
+  $("storyStartBtn").addEventListener("click", async () => {
+    const button = $("storyStartBtn");
+    const previousText = button.textContent;
+    const active = !!state?.fast_demo_story?.active;
+    button.textContent = active ? "正在收音，请说分支选择..." : "正在收音，请说“小安讲故事”...";
+    statusPill($("storyStatus"), "live", "MIC ON");
+    kv("storyVoiceKv", [
+      ["mic", "正在收音，请现在说话"],
+      ["启动口令", active ? "说当前分支选项" : "小安，讲故事"],
+      ["最近 ASR", "-"],
+      ["ASR event", "story.voice_recording"],
+      ["audio", "-"],
+    ]);
+    try {
+      const result = await post("/api/fast-demo/story/listen", {
+        send_to_robot: $("fastDemoSendRobotSwitch").checked,
+        allow_motion: $("fastDemoAllowMotionSwitch").checked,
+      });
+      $("storyJson").textContent = pretty(result);
+    } finally {
+      button.textContent = previousText;
+    }
+  });
+  $("storyStopBtn").addEventListener("click", async () => {
+    const result = await post("/api/fast-demo/story/stop", {});
+    $("storyJson").textContent = pretty(result);
   });
   $("clearLogViewBtn").addEventListener("click", () => {
     hiddenLogs = true;

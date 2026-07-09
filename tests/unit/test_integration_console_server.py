@@ -88,6 +88,13 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "fastDemoAllowMotionSwitch",
             "fastReminderKv",
             "fastReminderJson",
+            "storyStartBtn",
+            "storyStopBtn",
+            "storyStatus",
+            "storyVoiceKv",
+            "storyNodeText",
+            "storyChoiceButtons",
+            "storyJson",
             "fast1RunSwitch",
             "fast1Steps",
             "fast1BrainText",
@@ -820,6 +827,108 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         )
         self.assertEqual(sent[1]["action"], "move_out_of_dock")
         self.assertEqual(sent[1]["params"]["distance_cm"], 8.0)
+
+    def test_fast_demo_story_start_and_choice_update_state_without_fast3_process(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+
+            started = app.start_fast_demo_story({"send_to_robot": False})
+            chosen = app.choose_fast_demo_story({"choice": "齿轮", "send_to_robot": False})
+            state = app.fast_demo_story_state()
+            saved = json.loads(app.fast_demo_story_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(started["ok"])
+        self.assertTrue(chosen["ok"])
+        self.assertEqual(chosen["choice"]["id"], "gear")
+        self.assertEqual(state["current_node"]["id"], "gear")
+        self.assertEqual(saved["current_node"], "gear")
+        self.assertTrue(chosen["execution"]["skipped"])
+
+    def test_fast_demo_story_sends_expression_and_tts_when_enabled(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, command_sender=sender)
+            result = app.start_fast_demo_story({"send_to_robot": True})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
+        self.assertIn("月亮门", sent[1]["text"])
+
+    def test_fast_demo_story_voice_starts_only_after_story_keyword(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            ignored = app.listen_fast_demo_story({"transcript": "小安你好", "send_to_robot": False})
+            started = app.listen_fast_demo_story({"transcript": "小安讲故事", "send_to_robot": False})
+
+        self.assertFalse(ignored["ok"])
+        self.assertEqual(ignored["error"], "story_keyword_not_matched")
+        self.assertTrue(started["ok"])
+        self.assertEqual(started["action"], "story.voice_start")
+        self.assertEqual(started["result"]["story"]["current_node"]["id"], "intro")
+
+    def test_fast_demo_story_voice_command_is_asr_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            command = app.fast_demo_story_voice_command()
+
+        self.assertIn("--decision-mode", command)
+        self.assertIn("asr_only", command)
+        self.assertNotIn("--local-demo-link", command)
+
+    def test_fast_demo_story_voice_choice_advances_without_clicking(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.listen_fast_demo_story({"transcript": "小安讲故事", "send_to_robot": False})
+            chosen = app.listen_fast_demo_story({"transcript": "检查蓝色齿轮", "send_to_robot": False})
+
+        self.assertTrue(chosen["ok"])
+        self.assertEqual(chosen["action"], "story.voice_choice")
+        self.assertEqual(chosen["result"]["choice"]["id"], "gear")
+        self.assertEqual(chosen["result"]["story"]["current_node"]["id"], "gear")
+
+    def test_fast_demo_story_voice_keyword_restarts_even_when_active(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.listen_fast_demo_story({"transcript": "小安讲故事", "send_to_robot": False})
+            app.listen_fast_demo_story({"transcript": "检查蓝色齿轮", "send_to_robot": False})
+            restarted = app.listen_fast_demo_story({"transcript": "重新讲故事", "send_to_robot": False})
+
+        self.assertTrue(restarted["ok"])
+        self.assertEqual(restarted["action"], "story.voice_start")
+        self.assertEqual(restarted["result"]["story"]["current_node"]["id"], "intro")
+
+    def test_fast_demo_story_voice_start_moves_out_before_first_tts_when_allowed(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, command_sender=sender)
+            app._wait_motion_completed = lambda steps, action_id, timeout_ms: steps.append({
+                "name": "wait:motion.completed",
+                "ok": True,
+                "result": {"action_id": action_id},
+            })
+            result = app.listen_fast_demo_story({
+                "transcript": "小安讲故事",
+                "send_to_robot": True,
+                "allow_motion": True,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            [payload["command"] for payload in sent],
+            ["motion.execute", "display.expression", "audio.play_tts"],
+        )
+        self.assertEqual(sent[0]["action"], "move_out_of_dock")
 
     def test_process_due_fast_demo_reminder_is_guarded_against_concurrent_polling(self) -> None:
         sent: list[dict] = []

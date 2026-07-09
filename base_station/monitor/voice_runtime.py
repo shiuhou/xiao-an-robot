@@ -32,7 +32,7 @@ from base_station.perception.mic_capture import choose_input_device, list_input_
 
 SUPPORTED_SOURCES = {"text_loop", "local_mic"}
 RESERVED_SOURCES = {"audio_file_loop"}
-DECISION_MODES = {"openclaw", "local_demo"}
+DECISION_MODES = {"asr_only", "openclaw", "local_demo"}
 
 
 def build_voice_output(text: str, event: dict, result: dict) -> dict:
@@ -194,6 +194,19 @@ async def process_audio_file(
     event["payload"]["session_id"] = session_id
     if disable_companion_fast_path:
         event["payload"]["disable_companion_fast_path"] = True
+    if decision_mode == "asr_only":
+        return build_voice_output(
+            transcript,
+            event,
+            {
+                "handled": True,
+                "route": "voice_runtime.asr_only",
+                "reason": "asr_only",
+                "reply_text": "",
+                "display_text": "",
+                "spoken_text": "",
+            },
+        )
     if decision_mode == "local_demo":
         output = build_fast_demo_voice_output(transcript, event, link=local_demo_link)
         _write_latest_output(latest_output_path, output)

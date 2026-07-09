@@ -485,6 +485,32 @@
           </article>
         </div>
       </section>
+
+      <section class="fast-demo-block">
+        <div class="chain-header inline-chain-header">
+          <div>
+            <div class="section-label">STORY MODE</div>
+            <h2>互动故事：月亮门和小安的星尘工作台</h2>
+          </div>
+          <div class="actions compact-actions">
+            <button id="storyStartBtn">语音运行一次</button>
+            <button id="storyStopBtn">结束故事</button>
+          </div>
+          <span class="status-pill unavailable" id="storyStatus">IDLE</span>
+        </div>
+        <div class="grid two chain-detail-row">
+          <article class="card">
+            <h2>当前段落</h2>
+            <div class="kv" id="storyVoiceKv"></div>
+            <pre class="textbox" id="storyNodeText">-</pre>
+            <div class="button-grid" id="storyChoiceButtons"></div>
+          </article>
+          <article class="card">
+            <h2>故事状态 / 执行</h2>
+            <pre class="jsonbox compact-json" id="storyJson">{}</pre>
+          </article>
+        </div>
+      </section>
     </section>
 
     <section class="panel" id="tab-audio">

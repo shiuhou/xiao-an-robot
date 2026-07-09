@@ -30,6 +30,16 @@ from base_station.integration_console.fast_demo_brain import (
     decide_visual,
     decide_voice,
 )
+from base_station.integration_console.story_demo import (
+    STORY_SCHEMA_VERSION,
+    advance_story_state,
+    build_story_state,
+    get_story_node,
+    is_story_start_request,
+    resolve_story_choice,
+    stop_story_state,
+    story_state_summary,
+)
 
 DEFAULT_RUNTIME_DIR = Path("runtime")
 DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
@@ -47,6 +57,7 @@ FRESH_IMAGE_MS = 3000
 FRESH_AUDIO_MS = 5000
 FRESH_VISUAL_MS = 3000
 FAST2_AUTO_CARE_COOLDOWN_SECONDS = 20.0
+STORY_TTS_MAX_PCM_BYTES = 180_000
 MOTION_ACTIONS = {"move_out_of_dock", "move_back_to_dock", "turn", "stop"}
 EXPRESSIONS = {
     "happy",
@@ -253,6 +264,7 @@ class IntegrationConsoleApp:
             for link in FAST_DEMO_LINKS
         }
         self.fast_demo_reminder_lock = threading.Lock()
+        self.fast_demo_story_lock = threading.Lock()
         self.fast2_auto_care_lock = threading.Lock()
         self.fast2_auto_care_running = False
         self.fast2_auto_care_last_key: str | None = None
@@ -286,6 +298,14 @@ class IntegrationConsoleApp:
     @property
     def fast_demo_reminders_path(self) -> Path:
         return self.event_dir / "fast_demo" / "reminders.json"
+
+    @property
+    def fast_demo_story_path(self) -> Path:
+        return self.event_dir / "fast_demo" / "story_state.json"
+
+    @property
+    def fast_demo_story_voice_path(self) -> Path:
+        return self.event_dir / "fast_demo" / "story_voice.json"
 
     @property
     def process_log_dir(self) -> Path:
@@ -745,6 +765,40 @@ class IntegrationConsoleApp:
             return command
         raise ValueError(f"unsupported_fast_demo_link:{link}")
 
+    def fast_demo_story_voice_command(self) -> list[str]:
+        duration = self._env_text("XIAOAN_STORY_MIC_WINDOW", self._env_text("XIAOAN_FAST_DEMO_MIC_WINDOW", "6.0"))
+        command = [
+            sys.executable,
+            "-m",
+            "base_station.monitor.voice_runtime",
+            "--source",
+            "local_mic",
+            "--gateway-url",
+            self.ws_url,
+            "--session-id",
+            "integration-console-story",
+            "--duration",
+            duration,
+            "--asr-language",
+            self._env_text("XIAOAN_LINK3_ASR_LANGUAGE", "zh"),
+            "--latest-output",
+            str(self.fast_demo_story_voice_path),
+            "--once",
+            "--decision-mode",
+            "asr_only",
+            "--verbose",
+        ]
+        mic_device = self._first_env_text(
+            "XIAOAN_STORY_MIC_DEVICE",
+            "XIAOAN_FAST3_MIC_DEVICE",
+            "XIAOAN_FAST_DEMO_MIC_DEVICE",
+            "XIAOAN_LINK3_MIC_DEVICE",
+            "XIAOAN_MIC_DEVICE",
+        )
+        if mic_device:
+            command.extend(["--device", mic_device])
+        return command
+
     def link_environment(self, link: str) -> dict[str, str]:
         env = dict(os.environ)
         if link in {"link1", "link2", "link3"}:
@@ -1115,6 +1169,7 @@ class IntegrationConsoleApp:
             "links": links,
             "fast_demo": fast_demo,
             "fast_demo_reminders": self.fast_demo_reminders_state(last_result=reminder_result),
+            "fast_demo_story": self.fast_demo_story_state(),
             "processes": process_states,
             "tools": self.tool_catalog(),
             "recent_events": self.recent_events(limit=STATE_EVENT_LIMIT),
@@ -1313,6 +1368,359 @@ class IntegrationConsoleApp:
             "fast2": fast2,
             "fast3": fast3,
         }
+
+    def fast_demo_story_state(self) -> dict[str, Any]:
+        data = self._load_fast_demo_story()
+        summary = story_state_summary(data)
+        summary["path"] = str(self.fast_demo_story_path)
+        voice, voice_error = _load_json_file(self.fast_demo_story_voice_path)
+        summary["voice"] = voice if isinstance(voice, dict) else {}
+        summary["voice_error"] = voice_error
+        return summary
+
+    def start_fast_demo_story(self, body: dict[str, Any]) -> dict[str, Any]:
+        send_to_robot = bool(body.get("send_to_robot", False))
+        allow_motion = bool(body.get("allow_motion", False))
+        with self.fast_demo_story_lock:
+            state = build_story_state()
+            _atomic_write_json(self.fast_demo_story_path, state)
+
+        node = get_story_node(state.get("current_node"))
+        execution = self._execute_story_node(
+            node.as_dict(),
+            send_to_robot=send_to_robot,
+            allow_motion=allow_motion,
+            move_out_first=True,
+        )
+        state["last_execution"] = execution
+        state["send_to_robot"] = send_to_robot
+        state["allow_motion"] = allow_motion
+        state["updated_at"] = _now_iso()
+        with self.fast_demo_story_lock:
+            _atomic_write_json(self.fast_demo_story_path, state)
+
+        request_id = uuid.uuid4().hex[:12]
+        result = {
+            "ok": bool(execution.get("ok", True)),
+            "request_id": request_id,
+            "story": story_state_summary(state),
+            "execution": execution,
+        }
+        self.log_event(
+            event_type="fast_demo.story.start",
+            request_id=request_id,
+            action="story.start",
+            payload_summary={"send_to_robot": send_to_robot, "allow_motion": allow_motion},
+            result="ok" if result["ok"] else "failed",
+            raw_response_summary=result,
+        )
+        return result
+
+    def choose_fast_demo_story(self, body: dict[str, Any]) -> dict[str, Any]:
+        choice_text = str(body.get("choice") or body.get("choice_id") or "").strip()
+        send_to_robot = bool(body.get("send_to_robot", False))
+        allow_motion = bool(body.get("allow_motion", False))
+        with self.fast_demo_story_lock:
+            state = self._load_fast_demo_story()
+            if not state.get("active"):
+                return {
+                    "ok": False,
+                    "error": "story_not_active",
+                    "story": story_state_summary(state),
+                }
+            choice = resolve_story_choice(state, choice_text)
+            if choice is None:
+                node = get_story_node(state.get("current_node"))
+                return {
+                    "ok": False,
+                    "error": "choice_not_matched",
+                    "choice": choice_text,
+                    "available_choices": [item.as_dict() for item in node.choices],
+                    "story": story_state_summary(state),
+                }
+            state = advance_story_state(state, choice)
+            _atomic_write_json(self.fast_demo_story_path, state)
+
+        node = get_story_node(state.get("current_node"))
+        execution = self._execute_story_node(node.as_dict(), send_to_robot=send_to_robot, allow_motion=allow_motion)
+        state["last_execution"] = execution
+        state["send_to_robot"] = send_to_robot
+        state["allow_motion"] = allow_motion
+        state["updated_at"] = _now_iso()
+        with self.fast_demo_story_lock:
+            _atomic_write_json(self.fast_demo_story_path, state)
+
+        request_id = uuid.uuid4().hex[:12]
+        result = {
+            "ok": bool(execution.get("ok", True)),
+            "request_id": request_id,
+            "choice": choice.as_dict(),
+            "story": story_state_summary(state),
+            "execution": execution,
+        }
+        self.log_event(
+            event_type="fast_demo.story.choose",
+            request_id=request_id,
+            action="story.choose",
+            payload_summary={"choice": choice_text, "send_to_robot": send_to_robot, "allow_motion": allow_motion},
+            result="ok" if result["ok"] else "failed",
+            raw_response_summary=result,
+        )
+        return result
+
+    def listen_fast_demo_story(self, body: dict[str, Any]) -> dict[str, Any]:
+        request_id = uuid.uuid4().hex[:12]
+        started = time.time()
+        voice = self._capture_story_voice(body)
+        transcript = self._voice_text(self._display_voice_output(voice))
+        send_to_robot = bool(body.get("send_to_robot", False))
+        allow_motion = bool(body.get("allow_motion", False))
+        state = self._load_fast_demo_story()
+        action_result: dict[str, Any]
+        action = "story.listen"
+
+        if is_story_start_request(transcript):
+            action_result = self.start_fast_demo_story({
+                "send_to_robot": send_to_robot,
+                "allow_motion": allow_motion,
+            })
+            action = "story.voice_start"
+        elif state.get("active"):
+            action_result = self.choose_fast_demo_story({
+                "choice": transcript,
+                "send_to_robot": send_to_robot,
+                "allow_motion": allow_motion,
+            })
+            action = "story.voice_choice"
+        else:
+            action_result = {
+                "ok": False,
+                "error": "story_keyword_not_matched",
+                "transcript": transcript,
+                "expected_keywords": ["故事", "讲故事", "开始故事"],
+                "story": story_state_summary(state),
+            }
+
+        result = {
+            "ok": bool(action_result.get("ok")),
+            "request_id": request_id,
+            "transcript": transcript,
+            "voice": voice,
+            "action": action,
+            "error": action_result.get("error"),
+            "result": action_result,
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+        self.log_event(
+            event_type="fast_demo.story.listen",
+            request_id=request_id,
+            action=action,
+            payload_summary={"transcript": transcript, "send_to_robot": send_to_robot, "allow_motion": allow_motion},
+            result="ok" if result["ok"] else "failed",
+            raw_response_summary=result,
+        )
+        return result
+
+    def stop_fast_demo_story(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        with self.fast_demo_story_lock:
+            state = stop_story_state(self._load_fast_demo_story())
+            _atomic_write_json(self.fast_demo_story_path, state)
+        request_id = uuid.uuid4().hex[:12]
+        result = {"ok": True, "request_id": request_id, "story": story_state_summary(state)}
+        self.log_event(
+            event_type="fast_demo.story.stop",
+            request_id=request_id,
+            action="story.stop",
+            payload_summary={},
+            result="ok",
+            raw_response_summary=result,
+        )
+        return result
+
+    def _execute_story_node(
+        self,
+        node: dict[str, Any],
+        *,
+        send_to_robot: bool,
+        allow_motion: bool = False,
+        move_out_first: bool = False,
+    ) -> dict[str, Any]:
+        if not send_to_robot:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "send_to_robot_disabled",
+                "node_id": node.get("id"),
+                "steps": [
+                    {"name": "motion", "ok": True, "skipped": True},
+                    {"name": "expression", "ok": True, "skipped": True},
+                    {"name": "tts", "ok": True, "skipped": True},
+                ],
+            }
+
+        steps: list[dict[str, Any]] = []
+        story_steps: list[dict[str, Any]] = []
+        if move_out_first:
+            story_steps.append({
+                "name": "motion",
+                "action": "move_out_of_dock",
+                "params": {"speed": 0.5, "distance_cm": 8.0},
+                "timeout_ms": 1400,
+            })
+        story_steps.extend((
+            {"name": "expression", "expression": node.get("expression"), "duration_ms": 1500},
+            {"name": "tts", "text": node.get("text"), "duration_ms": 3000},
+        ))
+        for step in story_steps:
+            started = time.time()
+            if step["name"] == "motion":
+                if not allow_motion:
+                    result = {"ok": True, "skipped": True, "reason": "allow_motion_disabled"}
+                else:
+                    action_id = f"story-{uuid.uuid4().hex[:8]}"
+                    result = self.send_motion({
+                        "action": step.get("action"),
+                        "action_id": action_id,
+                        "params": step.get("params"),
+                        "timeout_ms": step.get("timeout_ms"),
+                    })
+                steps.append({
+                    "name": step["name"],
+                    "ok": bool(result.get("ok")),
+                    "duration_ms": int((time.time() - started) * 1000),
+                    "result": result,
+                })
+                if allow_motion and result.get("ok"):
+                    self._wait_motion_completed(
+                        steps,
+                        action_id,
+                        timeout_ms=int(step.get("timeout_ms") or 1400) + 600,
+                    )
+                    time.sleep(POST_MOTION_TTS_SETTLE_SECONDS)
+                continue
+            elif step["name"] == "expression":
+                result = self.send_expression({
+                    "expression": step.get("expression"),
+                    "duration_ms": step.get("duration_ms"),
+                    "loop": False,
+                })
+            else:
+                ok_to_send, guard = self._story_tts_guard(str(step.get("text") or ""))
+                if not ok_to_send:
+                    result = guard
+                else:
+                    result = self.send_tts({
+                        "text": step.get("text"),
+                        "duration_ms": step.get("duration_ms"),
+                    })
+            steps.append({
+                "name": step["name"],
+                "ok": bool(result.get("ok")),
+                "duration_ms": int((time.time() - started) * 1000),
+                "result": result,
+            })
+        return {"ok": all(step.get("ok") for step in steps), "node_id": node.get("id"), "steps": steps}
+
+    def _story_tts_guard(self, text: str) -> tuple[bool, dict[str, Any]]:
+        manifest_path = self.runtime_dir / "integration_console" / "fast_demo" / "tts_manifest.json"
+        manifest, _ = _load_json_file(manifest_path)
+        max_bytes = _clamp_int(os.environ.get("XIAOAN_STORY_TTS_MAX_PCM_BYTES"), STORY_TTS_MAX_PCM_BYTES, 32000, 512000)
+        if not isinstance(manifest, dict):
+            return True, {"ok": True, "skipped": False, "reason": "manifest_unavailable"}
+        for item in manifest.get("items") if isinstance(manifest.get("items"), list) else []:
+            if not isinstance(item, dict) or item.get("link") != "story":
+                continue
+            if str(item.get("text") or "").strip() != text.strip():
+                continue
+            pcm_bytes = int(item.get("pcm_bytes") or 0)
+            if pcm_bytes <= max_bytes:
+                return True, {"ok": True, "pcm_bytes": pcm_bytes, "max_pcm_bytes": max_bytes}
+            return False, {
+                "ok": False,
+                "error": "story_tts_pcm_too_large",
+                "pcm_bytes": pcm_bytes,
+                "max_pcm_bytes": max_bytes,
+                "duration_ms": item.get("duration_ms"),
+            }
+        return True, {"ok": True, "skipped": False, "reason": "story_manifest_item_not_found"}
+
+    def _capture_story_voice(self, body: dict[str, Any]) -> dict[str, Any]:
+        transcript = str(body.get("transcript") or "").strip()
+        if transcript:
+            output = {
+                "text": transcript,
+                "event_type": "asr.transcript",
+                "handled": False,
+                "reason": "provided_transcript",
+            }
+            _atomic_write_json(self.fast_demo_story_voice_path, output)
+            return output
+
+        command = self.fast_demo_story_voice_command()
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        self.fast_demo_story_voice_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / "story_voice.log"
+        _atomic_write_json(
+            self.fast_demo_story_voice_path,
+            {
+                "event_type": "story.voice_recording",
+                "handled": False,
+                "reason": "recording",
+                "text": "",
+                "updated_at": _now_iso(),
+                "duration_ms": int(float(command[command.index("--duration") + 1]) * 1000)
+                if "--duration" in command
+                else None,
+                "command_preview": " ".join(command),
+                "log_path": str(log_path),
+            },
+        )
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=_repo_root(),
+                    env=self.fast_demo_environment(),
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    timeout=_clamp_float(os.environ.get("XIAOAN_STORY_VOICE_TIMEOUT"), 90.0, 10.0, 180.0),
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                output = {
+                    "event_type": "story.voice_timeout",
+                    "handled": False,
+                    "reason": "voice_runtime_timeout",
+                    "text": "",
+                    "command_preview": " ".join(command),
+                    "timeout": exc.timeout,
+                    "log_path": str(log_path),
+                }
+                _atomic_write_json(self.fast_demo_story_voice_path, output)
+                return output
+
+        output, error = _load_json_file(self.fast_demo_story_voice_path)
+        if isinstance(output, dict):
+            output.setdefault("returncode", completed.returncode)
+            output.setdefault("log_path", str(log_path))
+            return output
+        return {
+            "event_type": "story.voice_error",
+            "handled": False,
+            "reason": error or "missing_latest_output",
+            "text": "",
+            "returncode": completed.returncode,
+            "command_preview": " ".join(command),
+            "log_path": str(log_path),
+        }
+
+    def _load_fast_demo_story(self) -> dict[str, Any]:
+        data, _ = _load_json_file(self.fast_demo_story_path)
+        if not isinstance(data, dict) or data.get("schema_version") != STORY_SCHEMA_VERSION:
+            return stop_story_state({})
+        return data
 
     def fast_demo_reminders_state(self, *, last_result: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = self._load_fast_demo_reminders()
@@ -2524,6 +2932,14 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.stop_fast_demo(body))
                 elif path == "/api/fast-demo/execute":
                     self._write_json(app.execute_fast_demo_plan(body))
+                elif path == "/api/fast-demo/story/start":
+                    self._write_json(app.start_fast_demo_story(body))
+                elif path == "/api/fast-demo/story/listen":
+                    self._write_json(app.listen_fast_demo_story(body))
+                elif path == "/api/fast-demo/story/choose":
+                    self._write_json(app.choose_fast_demo_story(body))
+                elif path == "/api/fast-demo/story/stop":
+                    self._write_json(app.stop_fast_demo_story(body))
                 elif path == "/api/tools/run":
                     self._write_json(app.run_tool(body))
                 elif path == "/api/logs/export":

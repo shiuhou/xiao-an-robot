@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from base_station.integration_console.story_demo import iter_story_demo_tts_texts
+
 from agent.core.gateway import RobotGateway, RobotGatewayError
 
 
@@ -184,6 +186,7 @@ def iter_fast_demo_tts_texts(*, include_visual_normal: bool = True) -> list[dict
             "variant": expression,
             "text": text,
         })
+    items.extend(iter_story_demo_tts_texts())
     return items
 
 

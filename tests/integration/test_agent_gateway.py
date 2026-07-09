@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import unittest
+from unittest import mock
 
 try:
     import websockets
@@ -89,9 +90,10 @@ class AgentGatewayTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_send_tts_forwards_audio_play_tts(self) -> None:
         text = "你已经工作很久了，休息一下吧。"
-        ack_task = asyncio.create_task(self.gateway.send_tts(text))
-        robot_message = await self.recv_json(self.robot)
-        ack = await asyncio.wait_for(ack_task, timeout=2)
+        with mock.patch.dict("os.environ", {ws_server.CONTROL_TTS_STREAM_ENV: "0"}, clear=False):
+            ack_task = asyncio.create_task(self.gateway.send_tts(text))
+            robot_message = await self.recv_json(self.robot)
+            ack = await asyncio.wait_for(ack_task, timeout=2)
 
         self.assertEqual(robot_message["type"], "audio.play_tts")
         self.assertEqual(robot_message["payload"]["text_preview"], text)

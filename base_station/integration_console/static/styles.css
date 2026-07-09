@@ -419,11 +419,21 @@ h2 {
   font-size: 18px;
 }
 
+h3 {
+  margin: 12px 0 8px;
+  font-size: 14px;
+}
+
 .kv {
   display: grid;
   grid-template-columns: minmax(130px, 0.45fr) minmax(0, 1fr);
   gap: 6px 10px;
   font-size: 14px;
+}
+
+.kv.compact-kv {
+  grid-template-columns: minmax(94px, 0.35fr) minmax(0, 1fr);
+  font-size: 12px;
 }
 
 .kv .k { color: var(--muted); }

@@ -32,9 +32,13 @@ class RunWsVideoRuntimeTest(unittest.TestCase):
         self.assertEqual(args.visual_trace_fps, 2.0)
         self.assertFalse(args.no_visual_trace)
 
+    def test_parse_args_accepts_fast_visual_trace_fps(self) -> None:
+        args = run_ws_video_runtime.parse_args(["--visual-trace-fps", "5.0"])
+        self.assertEqual(args.visual_trace_fps, 5.0)
+
     def test_parse_args_rejects_visual_trace_fps_above_cap(self) -> None:
         with self.assertRaises(SystemExit):
-            run_ws_video_runtime.parse_args(["--visual-trace-fps", "2.1"])
+            run_ws_video_runtime.parse_args(["--visual-trace-fps", "10.1"])
 
     def test_runtime_passes_visual_publisher_to_gated_source(self) -> None:
         args = run_ws_video_runtime.parse_args([

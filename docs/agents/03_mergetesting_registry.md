@@ -13,7 +13,7 @@
 | `mergetesting_face240_only_ota` | ST7789 九表情 | 关 | 关 | face240 OTA upload | ✅ 2026-06-26 |
 | **`mergetesting_care_demo_face240`** | ST7789 九表情 | **关** | **关** | **OpenClaw Step 33 实机 care demo**（control+face240+motor+speaker，无 `/video`/`/audio`） | ✅ H 2026-06-27 |
 | `mergetesting_care_demo_face240_ota` | ST7789 | 关 | 关 | 上述 care demo OTA | ✅ P |
-| `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；USB 首刷后启用 ArduinoOTA | ✅ H 2026-07-05 |
+| `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；USB 首刷后启用 ArduinoOTA；0708 buffered PCM 新喇叭基准 | ✅ H 2026-07-08 |
 | `mergetesting_care_demo_face240_spoken_tts_din41_ota` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；无线 OTA 更新目标 | ✅ H 2026-07-05 |
 | `mergetesting_cam_only` | 关 | 开 | 关 | **Phase 3 传画** QVGA | ✅ 2026-06-26 |
 | `mergetesting_cam_only_ota` | 关 | 开 | 关 | camera OTA + `/video` 落图 | ✅ 2026-06-26 |
@@ -45,6 +45,10 @@
 
 2026-07-05 晚间喇叭恢复记录：`mergetesting_speaker_volume_probe_din41` 证明 DIN41/MAX98357A 输出仍可发声，700 Hz probe amplitudes `2000/8000/16000/28000` 中仅 `28000` 被用户听到明显失真；`mergetesting_speaker_auto_tts_din41_gain64` 内置句子可听。随后恢复 `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb`，基站使用 `XIAOAN_TTS_TARGET_PEAK=800`，USB reset 后机器人以 `192.168.31.175` 连接 `/control`。直发中文 TTS 和完整 Demo 1 mock care path 均返回 `audio.playback_done ok`，但用户反馈声音仍偏小；下一步应在不接近 `28000` 失真边界的前提下提高 spoken TTS 有效音量。
 
+2026-07-08 新喇叭基准：更换为 `4 ohm 3 W, 500-5000 Hz` 喇叭后，当前 accepted spoken TTS path 是 `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb`，MAX98357A BCLK=39/LRC=40/DIN=41，`MERGETEST_SPEAKER_BUFFERED_STREAM=1`，`MERGETEST_SPEAKER_STREAM_GAIN=32`，base-station `XIAOAN_TTS_TARGET_PEAK=500`。固件端只缓存 PCM chunk，收到 `audio.stream_end` 后才启动 I2S 播放。Windows SAPI 现场验证使用 `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`；Linux 默认 edge-tts helper 不读取该变量，改用 `XIAOAN_EDGE_TTS_VOICE`。现场证据：`audio.playback_done status=ok bytes_written=367384 duration_ms=5763`，用户反馈“非常清楚”。
+
+2026-07-09 buffered receive 诊断：`mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` USB 上传 `/dev/ttyACM0` PASS；临时日志显示 runtime PSRAM 可用（begin `free_psram=8370979`）。三档 direct `/agent` TTS 均完整收到 `audio.stream_end` 并进入 buffered playback：38400、66816、158976 buffered bytes，`failed=0`，对应 `audio.playback_done ok bytes_written=65992/122828/307148`。未复现上一轮 direct 长句断链。
+
 编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/status/2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07-T17 全部 PASS_H）。`mergetesting_full_face240` 已在 2026-06-27 通过 full env `/control` motor、face240、speaker、`/video`、`/audio` 硬件 smoke。
 
 ## 源文件注册表
@@ -66,7 +70,7 @@
 | `motor_ctrl.cpp/h` | firmware | ✅ | non-blocking motion；bench/manual 可用 timeout/duration 跑开环 |
 | `cam_stream.cpp/h` | firmware + WS | ✅ | 1fps → meta + binary/base64 |
 | `camera_ov2640_config.h` | 引脚常量 | ✅ | GOOUUU S3-CAM v1.5 |
-| `speaker.cpp/h` | `max98357a_tone_check_main.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS |
+| `speaker.cpp/h` | `max98357a_tone_check_main.cpp` | ✅ | care_01/alarm_01/wake_01；diagnostic PCM TTS；0708 buffered TTS serial markers；0709 buffered receive heap/PSRAM append diagnostics |
 | `mic_stream.cpp/h` | `inmp441_rms_check_main.cpp` | ✅ | PCM chunk → `/audio`; base station diagnostics convert `runtime/latest_audio.pcm` to WAV and report RMS/peak/DC/clipping |
 | `debug_log.h` | 新建 | ✅ | LOGI/LOGE 宏 |
 

@@ -178,8 +178,11 @@ bytes_written=367384 duration_ms=5763
 ```
 
 The accepted baseline uses `XIAOAN_CONTROL_TTS_STREAM=1`,
-`XIAOAN_TTS_TARGET_PEAK=500`, default SAPI rate, and full PCM buffering before
-I2S playback. The expected server evidence is:
+`XIAOAN_TTS_TARGET_PEAK=500`, OS-specific TTS backend voice selection, and full
+PCM buffering before I2S playback. On Windows SAPI, `XIAOAN_TTS_VOICE` selects
+the installed SAPI voice. On Linux, the default edge-tts helper uses
+`XIAOAN_EDGE_TTS_VOICE` and ignores `XIAOAN_TTS_VOICE`. The expected server
+evidence is:
 
 ```text
 Command ack: type=audio.play_tts status=accepted

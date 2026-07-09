@@ -364,6 +364,7 @@ class VLMGatedCameraEmotionSource:
         vlm_model: Any,
         memory: Any | None = None,
         force_vlm: bool = False,
+        vlm_min_interval_seconds: float = 0.0,
         verbose: bool = False,
         backend_name: str | None = None,
         visual_observer: Any | None = None,
@@ -375,6 +376,7 @@ class VLMGatedCameraEmotionSource:
         self.vlm_model = vlm_model
         self.memory = memory
         self.force_vlm = force_vlm
+        self.vlm_min_interval_seconds = max(0.0, float(vlm_min_interval_seconds or 0.0))
         self.verbose = verbose
         self.backend_name = backend_name or type(vlm_model).__name__
         self.visual_observer = visual_observer
@@ -383,6 +385,7 @@ class VLMGatedCameraEmotionSource:
         frame_iterator = self.frame_source.frames().__aiter__()
         next_frame_task = asyncio.create_task(anext(frame_iterator))
         vlm_task = None
+        last_vlm_finished_at = float("-inf")
         try:
             while next_frame_task is not None or vlm_task is not None:
                 active_tasks = {
@@ -396,6 +399,7 @@ class VLMGatedCameraEmotionSource:
                 if vlm_task is not None and vlm_task in done:
                     final_sample = vlm_task.result()
                     vlm_task = None
+                    last_vlm_finished_at = time.monotonic()
                     yield final_sample
 
                 if next_frame_task is not None and next_frame_task in done:
@@ -414,6 +418,16 @@ class VLMGatedCameraEmotionSource:
                     if vlm_task is not None:
                         if self.verbose:
                             print(f"[gate.skip] frame_id={frame_id} reason=vlm_busy")
+                        continue
+                    cooldown_remaining = self.vlm_min_interval_seconds - (time.monotonic() - last_vlm_finished_at)
+                    if cooldown_remaining > 0:
+                        if self.verbose:
+                            print(
+                                "[gate.skip] "
+                                f"frame_id={frame_id} "
+                                f"reason=vlm_cooldown "
+                                f"remaining={cooldown_remaining:.1f}s"
+                            )
                         continue
 
                     request_id = None
@@ -794,6 +808,7 @@ def create_emotion_source(
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
+    vlm_min_interval_seconds: float = 0.0,
     history_memory: Any | None = None,
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
@@ -838,6 +853,7 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                vlm_min_interval_seconds=vlm_min_interval_seconds,
                 verbose=verbose,
                 backend_name=vlm_backend,
                 visual_observer=visual_observer,
@@ -875,6 +891,7 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                vlm_min_interval_seconds=vlm_min_interval_seconds,
                 verbose=verbose,
                 backend_name=vlm_backend,
                 visual_observer=visual_observer,
@@ -908,6 +925,7 @@ def create_emotion_source(
             vlm_model=vlm_model,
             memory=history_memory,
             force_vlm=force_vlm,
+            vlm_min_interval_seconds=vlm_min_interval_seconds,
             verbose=verbose,
             backend_name=vlm_backend,
             visual_observer=visual_observer,
@@ -940,6 +958,7 @@ def create_emotion_source(
             vlm_model=vlm_model,
             memory=history_memory,
             force_vlm=force_vlm,
+            vlm_min_interval_seconds=vlm_min_interval_seconds,
             verbose=verbose,
             backend_name=vlm_backend,
             visual_observer=visual_observer,
@@ -974,6 +993,7 @@ def create_emotion_source(
                 vlm_model=vlm_model,
                 memory=history_memory,
                 force_vlm=force_vlm,
+                vlm_min_interval_seconds=vlm_min_interval_seconds,
                 verbose=verbose,
                 backend_name=vlm_backend,
                 visual_observer=visual_observer,
@@ -1009,6 +1029,7 @@ def create_runtime(
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
     force_vlm: bool = False,
+    vlm_min_interval_seconds: float = 0.0,
     openface_repo: str | None = None,
     openface_models_dir: str | None = None,
     no_agent: bool = False,
@@ -1051,6 +1072,7 @@ def create_runtime(
         vlm_backend=vlm_backend,
         vlm_model_path=vlm_model_path,
         force_vlm=force_vlm,
+        vlm_min_interval_seconds=vlm_min_interval_seconds,
         history_memory=history_memory,
         openface_repo=openface_repo,
         openface_models_dir=openface_models_dir,
@@ -1170,7 +1192,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
         "--visual-trace-fps",
         type=float,
         default=1.0,
-        help="Visual trace publication rate from 0.1 to 2.0 FPS.",
+        help="Visual trace publication rate from 0.1 to 10.0 FPS.",
+    )
+    parser.add_argument(
+        "--vlm-min-interval-seconds",
+        type=float,
+        default=0.0,
+        help="Minimum cooldown after one VLM run before another can start.",
     )
     parser.add_argument(
         "--no-visual-trace",
@@ -1178,8 +1206,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
         help="Disable Integration Console visual trace publication.",
     )
     args = parser.parse_args(argv)
-    if not 0.1 <= args.visual_trace_fps <= 2.0:
-        parser.error("--visual-trace-fps must be between 0.1 and 2.0")
+    if not 0.1 <= args.visual_trace_fps <= 10.0:
+        parser.error("--visual-trace-fps must be between 0.1 and 10.0")
+    if args.vlm_min_interval_seconds < 0:
+        parser.error("--vlm-min-interval-seconds must be non-negative")
     if args.video_queue_size <= 0:
         parser.error("--video-queue-size must be positive")
     return args
@@ -1213,6 +1243,7 @@ async def main(args: argparse.Namespace | None = None) -> None:
             vlm_backend=args.vlm_backend,
             vlm_model_path=args.vlm_model_path,
             force_vlm=args.force_vlm,
+            vlm_min_interval_seconds=args.vlm_min_interval_seconds,
             openface_repo=args.openface_repo,
             openface_models_dir=args.openface_models_dir,
             no_agent=args.no_agent,

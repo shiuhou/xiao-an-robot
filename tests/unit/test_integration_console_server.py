@@ -13,8 +13,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from base_station.integration_console.console_server import (
+    AGENT_ACK_TIMEOUT_SECONDS,
+    AGENT_TTS_ACK_TIMEOUT_SECONDS,
     IntegrationConsoleApp,
     create_server,
+    _agent_ack_timeout_seconds,
     read_ws_state,
 )
 
@@ -63,6 +66,8 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "motionTimeout",
             "sendMotionBtn",
             "manualRobotJson",
+            "ttsRuntimeKv",
+            "ttsPlaybackJson",
             "link1RunSwitch",
             "link1Steps",
             "link2RunSwitch",
@@ -90,6 +95,15 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "fast2Steps",
             "fast2BrainText",
             "fast2ExecuteBtn",
+            "fast2VisualLatestImage",
+            "fast2VisualFreshness",
+            "fast2VisualCvMetrics",
+            "fast2VisualGateStatus",
+            "fast2VisualGateRules",
+            "fast2VisualVlmStatus",
+            "fast2VisualTriggerImage",
+            "fast2VisualVlmDetails",
+            "fast2VisualFusion",
             "fast3RunSwitch",
             "fast3Steps",
             "fast3BrainText",
@@ -123,6 +137,7 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertTrue(state["ok"])
         self.assertFalse(state["ws_server"]["ok"])
         self.assertFalse(state["robot"]["online"])
+        self.assertIn("tts_runtime", state)
         self.assertIn("latest_image", state["media"])
         self.assertIn("links", state)
         self.assertIn("processes", state)
@@ -328,8 +343,88 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertEqual(trigger, b"trigger-jpeg")
         self.assertIn("no-store", cache_control)
 
+    def test_fast_demo_visual_endpoints_serve_owned_images(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            visual_dir = Path(temp_dir) / "integration_console" / "fast_demo" / "visual"
+            visual_dir.mkdir(parents=True)
+            (visual_dir / "latest_annotated.jpg").write_bytes(b"fast-latest-jpeg")
+            (visual_dir / "vlm_trigger.jpg").write_bytes(b"fast-trigger-jpeg")
+            server = create_server("127.0.0.1", 0, runtime_dir=temp_dir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address[:2]
+            base_url = f"http://{host}:{port}"
+            try:
+                with urllib.request.urlopen(f"{base_url}/api/fast-demo/visual/latest-image", timeout=5) as response:
+                    latest = response.read()
+                with urllib.request.urlopen(f"{base_url}/api/fast-demo/visual/trigger-image", timeout=5) as response:
+                    trigger = response.read()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertEqual(latest, b"fast-latest-jpeg")
+        self.assertEqual(trigger, b"fast-trigger-jpeg")
+
+    def test_fast_demo_visual_stale_running_vlm_does_not_drive_decision(self) -> None:
+        trace = {
+            "frame_id": 40,
+            "observation": {"face_detected": True},
+            "cv_sample": {
+                "emotion_tag": "stressed",
+                "confidence": 0.43,
+                "fatigue_score": 100,
+            },
+            "gate": {
+                "result": {
+                    "should_trigger": True,
+                    "reason": "force",
+                },
+            },
+            "vlm": {
+                "status": "running",
+                "request_id": "vlm-old",
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            visual = {
+                "ok": True,
+                "freshness": "stale",
+                "age_ms": 120000,
+                "state": trace,
+                "files": {
+                    "latest_image": {
+                        "exists": True,
+                        "age_ms": 120000,
+                    },
+                },
+            }
+            result = app._fast_demo_visual_link_state(visual, {"fast2": {"running": False}})
+
+        self.assertEqual(result["status"], "idle")
+        self.assertEqual(result["brain_text"], "")
+        self.assertEqual(result["decision"], {})
+        self.assertEqual(result["robot_plan"], {})
+        self.assertEqual(result["steps"][2]["detail"]["vlm_status"], "stale_running")
+
 
 class IntegrationConsoleCommandTest(unittest.TestCase):
+    def test_tts_agent_ack_timeout_allows_slow_synthesis(self) -> None:
+        self.assertEqual(
+            _agent_ack_timeout_seconds({"command": "audio.play_tts"}),
+            AGENT_TTS_ACK_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(
+            _agent_ack_timeout_seconds({"command": "audio.play_local"}),
+            AGENT_ACK_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(
+            _agent_ack_timeout_seconds({"command": "display.expression"}),
+            AGENT_ACK_TIMEOUT_SECONDS,
+        )
+
     def test_link_commands_are_fixed_runtime_entrypoints(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             app = IntegrationConsoleApp(runtime_dir=temp_dir)
@@ -399,16 +494,35 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--local-demo-allow-motion", fast1)
         self.assertIn("--local-demo-reminders-path", fast1)
         self.assertIn("--once", fast1)
+        self.assertEqual(fast1[fast1.index("--duration") + 1], "6.0")
 
         self.assertIn("base_station.monitor.emotion_runtime", fast2)
         self.assertIn("ws_video_observer", fast2)
         self.assertIn("--enable-vlm-gate", fast2)
         self.assertIn("--no-agent", fast2)
+        self.assertNotIn("--force-vlm", fast2)
+        self.assertEqual(fast2[fast2.index("--visual-trace-fps") + 1], "5.0")
+        self.assertEqual(fast2[fast2.index("--vlm-min-interval-seconds") + 1], "8.0")
         self.assertTrue(fast2[fast2.index("--visual-trace-dir") + 1].endswith("integration_console/fast_demo/visual"))
 
         self.assertEqual(fast3[fast3.index("--local-demo-link") + 1], "fast3")
         self.assertIn("--local-demo-send-to-robot", fast3)
         self.assertIn("--local-demo-allow-motion", fast3)
+        self.assertEqual(fast3[fast3.index("--duration") + 1], "6.0")
+
+    def test_fast_demo_tts_prewarm_command_targets_local_cache_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            command = app.fast_demo_tts_prewarm_command()
+            state = app.fast_demo_tts_prewarm_state()
+
+        self.assertIn("tools/ops/prepare_fast_demo_tts.py", command)
+        self.assertIn("--runtime-dir", command)
+        self.assertEqual(command[command.index("--runtime-dir") + 1], temp_dir)
+        self.assertIn("--manifest-path", command)
+        self.assertTrue(command[command.index("--manifest-path") + 1].endswith("integration_console/fast_demo/tts_manifest.json"))
+        self.assertFalse(state["managed"])
+        self.assertEqual(state["status"], "disabled")
 
     def test_fast_demo_environment_removes_openclaw_runtime_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
@@ -604,6 +718,11 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
                 encoding="utf-8",
             )
             app = IntegrationConsoleApp(runtime_dir=runtime, command_sender=sender)
+            app._wait_motion_completed = lambda steps, action_id, timeout_ms: steps.append({
+                "name": "wait:motion.completed",
+                "ok": True,
+                "result": {"action_id": action_id},
+            })
             first = app.process_due_fast_demo_reminders()
             second = app.process_due_fast_demo_reminders()
             saved = json.loads(reminder_path.read_text(encoding="utf-8"))
@@ -618,6 +737,63 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         )
         self.assertEqual(sent[1]["action"], "move_out_of_dock")
         self.assertEqual(sent[1]["params"]["distance_cm"], 8.0)
+
+    def test_process_due_fast_demo_reminder_is_guarded_against_concurrent_polling(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            time.sleep(0.05)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            reminder_path = runtime / "integration_console" / "fast_demo" / "reminders.json"
+            reminder_path.parent.mkdir(parents=True)
+            reminder_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "xiaoan.fast_demo_reminders.v1",
+                        "items": [
+                            {
+                                "id": "fast-reminder-concurrent",
+                                "status": "pending",
+                                "created_at": datetime.now(timezone.utc).isoformat(),
+                                "due_at": datetime.now(timezone.utc).isoformat(),
+                                "transcript": "小安，10秒后提醒我喝水",
+                                "send_to_robot": True,
+                                "allow_motion": True,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime, command_sender=sender)
+            app._wait_motion_completed = lambda steps, action_id, timeout_ms: steps.append({
+                "name": "wait:motion.completed",
+                "ok": True,
+                "result": {"action_id": action_id},
+            })
+            with patch("base_station.integration_console.console_server.POST_MOTION_TTS_SETTLE_SECONDS", 0.0):
+                results: list[dict] = []
+                threads = [
+                    threading.Thread(target=lambda: results.append(app.process_due_fast_demo_reminders()))
+                    for _ in range(2)
+                ]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+            saved = json.loads(reminder_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(sum(result["processed"] for result in results), 1)
+        self.assertEqual(saved["items"][0]["status"], "fired")
+        self.assertEqual(
+            [payload["command"] for payload in sent],
+            ["display.expression", "motion.execute", "audio.play_tts"],
+        )
 
     def test_robot_expression_payload_is_agent_command(self) -> None:
         sent: list[dict] = []
@@ -634,6 +810,22 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(sent[0]["command"], "display.expression")
         self.assertEqual(sent[0]["expression"], "happy")
         self.assertEqual(sent[0]["duration_ms"], 1500)
+
+    def test_robot_tts_payload_uses_generated_pcm_duration(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, command_sender=sender)
+            result = app.send_tts({"text": "你好，我是小安。", "duration_ms": 3000})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(sent[0]["command"], "audio.play_tts")
+        self.assertEqual(sent[0]["text"], "你好，我是小安。")
+        self.assertNotIn("duration_ms", sent[0])
 
     def test_motion_payload_uses_safe_defaults_and_action_id(self) -> None:
         sent: list[dict] = []

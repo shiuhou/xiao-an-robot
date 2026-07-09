@@ -46,6 +46,7 @@ constexpr TickType_t PCM_WRITE_TIMEOUT_TICKS = pdMS_TO_TICKS(20);
 constexpr TickType_t PCM_QUEUE_SEND_TIMEOUT_TICKS = pdMS_TO_TICKS(10);
 constexpr TickType_t PCM_QUEUE_RECEIVE_TIMEOUT_TICKS = pdMS_TO_TICKS(100);
 constexpr int16_t PCM_LEADING_TRIM_THRESHOLD = 16;
+constexpr size_t BUFFERED_PCM_LOG_INTERVAL_BYTES = 32768;
 
 struct PcmStreamJob {
   uint8_t* data;
@@ -70,6 +71,7 @@ int16_t stereoBuffer[FRAMES_PER_BUFFER * 2];
 bool gReady = false;
 volatile bool gPlaying = false;
 volatile bool gPcmStreaming = false;
+uint32_t gPcmStreamStartedMs = 0;
 TaskHandle_t gTaskHandle = nullptr;
 TaskHandle_t gPcmTaskHandle = nullptr;
 QueueHandle_t gPcmQueue = nullptr;
@@ -77,17 +79,40 @@ size_t gPcmBufferLen = 0;
 uint8_t* gBufferedPcm = nullptr;
 size_t gBufferedPcmLen = 0;
 size_t gBufferedPcmCap = 0;
+size_t gBufferedPcmNextLogBytes = BUFFERED_PCM_LOG_INTERVAL_BYTES;
+bool gBufferedPcmFailed = false;
 char gTaskSound[32] = {};
 char gTaskText[96] = {};
+char gLastErrorDetail[32] = {};
 portMUX_TYPE gPlaybackResultMux = portMUX_INITIALIZER_UNLOCKED;
 bool gTtsPlaybackResultPending = false;
 SpeakerPlaybackResult gTtsPlaybackResult{};
 
-void storeTtsPlaybackResult(bool ok, uint32_t bytesWritten, uint32_t durationMs) {
+void setLastErrorDetail(const char* detail) {
+  strncpy(gLastErrorDetail, detail ? detail : "", sizeof(gLastErrorDetail) - 1);
+  gLastErrorDetail[sizeof(gLastErrorDetail) - 1] = '\0';
+}
+
+size_t freeInternalHeapBytes() {
+  return heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+}
+
+size_t freePsramBytes() {
+  return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+}
+
+void storeTtsPlaybackResult(
+    bool ok,
+    uint32_t bytesWritten,
+    uint32_t durationMs,
+    const char* playbackMode = "unknown",
+    uint32_t bufferedBytes = 0) {
   portENTER_CRITICAL(&gPlaybackResultMux);
   gTtsPlaybackResult.ok = ok;
   gTtsPlaybackResult.bytes_written = bytesWritten;
   gTtsPlaybackResult.duration_ms = durationMs;
+  gTtsPlaybackResult.buffered_bytes = bufferedBytes;
+  gTtsPlaybackResult.playback_mode = playbackMode ? playbackMode : "unknown";
   gTtsPlaybackResultPending = true;
   portEXIT_CRITICAL(&gPlaybackResultMux);
 }
@@ -379,6 +404,8 @@ void resetBufferedPcm() {
   gBufferedPcm = nullptr;
   gBufferedPcmLen = 0;
   gBufferedPcmCap = 0;
+  gBufferedPcmNextLogBytes = BUFFERED_PCM_LOG_INTERVAL_BYTES;
+  gBufferedPcmFailed = false;
 }
 
 void finishPcmPlayback() {
@@ -447,10 +474,24 @@ bool appendBufferedPcm(const uint8_t* pcm, size_t len) {
   }
   const size_t required = gBufferedPcmLen + len;
   if (!reserveBufferedPcm(required)) {
+    gBufferedPcmFailed = true;
     return false;
   }
   memcpy(gBufferedPcm + gBufferedPcmLen, pcm, len);
   gBufferedPcmLen = required;
+  if (gBufferedPcmLen >= gBufferedPcmNextLogBytes) {
+    LOGI(
+        "Speaker",
+        "buffered append len=%u total=%u cap=%u free_psram=%u free_heap=%u",
+        static_cast<unsigned>(len),
+        static_cast<unsigned>(gBufferedPcmLen),
+        static_cast<unsigned>(gBufferedPcmCap),
+        static_cast<unsigned>(freePsramBytes()),
+        static_cast<unsigned>(freeInternalHeapBytes()));
+    while (gBufferedPcmNextLogBytes <= gBufferedPcmLen) {
+      gBufferedPcmNextLogBytes += BUFFERED_PCM_LOG_INTERVAL_BYTES;
+    }
+  }
   return true;
 }
 
@@ -517,7 +558,7 @@ void pcmStreamTask(void* arg) {
   gPcmStreaming = false;
   gPlaying = false;
   gPcmTaskHandle = nullptr;
-  storeTtsPlaybackResult(ok, static_cast<uint32_t>(playedBytes), millis() - startedMs);
+  storeTtsPlaybackResult(ok, static_cast<uint32_t>(playedBytes), millis() - startedMs, "streaming", 0);
   LOGI("Speaker", "pcm stream task done ok=%s played_bytes=%u", ok ? "true" : "false", static_cast<unsigned>(playedBytes));
   vTaskDelete(nullptr);
 }
@@ -533,6 +574,7 @@ void pcmBufferedPlaybackTask(void* arg) {
 
   uint32_t bytesWritten = 0;
   bool ok = true;
+  LOGI("Speaker", "buffered pcm playback start bytes=%u", static_cast<unsigned>(len));
   if (!ensureSpeakerReady()) {
     ok = false;
   } else {
@@ -551,7 +593,14 @@ void pcmBufferedPlaybackTask(void* arg) {
   gPcmStreaming = false;
   gPlaying = false;
   gPcmTaskHandle = nullptr;
-  storeTtsPlaybackResult(ok, bytesWritten, millis() - startedMs);
+  storeTtsPlaybackResult(ok, bytesWritten, millis() - startedMs, "buffered", static_cast<uint32_t>(len));
+  LOGI(
+      "Speaker",
+      "buffered pcm task done ok=%s bytes_written=%lu buffered_bytes=%u duration_ms=%lu",
+      ok ? "true" : "false",
+      static_cast<unsigned long>(bytesWritten),
+      static_cast<unsigned>(len),
+      static_cast<unsigned long>(millis() - startedMs));
   LOGI(
       "Speaker",
       "pcm buffered playback done ok=%s buffered_bytes=%u bytes_written=%lu duration_ms=%lu",
@@ -580,7 +629,7 @@ void speakerTtsTask(void*) {
   const uint32_t startedMs = millis();
   const TtsBlockingResult result = playTtsBlocking(text);
   const uint32_t durationMs = millis() - startedMs;
-  storeTtsPlaybackResult(result.ok, result.bytesWritten, durationMs);
+  storeTtsPlaybackResult(result.ok, result.bytesWritten, durationMs, "embedded", 0);
   LOGI(
       "Speaker",
       "tts playback done ok=%s bytes_written=%lu duration_ms=%lu",
@@ -595,6 +644,7 @@ void speakerTtsTask(void*) {
 bool startPlaybackTask(const char* sound) {
   if (gPlaying || gPcmStreaming) {
     LOGW("Speaker", "play_local busy");
+    setLastErrorDetail("speaker_busy");
     return false;
   }
 
@@ -611,15 +661,18 @@ bool startPlaybackTask(const char* sound) {
   if (created != pdPASS) {
     gPlaying = false;
     gTaskHandle = nullptr;
+    setLastErrorDetail("task_create_fail");
     LOGE("Speaker", "play_local task create failed");
     return false;
   }
+  setLastErrorDetail("");
   return true;
 }
 
 bool startTtsTask(const char* textPreview) {
   if (gPlaying || gPcmStreaming) {
     LOGW("Speaker", "tts mock busy");
+    setLastErrorDetail("speaker_busy");
     return false;
   }
 
@@ -636,9 +689,11 @@ bool startTtsTask(const char* textPreview) {
   if (created != pdPASS) {
     gPlaying = false;
     gTaskHandle = nullptr;
+    setLastErrorDetail("task_create_fail");
     LOGE("Speaker", "tts mock task create failed");
     return false;
   }
+  setLastErrorDetail("");
   return true;
 }
 
@@ -648,14 +703,17 @@ bool speaker_init() {
   gReady = installSpeakerI2S();
   if (gReady) {
     LOGI("Speaker", "I2S ready");
+    setLastErrorDetail("");
   } else {
     LOGE("Speaker", "I2S init failed");
+    setLastErrorDetail("speaker_init_fail");
   }
   return gReady;
 }
 
 bool speaker_play_local(const char* sound) {
   if (!sound) {
+    setLastErrorDetail("missing_sound");
     return false;
   }
 
@@ -665,6 +723,7 @@ bool speaker_play_local(const char* sound) {
   } else if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
   } else {
     LOGW("Speaker", "unsupported local sound %s", sound);
+    setLastErrorDetail("unsupported_sound");
     return false;
   }
 
@@ -690,12 +749,54 @@ bool speaker_take_tts_playback_result(SpeakerPlaybackResult* result) {
   return true;
 }
 
+const char* speaker_last_error_detail() {
+  return gLastErrorDetail[0] ? gLastErrorDetail : "speaker_unavailable";
+}
+
+bool speaker_pcm_stream_active() {
+  return gPcmStreaming;
+}
+
+uint32_t speaker_pcm_stream_age_ms() {
+  if (!gPcmStreaming || gPcmStreamStartedMs == 0) {
+    return 0;
+  }
+  return millis() - gPcmStreamStartedMs;
+}
+
+bool speaker_abort_pcm_stream(const char* reason) {
+  if (!gPcmStreaming) {
+    return false;
+  }
+  const uint32_t durationMs = speaker_pcm_stream_age_ms();
+  const uint32_t bufferedBytes = static_cast<uint32_t>(gBufferedPcmLen);
+  LOGW(
+      "Speaker",
+      "pcm stream abort reason=%s buffered_bytes=%lu streamed_bytes=%u age_ms=%lu",
+      reason ? reason : "unknown",
+      static_cast<unsigned long>(bufferedBytes),
+      static_cast<unsigned>(gPcmBufferLen),
+      static_cast<unsigned long>(durationMs));
+  gPcmStreaming = false;
+  gPlaying = false;
+  resetPcmBuffer();
+  resetBufferedPcm();
+  finishPcmPlayback();
+  closePcmQueue();
+  gPcmTaskHandle = nullptr;
+  setLastErrorDetail(reason ? reason : "pcm_stream_aborted");
+  storeTtsPlaybackResult(false, 0, durationMs, "aborted", bufferedBytes);
+  return true;
+}
+
 bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
   if (gPcmStreaming) {
+    setLastErrorDetail("");
     return true;
   }
   if (gPlaying) {
     LOGW("Speaker", "pcm stream busy");
+    setLastErrorDetail("speaker_busy");
     return false;
   }
   if (channels != 1 || sampleRate != MERGETEST_SPEAKER_SAMPLE_RATE) {
@@ -704,22 +805,30 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
         "unsupported pcm stream format sample_rate=%lu channels=%u",
         static_cast<unsigned long>(sampleRate),
         static_cast<unsigned>(channels));
+    setLastErrorDetail("unsupported_pcm_format");
     return false;
   }
 
   resetPcmBuffer();
   resetBufferedPcm();
+  LOGI(
+      "Speaker",
+      "pcm stream begin memory free_heap=%u free_psram=%u",
+      static_cast<unsigned>(freeInternalHeapBytes()),
+      static_cast<unsigned>(freePsramBytes()));
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
 #if MERGETEST_SPEAKER_BUFFERED_STREAM
 #else
   if (!ensureSpeakerReady()) {
     LOGE("Speaker", "pcm stream speaker init failed");
+    setLastErrorDetail("speaker_init_fail");
     return false;
   }
   gPcmQueue = xQueueCreate(PCM_QUEUE_DEPTH, sizeof(PcmStreamJob));
   if (!gPcmQueue) {
     LOGE("Speaker", "pcm queue create failed");
+    setLastErrorDetail("pcm_queue_create_fail");
     return false;
   }
 #endif
@@ -727,6 +836,7 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
 
   gPcmStreaming = true;
   gPlaying = true;
+  gPcmStreamStartedMs = millis();
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
 #if MERGETEST_SPEAKER_BUFFERED_STREAM
@@ -742,6 +852,7 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
     closePcmQueue();
     gPcmStreaming = false;
     gPlaying = false;
+    setLastErrorDetail("task_create_fail");
     LOGE("Speaker", "pcm stream task create failed");
     return false;
   }
@@ -755,6 +866,7 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
       channels,
       static_cast<unsigned>(MERGETEST_SPEAKER_PCM_DRAIN_ONLY),
       static_cast<unsigned>(MERGETEST_SPEAKER_BUFFERED_STREAM));
+  setLastErrorDetail("");
   return true;
 }
 
@@ -783,6 +895,11 @@ void speaker_end_pcm_stream() {
   }
   gPcmStreaming = false;
   LOGI("Speaker", "pcm stream end streamed_bytes=%u", static_cast<unsigned>(gPcmBufferLen));
+  LOGI(
+      "Speaker",
+      "buffered stream_end received buffered_bytes=%u failed=%u",
+      static_cast<unsigned>(gBufferedPcmLen),
+      gBufferedPcmFailed ? 1U : 0U);
 
 #if MERGETEST_SPEAKER_PCM_DRAIN_ONLY
   resetPcmBuffer();
@@ -800,7 +917,7 @@ void speaker_end_pcm_stream() {
     resetBufferedPcm();
     resetPcmBuffer();
     gPlaying = false;
-    storeTtsPlaybackResult(false, 0, 0);
+    storeTtsPlaybackResult(false, 0, 0, "buffered", static_cast<uint32_t>(gBufferedPcmLen));
   }
 #else
   if (!enqueuePcmEnd()) {
@@ -815,11 +932,7 @@ void speaker_end_pcm_stream() {
 void speaker_stop() {
   gPlaying = false;
   if (gPcmStreaming) {
-    gPcmStreaming = false;
-    resetPcmBuffer();
-    resetBufferedPcm();
-    finishPcmPlayback();
-    closePcmQueue();
+    speaker_abort_pcm_stream("speaker_stop");
     return;
   }
   if (gReady) {
@@ -834,6 +947,10 @@ bool speaker_init() { return false; }
 bool speaker_play_local(const char*) { return false; }
 bool speaker_play_tts_mock(const char*) { return false; }
 bool speaker_take_tts_playback_result(SpeakerPlaybackResult*) { return false; }
+const char* speaker_last_error_detail() { return "speaker_disabled"; }
+bool speaker_pcm_stream_active() { return false; }
+uint32_t speaker_pcm_stream_age_ms() { return 0; }
+bool speaker_abort_pcm_stream(const char*) { return false; }
 bool speaker_begin_pcm_stream(uint32_t, uint8_t) { return false; }
 bool speaker_write_pcm_chunk(const uint8_t*, size_t) { return false; }
 void speaker_end_pcm_stream() {}

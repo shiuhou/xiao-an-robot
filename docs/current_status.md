@@ -57,7 +57,7 @@ Evidence:
 - screen monitoring
 - work activity tracking
 - local reminder/task/memory APIs
-- free-form/full-quality spoken TTS beyond the current P0 SAPI baseline
+- free-form/full-quality spoken TTS beyond the current P0 OS-specific TTS backend baseline
 - legacy firmware-side DK-2500 integration snapshots
 
 ## Known Open Items
@@ -66,7 +66,7 @@ Evidence:
 2. Connect real OpenClaw to the P0 allowed action set and verify it forwards through `/agent` without local keyword-rule shortcuts.
 3. Confirm DK-2500/OpenClaw consistently observes matching `motion.completed` events after non-stop motion commands.
 4. Continue visual verification from one fixed real camera image and keep Qwen/OpenVINO visual output tied to verified local model completeness.
-5. Improve Mandarin TTS quality if time permits; current SAPI/Hanhan baseline is demo-acceptable but not product quality.
+5. Improve Mandarin TTS quality if time permits; current backend voice is OS-specific and demo-acceptable, not product quality.
 6. Calibrate physical route timing on charged battery before chaining autonomous movement.
 7. Keep the base-station mic demo path explicit: base mic WAV/capture -> ASR -> context -> OpenClaw/Agent -> `/agent` -> `/control` commands -> ack/completed evidence.
 8. Keep the OpenClaw decision-only route for ASR/OpenClaw validation when the robot network is intentionally disconnected.

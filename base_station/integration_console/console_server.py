@@ -15,6 +15,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -23,7 +24,12 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse, urlsplit
 
-from base_station.integration_console.fast_demo_brain import build_reminder_due_decision, decide_visual, decide_voice
+from base_station.integration_console.fast_demo_brain import (
+    POST_MOTION_TTS_SETTLE_SECONDS,
+    build_reminder_due_decision,
+    decide_visual,
+    decide_voice,
+)
 
 DEFAULT_RUNTIME_DIR = Path("runtime")
 DEFAULT_STATIC_DIR = Path(__file__).with_name("static")
@@ -35,6 +41,8 @@ OPENCLAW_DASHBOARD_SCHEMA = "xiaoan.dashboard.v1"
 EVENT_LIMIT = 200
 STATE_EVENT_LIMIT = 50
 AUDIO_COOLDOWN_SECONDS = 2.5
+AGENT_ACK_TIMEOUT_SECONDS = 4.0
+AGENT_TTS_ACK_TIMEOUT_SECONDS = 75.0
 FRESH_IMAGE_MS = 3000
 FRESH_AUDIO_MS = 5000
 FRESH_VISUAL_MS = 3000
@@ -57,6 +65,12 @@ FAST_DEMO_LINKS = ("fast1", "fast2", "fast3")
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _agent_ack_timeout_seconds(payload: dict[str, Any]) -> float:
+    if payload.get("command") == "audio.play_tts":
+        return AGENT_TTS_ACK_TIMEOUT_SECONDS
+    return AGENT_ACK_TIMEOUT_SECONDS
 
 
 def _repo_root() -> Path:
@@ -220,6 +234,7 @@ class IntegrationConsoleApp:
         openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
         command_sender: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         prewarm_voice: bool = False,
+        prewarm_fast_demo_tts: bool = False,
     ):
         self.host = host
         self.port = int(port)
@@ -232,10 +247,15 @@ class IntegrationConsoleApp:
         self.last_audio_sent_at = 0.0
         self.command_sender = command_sender
         self.link_processes: dict[str, subprocess.Popen[Any]] = {}
+        self.fast_demo_reminder_lock = threading.Lock()
         self.voice_prewarm_process: subprocess.Popen[Any] | None = None
         self.voice_prewarm_started_at: str | None = None
+        self.fast_demo_tts_prewarm_process: subprocess.Popen[Any] | None = None
+        self.fast_demo_tts_prewarm_started_at: str | None = None
         if prewarm_voice:
             self.start_voice_prewarm()
+        if prewarm_fast_demo_tts:
+            self.start_fast_demo_tts_prewarm()
 
     @property
     def event_dir(self) -> Path:
@@ -286,6 +306,7 @@ class IntegrationConsoleApp:
             "latest_jpg_exists": (self.runtime_dir / "latest.jpg").exists(),
             "audio_stats_exists": (self.runtime_dir / "audio_stats.json").exists(),
             "voice_prewarm": self.voice_prewarm_state(),
+            "fast_demo_tts_prewarm": self.fast_demo_tts_prewarm_state(),
         }
 
     def audio_stats(self) -> dict[str, Any]:
@@ -453,6 +474,70 @@ class IntegrationConsoleApp:
             "log_path": str(log_path),
         }
 
+    def fast_demo_tts_prewarm_command(self) -> list[str]:
+        return [
+            sys.executable,
+            "tools/ops/prepare_fast_demo_tts.py",
+            "--runtime-dir",
+            str(self.runtime_dir),
+            "--manifest-path",
+            str(self.runtime_dir / "integration_console" / "fast_demo" / "tts_manifest.json"),
+        ]
+
+    def start_fast_demo_tts_prewarm(self) -> dict[str, Any]:
+        if self.fast_demo_tts_prewarm_process is not None and self.fast_demo_tts_prewarm_process.poll() is None:
+            return {"ok": True, "already_running": True, "state": self.fast_demo_tts_prewarm_state()}
+        command = self.fast_demo_tts_prewarm_command()
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / "fast_demo_tts_prewarm.log"
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            process = subprocess.Popen(
+                command,
+                cwd=_repo_root(),
+                env=dict(os.environ),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        self.fast_demo_tts_prewarm_process = process
+        self.fast_demo_tts_prewarm_started_at = _now_iso()
+        return {"ok": True, "state": self.fast_demo_tts_prewarm_state()}
+
+    def fast_demo_tts_prewarm_state(self) -> dict[str, Any]:
+        log_path = self.process_log_dir / "fast_demo_tts_prewarm.log"
+        manifest_path = self.runtime_dir / "integration_console" / "fast_demo" / "tts_manifest.json"
+        process = self.fast_demo_tts_prewarm_process
+        manifest, manifest_error = _load_json_file(manifest_path)
+        if process is None:
+            return {
+                "managed": False,
+                "running": False,
+                "status": "disabled",
+                "pid": None,
+                "returncode": None,
+                "started_at": None,
+                "log_path": str(log_path),
+                "manifest_path": str(manifest_path),
+                "manifest": manifest,
+                "manifest_error": manifest_error,
+            }
+        returncode = process.poll()
+        return {
+            "managed": True,
+            "running": returncode is None,
+            "status": "running" if returncode is None else "exited",
+            "pid": process.pid,
+            "returncode": returncode,
+            "started_at": self.fast_demo_tts_prewarm_started_at,
+            "log_path": str(log_path),
+            "manifest_path": str(manifest_path),
+            "manifest": manifest,
+            "manifest_error": manifest_error,
+        }
+
     def link_process_state(self, link: str) -> dict[str, Any]:
         process = self.link_processes.get(link)
         log_path = self.process_log_dir / f"{link}.log"
@@ -553,7 +638,11 @@ class IntegrationConsoleApp:
         body = body or {}
         if link in {"fast1", "fast3"}:
             normal_link = "link1" if link == "fast1" else "link3"
-            duration = self._env_text(f"XIAOAN_{normal_link.upper()}_MIC_WINDOW", "6.0")
+            duration = (
+                self._env_text(f"XIAOAN_{link.upper()}_MIC_WINDOW", "")
+                or self._env_text("XIAOAN_FAST_DEMO_MIC_WINDOW", "")
+                or self._env_text(f"XIAOAN_{normal_link.upper()}_MIC_WINDOW", "6.0")
+            )
             command = [
                 sys.executable,
                 "-m",
@@ -608,11 +697,13 @@ class IntegrationConsoleApp:
                 "--visual-trace-dir",
                 str(self.fast_demo_visual_dir),
                 "--visual-trace-fps",
-                self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "1.0"),
+                self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "5.0"),
+                "--vlm-min-interval-seconds",
+                self._env_text("XIAOAN_LINK2_VLM_MIN_INTERVAL_SECONDS", "8.0"),
                 "--no-agent",
                 "--verbose",
             ]
-            if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
+            if self._env_truthy("XIAOAN_FAST2_FORCE_VLM", False):
                 command.append("--force-vlm")
             return command
         raise ValueError(f"unsupported_fast_demo_link:{link}")
@@ -856,6 +947,7 @@ class IntegrationConsoleApp:
                         action_id,
                         timeout_ms=int(step.get("timeout_ms") or 1200) + 600,
                     )
+                    time.sleep(POST_MOTION_TTS_SETTLE_SECONDS)
                 continue
             elif kind == "tts":
                 result = self.send_tts({
@@ -943,6 +1035,7 @@ class IntegrationConsoleApp:
             "last_audio_playback_done": raw_state.get("last_audio_playback_done"),
             "last_error": raw_state.get("last_error"),
         }
+        tts_runtime = raw_state.get("tts_runtime") if isinstance(raw_state.get("tts_runtime"), dict) else {}
         reminder_result = self.process_due_fast_demo_reminders()
         media = {
             "latest_image": latest_image,
@@ -971,6 +1064,7 @@ class IntegrationConsoleApp:
             "console": self.health(),
             "ws_server": ws_state,
             "robot": robot,
+            "tts_runtime": tts_runtime,
             "media": media,
             "asr": asr,
             "link_voice": link_voice,
@@ -1196,40 +1290,61 @@ class IntegrationConsoleApp:
         }
 
     def process_due_fast_demo_reminders(self) -> dict[str, Any]:
-        payload = self._load_fast_demo_reminders()
-        items = payload.get("items") if isinstance(payload.get("items"), list) else []
-        if not items:
-            return {"ok": True, "processed": 0, "due": 0}
-        now_ts = time.time()
+        with self.fast_demo_reminder_lock:
+            payload = self._load_fast_demo_reminders()
+            items = payload.get("items") if isinstance(payload.get("items"), list) else []
+            if not items:
+                return {"ok": True, "processed": 0, "due": 0}
+            now_ts = time.time()
+            due_indexes: list[int] = []
+            for index, item in enumerate(items):
+                if not isinstance(item, dict) or item.get("status") != "pending":
+                    continue
+                due_ts = _iso_timestamp(item.get("due_at"))
+                if due_ts is None or due_ts > now_ts:
+                    continue
+                due_indexes.append(index)
+                item["status"] = "firing"
+                item["firing_at"] = _now_iso()
+            if not due_indexes:
+                return {"ok": True, "processed": 0, "due": 0}
+            payload["updated_at"] = _now_iso()
+            payload["items"] = items
+            _atomic_write_json(self.fast_demo_reminders_path, payload)
+
         processed = 0
-        due_count = 0
         results: list[dict[str, Any]] = []
-        changed = False
-        for item in items:
-            if not isinstance(item, dict) or item.get("status") != "pending":
-                continue
-            due_ts = _iso_timestamp(item.get("due_at"))
-            if due_ts is None or due_ts > now_ts:
-                continue
-            due_count += 1
+        for index in due_indexes:
+            item = items[index]
             decision = build_reminder_due_decision(item)
             execution = self._execute_fast_demo_decision_plan(
                 decision,
                 send_to_robot=bool(item.get("send_to_robot", False)),
                 allow_motion=bool(item.get("allow_motion", False)),
             )
-            item["status"] = "fired"
+            item["status"] = "fired" if execution.get("ok") else "failed"
             item["fired_at"] = _now_iso()
             item["fire_decision"] = self._public_fast_demo_decision(decision)
             item["fire_execution"] = execution
             results.append({"id": item.get("id"), "ok": execution.get("ok"), "execution": execution})
             processed += 1
-            changed = True
-        if changed:
-            payload["updated_at"] = _now_iso()
-            payload["items"] = items
-            _atomic_write_json(self.fast_demo_reminders_path, payload)
-        return {"ok": True, "processed": processed, "due": due_count, "results": results}
+
+        with self.fast_demo_reminder_lock:
+            latest_payload = self._load_fast_demo_reminders()
+            latest_items = latest_payload.get("items") if isinstance(latest_payload.get("items"), list) else []
+            by_id = {
+                str(item.get("id")): item
+                for item in latest_items
+                if isinstance(item, dict) and item.get("id") is not None
+            }
+            for item in items:
+                item_id = str(item.get("id") or "")
+                if item_id and item_id in by_id:
+                    by_id[item_id].update(item)
+            latest_payload["updated_at"] = _now_iso()
+            latest_payload["items"] = latest_items
+            _atomic_write_json(self.fast_demo_reminders_path, latest_payload)
+        return {"ok": True, "processed": processed, "due": len(due_indexes), "results": results}
 
     def _load_fast_demo_reminders(self) -> dict[str, Any]:
         data, _ = _load_json_file(self.fast_demo_reminders_path)
@@ -1371,27 +1486,27 @@ class IntegrationConsoleApp:
         process = processes.get("fast2") if isinstance(processes.get("fast2"), dict) else {}
         running = bool(process.get("running"))
         trace = visual.get("state") if isinstance(visual.get("state"), dict) else {}
-        decision = decide_visual(trace)
-        brain_text = str(decision.get("reply_text") or "").strip() if visual.get("ok") else ""
-        robot_plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
         files = visual.get("files") if isinstance(visual.get("files"), dict) else {}
         latest_image = files.get("latest_image") if isinstance(files.get("latest_image"), dict) else {}
         visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
+        decision = decide_visual(trace) if visual_fresh else {}
+        brain_text = str(decision.get("reply_text") or "").strip() if visual_fresh else ""
+        robot_plan = decision.get("robot_plan") if isinstance(decision.get("robot_plan"), dict) else {}
         steps = [
             _step("emotion runtime", running, process.get("pid")),
             _step("ws_video 分析快照", _fresh(latest_image, FRESH_VISUAL_MS), visual.get("freshness")),
-            _step("视觉模型推理", visual_fresh, self._fast_demo_visual_summary(trace)),
+            _step("视觉模型推理", visual_fresh, self._fast_demo_visual_summary(trace, visual_fresh=visual_fresh)),
             _step("智能大脑回复", bool(brain_text), brain_text),
             _step("表情/TTS/动作计划", bool(robot_plan.get("steps")) and bool(brain_text), self._fast_demo_plan_summary(robot_plan, {})),
         ]
         return {
-            "status": self._status_from_steps(steps) if (running or visual.get("ok")) else "idle",
+            "status": self._status_from_steps(steps) if (running or visual_fresh) else "idle",
             "done": all(step["ok"] for step in steps),
             "steps": steps,
             "visual": visual,
             "brain_text": brain_text,
-            "decision": self._public_fast_demo_decision(decision) if visual.get("ok") else {},
-            "robot_plan": robot_plan if visual.get("ok") else {},
+            "decision": self._public_fast_demo_decision(decision) if visual_fresh else {},
+            "robot_plan": robot_plan if visual_fresh else {},
         }
 
     @staticmethod
@@ -1425,13 +1540,16 @@ class IntegrationConsoleApp:
         }
 
     @staticmethod
-    def _fast_demo_visual_summary(trace: dict[str, Any]) -> dict[str, Any]:
+    def _fast_demo_visual_summary(trace: dict[str, Any], *, visual_fresh: bool = True) -> dict[str, Any]:
         observation = trace.get("observation") if isinstance(trace.get("observation"), dict) else {}
         cv = trace.get("cv_sample") if isinstance(trace.get("cv_sample"), dict) else {}
         gate = trace.get("gate") if isinstance(trace.get("gate"), dict) else {}
         gate_result = gate.get("result") if isinstance(gate.get("result"), dict) else {}
         vlm = trace.get("vlm") if isinstance(trace.get("vlm"), dict) else {}
         vlm_result = vlm.get("result") if isinstance(vlm.get("result"), dict) else {}
+        vlm_status = vlm.get("status")
+        if not visual_fresh and vlm_status == "running":
+            vlm_status = "stale_running"
         return {
             "frame_id": trace.get("frame_id"),
             "face_detected": observation.get("face_detected"),
@@ -1440,7 +1558,7 @@ class IntegrationConsoleApp:
             "fatigue_score": cv.get("fatigue_score"),
             "gate_should_trigger": gate_result.get("should_trigger"),
             "gate_reason": gate_result.get("reason"),
-            "vlm_status": vlm.get("status"),
+            "vlm_status": vlm_status,
             "vlm_label": vlm_result.get("expression_label") or vlm_result.get("emotion_tag"),
         }
 
@@ -1747,13 +1865,14 @@ class IntegrationConsoleApp:
         except ImportError as exc:
             return {"ok": False, "error": f"missing websockets dependency: {exc}"}
         message = {"type": "agent.command", "payload": payload}
+        ack_timeout = _agent_ack_timeout_seconds(payload)
         try:
             async with websockets.connect(self.ws_url, open_timeout=3) as websocket:
                 await asyncio.wait_for(
                     websocket.send(json.dumps(message, ensure_ascii=False)),
                     timeout=3,
                 )
-                raw_ack = await asyncio.wait_for(websocket.recv(), timeout=4)
+                raw_ack = await asyncio.wait_for(websocket.recv(), timeout=ack_timeout)
         except Exception as exc:
             return {"ok": False, "error": str(exc), "ws_url": self.ws_url}
         try:
@@ -1864,7 +1983,6 @@ class IntegrationConsoleApp:
             "device_id": body.get("device_id"),
             "command": "audio.play_tts",
             "text": text[:300],
-            "duration_ms": _clamp_int(body.get("duration_ms"), 3000, 500, 8000),
         }
         result = self.send_agent_command(payload, action="tts", event_type="robot.tts")
         if result.get("ok"):
@@ -2174,6 +2292,10 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_file(app.visual_dir / "latest_annotated.jpg", no_cache=True)
                 elif path == "/api/visual/trigger-image":
                     self._write_file(app.visual_dir / "vlm_trigger.jpg", no_cache=True)
+                elif path == "/api/fast-demo/visual/latest-image":
+                    self._write_file(app.fast_demo_visual_dir / "latest_annotated.jpg", no_cache=True)
+                elif path == "/api/fast-demo/visual/trigger-image":
+                    self._write_file(app.fast_demo_visual_dir / "vlm_trigger.jpg", no_cache=True)
                 elif path == "/api/audio-stats":
                     self._write_json(app.audio_stats())
                 elif path == "/api/logs/recent":
@@ -2278,6 +2400,7 @@ def create_server(
     openclaw_url: str = DEFAULT_OPENCLAW_URL,
     openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
     prewarm_voice: bool = False,
+    prewarm_fast_demo_tts: bool = False,
     verbose: bool = False,
 ) -> ThreadingHTTPServer:
     app = IntegrationConsoleApp(
@@ -2289,6 +2412,7 @@ def create_server(
         openclaw_url=openclaw_url,
         openclaw_workspace=openclaw_workspace,
         prewarm_voice=prewarm_voice,
+        prewarm_fast_demo_tts=prewarm_fast_demo_tts,
     )
     handler = make_handler(app, verbose=verbose)
     return ThreadingHTTPServer((host, int(port)), handler)
@@ -2308,6 +2432,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Disable startup ASR prewarm for the local microphone runtime.",
     )
+    parser.add_argument(
+        "--no-prewarm-fast-demo-tts",
+        action="store_true",
+        help="Disable startup Fast Demo TTS cache preparation.",
+    )
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -2323,6 +2452,7 @@ def main(argv: list[str] | None = None) -> int:
         openclaw_url=args.openclaw_url,
         openclaw_workspace=args.openclaw_workspace,
         prewarm_voice=not args.no_prewarm_voice,
+        prewarm_fast_demo_tts=not args.no_prewarm_fast_demo_tts,
         verbose=args.verbose,
     )
     try:

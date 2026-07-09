@@ -8,6 +8,10 @@
 #include "protocol.h"
 #include "speaker.h"
 
+#ifndef MERGETEST_TTS_STREAM_TIMEOUT_MS
+#define MERGETEST_TTS_STREAM_TIMEOUT_MS 45000
+#endif
+
 namespace {
 
 bool isSupportedExpression(const char* expr) {
@@ -42,6 +46,21 @@ bool isSupportedLocalSound(const char* sound) {
          strcmp(sound, "success_ding") == 0;
 }
 
+const char* speakerFailureDetail() {
+  const char* detail = speaker_last_error_detail();
+  return detail && detail[0] ? detail : "speaker_unavailable";
+}
+
+const char* speakerFailureMessage(const char* detail) {
+  if (detail && strcmp(detail, "speaker_busy") == 0) {
+    return "speaker busy";
+  }
+  if (detail && strcmp(detail, "unsupported_pcm_format") == 0) {
+    return "unsupported pcm format";
+  }
+  return "speaker not ready";
+}
+
 }  // namespace
 
 CommandRouter::CommandRouter(
@@ -58,12 +77,25 @@ void CommandRouter::loop() {
   if (_pendingPcmStreamEnd.active) {
     finishPendingPcmStream();
   }
+  if (speaker_pcm_stream_active() && speaker_pcm_stream_age_ms() > MERGETEST_TTS_STREAM_TIMEOUT_MS) {
+    LOGW(
+        "Router",
+        "audio.play_tts pcm stream timeout age_ms=%lu",
+        static_cast<unsigned long>(speaker_pcm_stream_age_ms()));
+    _status.error(
+        MsgType::AUDIO_PLAY_TTS,
+        "tts stream timeout",
+        ErrorCode::AUDIO_UNSUPPORTED);
+    speaker_abort_pcm_stream("pcm_stream_timeout");
+  }
   SpeakerPlaybackResult playback{};
   if (speaker_take_tts_playback_result(&playback)) {
     _status.audioPlaybackDone(
         playback.bytes_written,
         playback.duration_ms,
-        playback.ok ? "ok" : "error");
+        playback.ok ? "ok" : "error",
+        playback.playback_mode,
+        playback.buffered_bytes);
   }
 }
 
@@ -148,11 +180,12 @@ void CommandRouter::handleAudioPlayLocal(JsonObject payload) {
     _status.sendCurrent();
     _status.ack(MsgType::AUDIO_PLAY_LOCAL, "ok");
   } else {
+    const char* detail = speakerFailureDetail();
     _status.error(
         MsgType::AUDIO_PLAY_LOCAL,
-        "speaker not ready",
+        speakerFailureMessage(detail),
         ErrorCode::AUDIO_UNSUPPORTED);
-    _status.ack(MsgType::AUDIO_PLAY_LOCAL, "error", "speaker_init_fail");
+    _status.ack(MsgType::AUDIO_PLAY_LOCAL, "error", detail);
   }
 }
 
@@ -188,11 +221,12 @@ void CommandRouter::handleAudioPlayTts(JsonObject payload) {
     _status.sendCurrent();
     _status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "queued");
   } else {
+    const char* detail = speakerFailureDetail();
     _status.error(
         MsgType::AUDIO_PLAY_TTS,
-        "speaker not ready",
+        speakerFailureMessage(detail),
         ErrorCode::AUDIO_UNSUPPORTED);
-    _status.ack(MsgType::AUDIO_PLAY_TTS, "error", "speaker_init_fail");
+    _status.ack(MsgType::AUDIO_PLAY_TTS, "error", detail);
   }
 }
 
@@ -213,11 +247,12 @@ void CommandRouter::startPendingPcmStream() {
     _status.sendCurrent();
     _status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "pcm_stream");
   } else {
+    const char* detail = speakerFailureDetail();
     _status.error(
         MsgType::AUDIO_PLAY_TTS,
-        "speaker not ready",
+        speakerFailureMessage(detail),
         ErrorCode::AUDIO_UNSUPPORTED);
-    _status.ack(MsgType::AUDIO_PLAY_TTS, "error", "speaker_init_fail");
+    _status.ack(MsgType::AUDIO_PLAY_TTS, "error", detail);
   }
 }
 

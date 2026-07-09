@@ -39,7 +39,12 @@ from .protocol import (
     make_welcome,
     parse_message,
 )
-from .tts_stream import TtsPcmStream, external_tts_backend_configured, synthesize_tts_pcm_stream
+from .tts_stream import (
+    TtsPcmStream,
+    external_tts_backend_configured,
+    synthesize_tts_pcm_stream,
+    tts_backend_runtime_settings,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -71,7 +76,11 @@ CONTROL_TTS_CHUNK_BYTES = 2048
 CONTROL_TTS_START_DELAY_SECONDS = 1.2
 CONTROL_TTS_CHUNK_PACE_RATIO = 0.85
 CONTROL_TTS_STREAM_ENV = "XIAOAN_CONTROL_TTS_STREAM"
+CONTROL_TTS_REQUIRE_PLAYBACK_DONE_ENV = "XIAOAN_CONTROL_TTS_REQUIRE_PLAYBACK_DONE"
+CONTROL_TTS_PLAYBACK_TIMEOUT_ENV = "XIAOAN_CONTROL_TTS_PLAYBACK_TIMEOUT_SEC"
 TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
+FALSE_ENV_VALUES = {"0", "false", "no", "off"}
+audio_playback_waiters: set[asyncio.Future] = set()
 
 
 def _now_iso() -> str:
@@ -100,6 +109,7 @@ def _empty_ws_state() -> dict[str, Any]:
         "last_motion_completed": None,
         "last_audio_playback_done": None,
         "last_error": None,
+        "tts_runtime": {},
         "counters": {
             "control_messages": 0,
             "video_frames": 0,
@@ -152,6 +162,7 @@ def write_ws_state_snapshot(runtime_dir: str | Path | None = None) -> bool:
 
     runtime_path = Path(runtime_dir) if runtime_dir is not None else ws_runtime_dir
     ws_state["updated_at"] = _now_iso()
+    ws_state["tts_runtime"] = tts_runtime_settings()
     _refresh_ws_sessions_state()
     try:
         _atomic_write_json(runtime_path / "ws_state.json", ws_state)
@@ -212,6 +223,42 @@ def control_tts_stream_enabled() -> bool:
     return raw.strip().lower() in TRUE_ENV_VALUES
 
 
+def control_tts_playback_done_required() -> bool:
+    raw = os.getenv(CONTROL_TTS_REQUIRE_PLAYBACK_DONE_ENV)
+    if raw is None or not raw.strip():
+        return True
+    return raw.strip().lower() not in FALSE_ENV_VALUES
+
+
+def control_tts_playback_timeout_seconds(pcm_stream: TtsPcmStream) -> float:
+    raw = os.getenv(CONTROL_TTS_PLAYBACK_TIMEOUT_ENV)
+    try:
+        override = float(raw) if raw is not None and raw.strip() else None
+    except (TypeError, ValueError):
+        override = None
+    if override is not None and override > 0:
+        return override
+    expected_seconds = max(0.0, pcm_stream.duration_ms / 1000.0)
+    return max(8.0, expected_seconds + CONTROL_TTS_START_DELAY_SECONDS + 6.0)
+
+
+def tts_runtime_settings() -> dict[str, object]:
+    settings = tts_backend_runtime_settings()
+    raw_stream = os.getenv(CONTROL_TTS_STREAM_ENV, "")
+    settings.update({
+        "control_stream_env": raw_stream,
+        "control_stream_enabled": control_tts_stream_enabled(),
+        "playback_done_required": control_tts_playback_done_required(),
+        "playback_done_timeout_env": os.getenv(CONTROL_TTS_PLAYBACK_TIMEOUT_ENV, ""),
+        "transport": "control_raw_pcm_stream",
+        "chunk_bytes": CONTROL_TTS_CHUNK_BYTES,
+        "start_delay_seconds": CONTROL_TTS_START_DELAY_SECONDS,
+        "pace_ratio": CONTROL_TTS_CHUNK_PACE_RATIO,
+        "playback_mode_expected": "buffered_after_stream_end",
+    })
+    return settings
+
+
 def pcm_stream_chunk_duration_seconds(pcm_stream: TtsPcmStream, chunk_bytes: int) -> float:
     bytes_per_frame = pcm_stream.channels * 2
     if pcm_stream.sample_rate <= 0 or bytes_per_frame <= 0 or chunk_bytes <= 0:
@@ -250,6 +297,10 @@ def reset_state_for_tests() -> None:
     global ws_state
     sessions.clear()
     recent_robot_events.clear()
+    for waiter in list(audio_playback_waiters):
+        if not waiter.done():
+            waiter.cancel()
+    audio_playback_waiters.clear()
     set_video_frame_source(None)
     video_observer_queues.clear()
     reset_audio_runtime_stats()
@@ -437,12 +488,58 @@ def record_robot_event(event_type: str, payload: dict, device_id: Optional[str] 
 
     event_payload = dict(payload) if isinstance(payload, dict) else {}
     event_device_id = device_id or event_payload.get("device_id")
-    recent_robot_events.append({
+    event = {
         "type": event_type,
         "device_id": event_device_id,
         "recorded_at": time.time(),
         "payload": event_payload,
-    })
+    }
+    recent_robot_events.append(event)
+    if event_type == "audio.playback_done":
+        for waiter in list(audio_playback_waiters):
+            if not waiter.done():
+                waiter.set_result(dict(event))
+
+
+def _audio_playback_done_matches(event: dict[str, Any], device_id: str, since: float) -> bool:
+    if event.get("type") != "audio.playback_done":
+        return False
+    if event.get("device_id") != device_id:
+        return False
+    if float(event.get("recorded_at") or 0.0) < since:
+        return False
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    return payload.get("command_type") in {None, MessageType.AUDIO_PLAY_TTS.value}
+
+
+async def wait_for_audio_playback_done(
+    *,
+    device_id: str,
+    since: float,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    """Wait until the robot reports streamed TTS playback completion."""
+
+    for event in reversed(recent_robot_events):
+        if _audio_playback_done_matches(event, device_id, since):
+            return dict(event)
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_sec
+    while True:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise TimeoutError(f"Timed out waiting for audio.playback_done from {device_id}")
+        waiter = loop.create_future()
+        audio_playback_waiters.add(waiter)
+        try:
+            event = await asyncio.wait_for(waiter, timeout=remaining)
+        except asyncio.TimeoutError as exc:
+            raise TimeoutError(f"Timed out waiting for audio.playback_done from {device_id}") from exc
+        finally:
+            audio_playback_waiters.discard(waiter)
+        if _audio_playback_done_matches(event, device_id, since):
+            return dict(event)
 
 
 def _is_local_observer_client(websocket: ServerConnection) -> bool:
@@ -551,10 +648,12 @@ async def handle_control(websocket: ServerConnection):
                 record_ws_event(raw_type, payload, device_id=payload.get("device_id") or device_id)
                 record_robot_event(raw_type, payload, device_id=device_id)
                 logger.info(
-                    "Audio playback done: status=%s bytes_written=%s duration_ms=%s",
+                    "Audio playback done: status=%s bytes_written=%s duration_ms=%s playback_mode=%s buffered_bytes=%s",
                     payload.get("status"),
                     payload.get("bytes_written"),
                     payload.get("duration_ms"),
+                    payload.get("playback_mode"),
+                    payload.get("buffered_bytes"),
                 )
                 continue
 
@@ -793,12 +892,33 @@ def build_tts_robot_message(pcm_stream: TtsPcmStream) -> dict:
     )
 
 
+async def synthesize_tts_pcm_stream_async(text: str) -> TtsPcmStream:
+    """Run potentially slow external TTS synthesis without blocking /control."""
+
+    started = time.monotonic()
+    logger.info("TTS synthesis start text_chars=%s", len(text or ""))
+    try:
+        stream = await asyncio.to_thread(synthesize_tts_pcm_stream, text)
+    except Exception:
+        logger.exception("TTS synthesis failed after %.2fs", time.monotonic() - started)
+        raise
+    logger.info(
+        "TTS synthesis done audio_id=%s pcm_bytes=%s duration_ms=%s elapsed_sec=%.2f",
+        stream.audio_id,
+        len(stream.pcm),
+        stream.duration_ms,
+        time.monotonic() - started,
+    )
+    return stream
+
+
 async def send_agent_ack(
     websocket: ServerConnection,
     ok: bool,
     device_id: Optional[str] = None,
     forwarded_type: Optional[str] = None,
     error: Optional[str] = None,
+    playback_done: Optional[dict[str, Any]] = None,
 ) -> None:
     """Send a small ack message back to the local /agent client."""
 
@@ -806,6 +926,8 @@ async def send_agent_ack(
     if ok:
         payload["device_id"] = device_id
         payload["forwarded_type"] = forwarded_type
+        if playback_done is not None:
+            payload["playback_done"] = playback_done
     else:
         payload["error"] = error or "Unknown error"
 
@@ -862,6 +984,8 @@ async def handle_agent(websocket: ServerConnection):
 
                 device_id = payload.get("device_id")
                 tts_stream = None
+                tts_command_started_at = time.time()
+                playback_done = None
                 ws_state.setdefault("counters", {})["agent_commands"] = int(
                     ws_state.setdefault("counters", {}).get("agent_commands", 0)
                 ) + 1
@@ -870,19 +994,35 @@ async def handle_agent(websocket: ServerConnection):
                     payload.get("command") == MessageType.AUDIO_PLAY_TTS.value
                     and control_tts_stream_enabled()
                 ):
-                    tts_stream = synthesize_tts_pcm_stream(payload.get("text", ""))
+                    tts_stream = await synthesize_tts_pcm_stream_async(payload.get("text", ""))
                     robot_message = build_tts_robot_message(tts_stream)
                 else:
                     robot_message = build_robot_message(payload)
                 ok, selected_device_id, error = await send_to_robot(robot_message, device_id=device_id)
                 if ok and tts_stream is not None and selected_device_id is not None:
                     ok, error = await stream_control_binary_to_robot(tts_stream, selected_device_id)
+                    if ok and control_tts_playback_done_required():
+                        try:
+                            playback_done_event = await wait_for_audio_playback_done(
+                                device_id=selected_device_id,
+                                since=tts_command_started_at,
+                                timeout_sec=control_tts_playback_timeout_seconds(tts_stream),
+                            )
+                        except TimeoutError as exc:
+                            ok = False
+                            error = str(exc)
+                        else:
+                            playback_done = playback_done_event.get("payload")
+                            if isinstance(playback_done, dict) and playback_done.get("status") != "ok":
+                                ok = False
+                                error = f"audio.playback_done status={playback_done.get('status')}"
                 if ok:
                     await send_agent_ack(
                         websocket,
                         ok=True,
                         device_id=selected_device_id,
                         forwarded_type=robot_message.get("type"),
+                        playback_done=playback_done,
                     )
                 else:
                     await send_agent_ack(websocket, ok=False, error=error)

@@ -72,7 +72,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--visual-trace-fps",
         type=float,
         default=2.0,
-        help="Visual trace publication rate from 0.1 to 2.0 FPS.",
+        help="Visual trace publication rate from 0.1 to 10.0 FPS.",
+    )
+    parser.add_argument(
+        "--vlm-min-interval-seconds",
+        type=float,
+        default=0.0,
+        help="Minimum cooldown after one VLM run before another can start.",
     )
     parser.add_argument(
         "--no-visual-trace",
@@ -86,8 +92,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Pattern for mock/fake backends.",
     )
     args = parser.parse_args(argv)
-    if not 0.1 <= args.visual_trace_fps <= 2.0:
-        parser.error("--visual-trace-fps must be between 0.1 and 2.0")
+    if not 0.1 <= args.visual_trace_fps <= 10.0:
+        parser.error("--visual-trace-fps must be between 0.1 and 10.0")
+    if args.vlm_min_interval_seconds < 0:
+        parser.error("--vlm-min-interval-seconds must be non-negative")
     return args
 
 
@@ -135,6 +143,7 @@ def create_ws_video_runtime(
         vlm_model=vlm_model,
         memory=history_memory,
         force_vlm=args.force_vlm,
+        vlm_min_interval_seconds=args.vlm_min_interval_seconds,
         visual_observer=visual_observer,
     )
     event_loop = EmotionEventLoop(brain=brain)

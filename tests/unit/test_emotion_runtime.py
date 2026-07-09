@@ -174,9 +174,13 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args.visual_trace_fps, 1.5)
         self.assertFalse(args.no_visual_trace)
 
+    async def test_visual_trace_fps_accepts_fast_console_rate(self) -> None:
+        args = parse_args(["--source", "ws_video", "--visual-trace-fps", "5.0"])
+        self.assertEqual(args.visual_trace_fps, 5.0)
+
     async def test_visual_trace_fps_is_bounded(self) -> None:
         with self.assertRaises(SystemExit):
-            parse_args(["--source", "ws_video", "--visual-trace-fps", "3.0"])
+            parse_args(["--source", "ws_video", "--visual-trace-fps", "10.1"])
 
     async def test_ws_video_source_uses_websocket_frame_source_and_visual_observer(self) -> None:
         observer = object()

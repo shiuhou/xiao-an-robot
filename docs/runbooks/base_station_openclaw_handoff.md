@@ -178,11 +178,11 @@ Robot side owns:
 
 ## TTS Quality Notes
 
-This Windows base-station PC currently has no zh-CN SAPI voice. The temporary
-baseline uses `Microsoft Hanhan Desktop` because it is more Mandarin-compatible
-than the zh-HK voices on this machine. The current demo peak is 800; lower
-values were too quiet, and higher values risk poorer clarity on the small
-speaker.
+The current speaker-side baseline is DIN41 buffered PCM with
+`XIAOAN_TTS_TARGET_PEAK=500` and `MERGETEST_SPEAKER_STREAM_GAIN=32`.
+Backend voice selection is OS-specific: Windows SAPI can use
+`XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'` when that is the installed
+Mandarin-compatible fallback; Linux edge-tts uses `XIAOAN_EDGE_TTS_VOICE`.
 
 If time allows, replace the SAPI backend with a higher-quality Mandarin TTS
 engine, but keep the same acceptance standard:

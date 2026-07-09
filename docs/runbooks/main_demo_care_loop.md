@@ -24,7 +24,7 @@ but the public demo should not depend on the robot microphone.
 
 ## Preconditions
 
-- Current P0 spoken-TTS firmware is `mergetesting_care_demo_face240_spoken_tts_din41`.
+- Current P0 spoken-TTS firmware is `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb`.
 - The full product-candidate firmware is `mergetesting_full_face240_spoken_tts`
   after MAX98357A DIN is moved to GPIO47.
 - `robot/mergetesting/src/config.local.h` is locally configured for the active WiFi and base-station IP. Do not commit this file.
@@ -37,9 +37,13 @@ but the public demo should not depend on the robot microphone.
 ```powershell
 $env:XIAOAN_CONTROL_TTS_STREAM='1'
 $env:XIAOAN_TTS_TARGET_PEAK='500'
-$env:XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'
 python -m base_station.ws_server.server
 ```
+
+On Windows SAPI only, set `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'` if that
+is the installed Mandarin-compatible fallback voice. On Linux, the default
+`runtime/tts_probe/edge_tts_to_wav.py` helper ignores `XIAOAN_TTS_VOICE`; use
+`XIAOAN_EDGE_TTS_VOICE` if the edge-tts voice must be overridden.
 
 Expected behavior:
 
@@ -71,23 +75,23 @@ User says "小安，我有点累"
 -> robot shows caring/happy face
 -> robot moves forward briefly
 -> robot turns toward the user
--> robot plays audio.play_local care_01
+-> robot speaks through audio.play_tts
 ```
 
 ## Flash Robot
 
 ```powershell
 cd robot\mergetesting
-pio run -e mergetesting_care_demo_face240_spoken_tts_din41
-pio run -e mergetesting_care_demo_face240_spoken_tts_din41 -t upload --upload-port COM23
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41_ota_usb
+pio run -e mergetesting_care_demo_face240_spoken_tts_din41_ota_usb -t upload --upload-port COMxx
 ```
 
 Notes:
 
-- `COM23` was the validated port during the 2026-07-04 P0 spoken-TTS session; verify the live port before flashing.
+- Verify the live USB serial port before flashing.
 - USB upload at `460800` was reliable for full firmware during handoff.
 - Do not run broad `pio run` for this workflow.
-- Current P0 speaker wiring is MAX98357A BCLK=39, LRC/WS=40, DIN=41, with robot mic disabled. If robot mic is required, use the product-candidate DIN=47 path instead.
+- Current P0 speaker wiring is MAX98357A BCLK=39, LRC/WS=40, DIN=41, with robot mic disabled. The accepted 2026-07-08 TTS path buffers the full PCM stream and starts I2S playback after `audio.stream_end`. If robot mic is required, use the product-candidate DIN=47 path instead.
 
 ## Direct Smoke
 

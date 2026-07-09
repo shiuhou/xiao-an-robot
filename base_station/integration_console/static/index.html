@@ -111,8 +111,12 @@
             <button id="sendCustomSoundBtn">播放</button>
           </div>
           <textarea id="ttsText">我在这里，别着急，我们慢慢来。</textarea>
-          <div class="warn">TTS 当前可能不稳定，不建议和本地音效连续播放。</div>
+          <div class="warn">TTS 使用 base-station streamed PCM 路径；真实时长以机器人 playback_done 为准。</div>
           <button id="sendTtsBtn">发送 TTS 实验</button>
+          <h3>TTS 运行设置</h3>
+          <div class="kv compact-kv" id="ttsRuntimeKv"></div>
+          <h3>最近一次 TTS 回包</h3>
+          <pre class="jsonbox compact-json" id="ttsPlaybackJson">{}</pre>
         </article>
       </div>
       <div class="grid two chain-detail-row">
@@ -370,6 +374,53 @@
           <span class="status-pill unavailable" id="fast2Status">IDLE</span>
         </div>
         <div class="chain-flow" id="fast2Steps"></div>
+        <div class="grid two chain-detail-row">
+          <article class="card visual-card">
+            <div class="visual-heading">
+              <div>
+                <div class="section-label">CAMERA</div>
+                <h2>Emotion Runtime 实时标注 / 表情特征</h2>
+              </div>
+              <span class="status-pill unavailable" id="fast2VisualFreshness">NO DATA</span>
+            </div>
+            <div class="image-frame visual-frame">
+              <img id="fast2VisualLatestImage" alt="Fast Demo emotion runtime annotated frame">
+              <div class="empty-state" id="fast2VisualImageEmpty">等待标注帧</div>
+            </div>
+          </article>
+          <article class="card visual-side">
+            <div>
+              <div class="visual-heading compact">
+                <h2>OpenFace</h2>
+              </div>
+              <div class="metrics-grid" id="fast2VisualCvMetrics"></div>
+            </div>
+            <div>
+              <div class="visual-heading compact">
+                <h2>VLM Trigger Gate</h2>
+                <span class="status-pill unavailable" id="fast2VisualGateStatus">NO DATA</span>
+              </div>
+              <div class="gate-rules" id="fast2VisualGateRules"></div>
+            </div>
+          </article>
+        </div>
+        <div class="grid two chain-detail-row">
+          <article class="card">
+            <div class="visual-heading compact">
+              <h2>VLM</h2>
+              <span class="status-pill idle" id="fast2VisualVlmStatus">IDLE</span>
+            </div>
+            <div class="metrics-grid" id="fast2VisualVlmDetails"></div>
+            <div class="image-frame trigger-frame">
+              <img id="fast2VisualTriggerImage" alt="Fast Demo VLM trigger frame">
+              <div class="empty-state" id="fast2VisualTriggerEmpty">等待 VLM 触发帧</div>
+            </div>
+          </article>
+          <article class="card">
+            <h2>OpenFace / VLM 融合反馈</h2>
+            <p class="care-voice-text" id="fast2VisualFusion">Fusion: -</p>
+          </article>
+        </div>
         <div class="grid three">
           <article class="card">
             <h2>视觉模型状态</h2>

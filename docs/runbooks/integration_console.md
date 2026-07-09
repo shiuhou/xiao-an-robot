@@ -54,6 +54,25 @@ runtime/ws_state.json
 4. 如果没有图像，确认机器人 `/video` 通道已连接，且 `base_station.ws_server.server` 有 video frame 日志。
 5. 可运行 `vision-preflight`，它是软件检查，不等于真实硬件视觉闭环验证。
 
+如果机器人在线但控制台相机连不上，先看 `runtime/ws_state.json` 中
+`devices.<device_id>.last_hello.payload.capabilities` 和
+`devices.<device_id>.last_status.payload.camera`。如果 capabilities 只有
+`display/motion/speaker/ota`，并且 camera 是 `cam_off`，说明当前烧录的是
+不含相机的 TTS/care 固件，不是 OpenFace、VLM 或控制台页面的问题。要同时保留
+DIN41 buffered TTS、表情、运动和 QVGA `/video`，烧录：
+
+```powershell
+cd robot\mergetesting
+..\..\.venv\Scripts\python.exe -m platformio run -e mergetesting_full_face240_spoken_tts_din41_base_mic_ota_usb -t upload
+```
+
+Linux/DK-2500 本地命令等价为：
+
+```bash
+cd robot/mergetesting
+../../.venv/bin/python -m platformio run -e mergetesting_full_face240_spoken_tts_din41_base_mic_ota_usb -t upload
+```
+
 ### 4.1 Route A 视觉链路页面
 
 启动正式视觉主链路，并把主链路中的 OpenFace/Gate/VLM 观察结果旁路发布给 Integration Console：
@@ -170,6 +189,25 @@ python -m base_station.integration_console.console_server --openclaw-url ws://12
 
 链路一和链路三的“运行一次”会启动 `voice_runtime --source local_mic --once`。它只录一个固定窗口，默认 6 秒，ASR 文本生成后会立刻写入控制台，后续再等待 OpenClaw/机器人转发；本轮结束后停止收音并保留结果，避免下一轮录音覆盖上一轮 ASR 文本。控制台会给这两个子进程默认注入 `XIAO_AN_OPENCLAW_BACKEND=gateway`、`XIAO_AN_OPENCLAW_GATEWAY_URL=ws://127.0.0.1:18789`、`XIAO_AN_OPENCLAW_AGENT=xiaoan-runtime`。控制台启动时会后台预热一次本地 ASR 模型，预热日志在 `runtime/integration_console/process_logs/voice_prewarm.log`，如需关闭可加 `--no-prewarm-voice`。链路二仍是持续视觉 observer，需要手动关闭。
 
+快速演示模式会把本地 demo brain 的全部固定回复预先生成到 `runtime/tts_cache/`，清单写入 `runtime/integration_console/fast_demo/tts_manifest.json`。控制台启动时默认后台运行：
+
+```powershell
+python tools/ops/prepare_fast_demo_tts.py --runtime-dir runtime --manifest-path runtime/integration_console/fast_demo/tts_manifest.json
+```
+
+这样 fast1/fast2/fast3 决策后再发送 `audio.play_tts` 时，base-station 只从本地 WAV 缓存读 PCM，不需要临时访问 EdgeTTS。预热日志在 `runtime/integration_console/process_logs/fast_demo_tts_prewarm.log`；如需关闭可加 `--no-prewarm-fast-demo-tts`。如果修改了 `base_station/integration_console/fast_demo_brain.py` 里的回复文本，演示前重新运行上面的 prepare 命令。
+
+Fast Demo reminder 到点后会先把提醒写成 `firing`，再执行“出来 -> 等待运动完成
+-> TTS”，最后写成 `fired`。这避免控制台页面轮询或多窗口并发时，同一个到点提醒
+被重复触发，造成多次 `audio.play_tts` 叠在一起或 `speaker busy`。
+
+电池供电时如果 TTS 有杂音，而 USB/外部供电非常清楚，优先按供电余量问题处理：
+不要让电机运动和 TTS 同时发生；Fast Demo 执行动作后会额外等待
+`POST_MOTION_TTS_SETTLE_SECONDS` 再说话。正式演示建议使用外部 5V 或满电电池，
+保持 MAX98357A、ESP32 和电源共地。不要为了电池模式直接把默认
+`XIAOAN_TTS_TARGET_PEAK=500` 提高；如果只能电池演示且仍有轻微杂音，可临时降到
+400-450 做保守验证。
+
 ## 7. 场景脚本
 
 | 场景 | 行为 |
@@ -263,8 +301,18 @@ git status --short
 ### speaker not ready
 
 - 本地音效 `care_01`、`success_ding` 是优先 smoke。
-- TTS 是实验功能，不要紧接 local sound。
+- Console TTS uses `/api/robot/tts -> /agent -> audio.play_tts`; the console does
+  not synthesize PCM or set TTS backend env vars. For the 2026-07-08 DIN41
+  buffered speaker baseline, start `base_station.ws_server.server` with
+  `XIAOAN_CONTROL_TTS_STREAM=1` and `XIAOAN_TTS_TARGET_PEAK=500`; Windows SAPI
+  voice selection uses `XIAOAN_TTS_VOICE`, while Linux edge-tts uses
+  `XIAOAN_EDGE_TTS_VOICE`.
+- TTS is still audio-cooldown protected; do not trigger it immediately after
+  local sound.
 - 控制台后端有 cooldown，但真实硬件仍需看 `audio.playback_done` 和串口日志。
+  Streamed TTS now waits for robot `audio.playback_done status=ok` before
+  returning success to `/agent`; `command.ack status=accepted` only means the
+  robot accepted the command and PCM stream, not that sound actually finished.
 
 ### motion 没有 completed
 

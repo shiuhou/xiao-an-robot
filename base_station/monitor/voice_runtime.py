@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import audioop
 import json
 import struct
 import sys
+import threading
 import time
 import wave
 from pathlib import Path
@@ -22,7 +24,7 @@ from base_station.integration_console.fast_demo_brain import (
     build_reminder_record,
     execute_robot_plan,
 )
-from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output
+from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output, create_asr_backend
 from base_station.perception.asr import SenseVoiceASRBackend
 from base_station.perception.mic_capture import choose_input_device, list_input_devices, record_wav, recording_sample_rate
 
@@ -161,6 +163,7 @@ async def process_audio_file(
     local_demo_allow_motion: bool = False,
     gateway_url: str = "ws://127.0.0.1:8765/agent",
     local_demo_reminders_path: str | None = None,
+    asr_backend_instance: Any | None = None,
 ) -> dict:
     """Run one microphone WAV through VAD/ASR and then link-1 OpenClaw routing."""
 
@@ -173,6 +176,7 @@ async def process_audio_file(
         device=device,
         asr_language=asr_language,
         asr_use_itn=asr_use_itn,
+        asr_backend_instance=asr_backend_instance,
         trim_speech=trim_speech,
         speech_trim_path=speech_trim_path,
         speech_trim_threshold=speech_trim_threshold,
@@ -325,6 +329,11 @@ async def run_local_mic_loop(
     once: bool = False,
     latest_output_path: str | None = None,
     disable_companion_fast_path: bool = False,
+    decision_mode: str = "openclaw",
+    local_demo_link: str = "fast1",
+    local_demo_send_to_robot: bool = False,
+    local_demo_allow_motion: bool = False,
+    local_demo_reminders_path: str | None = None,
 ) -> int:
     """Run fixed-window local microphone capture through ASR and link 1."""
 
@@ -335,11 +344,23 @@ async def run_local_mic_loop(
     active_sample_rate = recording_sample_rate(selected_device, sample_rate)
     audio_dir = Path(output_dir)
     audio_dir.mkdir(parents=True, exist_ok=True)
-    runtime = runtime_factory(
-        db_path=db_path,
-        robot_ws_url=gateway_url,
-        verbose=verbose,
+    if decision_mode not in DECISION_MODES:
+        raise ValueError(f"unsupported_decision_mode:{decision_mode}")
+    runtime = None
+    if decision_mode == "openclaw":
+        runtime = runtime_factory(
+            db_path=db_path,
+            robot_ws_url=gateway_url,
+            verbose=verbose,
+        )
+    asr_backend_instance = create_asr_backend(
+        asr_backend,
+        model_path=asr_model_path,
+        device=asr_device,
+        language=asr_language,
+        use_itn=asr_use_itn,
     )
+    preload_thread, preload_state = _start_asr_backend_preload(asr_backend_instance)
     handled_count = 0
     last_output: dict | None = None
 
@@ -372,6 +393,7 @@ async def run_local_mic_loop(
         while True:
             stamp = time.strftime("%Y%m%d_%H%M%S")
             wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.wav"
+            asr_wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.asr.wav"
             trim_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.trim.wav"
             _write_latest_output(
                 latest_output_path,
@@ -390,9 +412,17 @@ async def run_local_mic_loop(
                 sample_rate=active_sample_rate,
                 channels=1,
             )
+            _finish_asr_backend_preload(preload_thread, preload_state)
+            preload_thread = None
+            prepared_wav_path = _ensure_asr_wav_format(
+                wav_path,
+                asr_wav_path,
+                sample_rate=sample_rate,
+                channels=1,
+            )
             output = await process_audio_file(
                 runtime,
-                str(wav_path),
+                str(prepared_wav_path),
                 session_id=session_id,
                 vad_backend=vad_backend,
                 vad_threshold=vad_threshold,
@@ -416,6 +446,7 @@ async def run_local_mic_loop(
                 local_demo_allow_motion=local_demo_allow_motion,
                 gateway_url=gateway_url,
                 local_demo_reminders_path=local_demo_reminders_path,
+                asr_backend_instance=asr_backend_instance,
             )
             if output.get("event_type") == "asr.transcript":
                 handled_count += 1
@@ -529,6 +560,65 @@ def _write_silence_wav(path: Path, *, sample_rate: int = 16000, duration_seconds
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
         wav.writeframes(samples)
+
+
+def _ensure_asr_wav_format(source: Path, target: Path, *, sample_rate: int = 16000, channels: int = 1) -> Path:
+    with wave.open(str(source), "rb") as wav:
+        source_channels = wav.getnchannels()
+        source_width = wav.getsampwidth()
+        source_rate = wav.getframerate()
+        pcm = wav.readframes(wav.getnframes())
+
+    if source_channels == channels and source_width == 2 and source_rate == sample_rate:
+        return source
+
+    if source_width != 2:
+        pcm = audioop.lin2lin(pcm, source_width, 2)
+        source_width = 2
+    if source_channels != channels:
+        if channels != 1:
+            raise RuntimeError("voice_runtime ASR conversion only supports mono output.")
+        if source_channels == 1:
+            pass
+        elif source_channels == 2:
+            pcm = audioop.tomono(pcm, source_width, 0.5, 0.5)
+        else:
+            raise RuntimeError(f"voice_runtime cannot convert {source_channels} channels to mono.")
+    if source_rate != sample_rate:
+        pcm, _ = audioop.ratecv(pcm, source_width, channels, source_rate, sample_rate, None)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
+    return target
+
+
+def _start_asr_backend_preload(backend: Any) -> tuple[threading.Thread | None, dict[str, Any]]:
+    if not hasattr(backend, "_load_model") or not hasattr(backend, "_validate_model_dir"):
+        return None, {"error": None}
+    state: dict[str, Any] = {"error": None}
+
+    def worker() -> None:
+        try:
+            model_dir = backend._validate_model_dir()
+            backend._load_model(model_dir)
+        except Exception as exc:  # pragma: no cover - surfaced by the main thread
+            state["error"] = exc
+
+    thread = threading.Thread(target=worker, name="voice-asr-preload", daemon=True)
+    thread.start()
+    return thread, state
+
+
+def _finish_asr_backend_preload(thread: threading.Thread | None, state: dict[str, Any]) -> None:
+    if thread is not None and thread.is_alive():
+        thread.join()
+    error = state.get("error")
+    if error is not None:
+        raise error
 
 
 def _append_fast_demo_reminder(path: str | None, record: dict[str, Any]) -> None:

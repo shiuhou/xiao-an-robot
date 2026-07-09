@@ -218,13 +218,18 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
             channels=1,
         )
         try:
-            robot_message = await self.send_agent_command_and_assert_forwarded(
-                {
-                    "command": "audio.play_tts",
-                    "text": text,
-                },
-                "audio.play_tts",
-            )
+            with mock.patch.dict(
+                "os.environ",
+                {ws_server.CONTROL_TTS_STREAM_ENV: "0"},
+                clear=False,
+            ):
+                robot_message = await self.send_agent_command_and_assert_forwarded(
+                    {
+                        "command": "audio.play_tts",
+                        "text": text,
+                    },
+                    "audio.play_tts",
+                )
         finally:
             ws_server.synthesize_tts_pcm_stream = original_synthesizer
 
@@ -275,11 +280,30 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(stream_end["type"], "audio.stream_end")
                 self.assertEqual(stream_end["payload"]["audio_id"], "tts-test-001")
 
+                await asyncio.wait_for(
+                    self.robot.send(build_message(
+                        "audio.playback_done",
+                        2,
+                        {
+                            "device_id": "test-robot-001",
+                            "command_type": "audio.play_tts",
+                            "status": "ok",
+                            "bytes_written": 4,
+                            "duration_ms": 1,
+                            "playback_mode": "buffered",
+                            "buffered_bytes": 4,
+                        },
+                    )),
+                    timeout=2,
+                )
+
                 ack = await self.recv_json(self.agent)
                 self.assertEqual(ack["type"], "agent.ack")
                 self.assertTrue(ack["payload"]["ok"])
                 self.assertEqual(ack["payload"]["device_id"], "test-robot-001")
                 self.assertEqual(ack["payload"]["forwarded_type"], "audio.play_tts")
+                self.assertEqual(ack["payload"]["playback_done"]["status"], "ok")
+                self.assertEqual(ack["payload"]["playback_done"]["playback_mode"], "buffered")
         finally:
             ws_server.synthesize_tts_pcm_stream = original_synthesizer
 
@@ -318,6 +342,48 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(ack["type"], "agent.ack")
                 self.assertFalse(ack["payload"]["ok"])
                 self.assertIn("empty PCM stream", ack["payload"]["error"])
+        finally:
+            ws_server.synthesize_tts_pcm_stream = original_synthesizer
+
+    async def test_audio_play_tts_stream_requires_playback_done(self) -> None:
+        original_synthesizer = ws_server.synthesize_tts_pcm_stream
+        ws_server.synthesize_tts_pcm_stream = lambda requested_text: ws_server.TtsPcmStream(
+            audio_id="tts-test-timeout",
+            text_preview=requested_text,
+            pcm=b"\x01\x02",
+            sample_rate=16000,
+            channels=1,
+        )
+        try:
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    ws_server.CONTROL_TTS_STREAM_ENV: "1",
+                    ws_server.CONTROL_TTS_PLAYBACK_TIMEOUT_ENV: "0.05",
+                },
+                clear=False,
+            ):
+                await asyncio.wait_for(
+                    self.agent.send(json.dumps({
+                        "type": "agent.command",
+                        "payload": {
+                            "command": "audio.play_tts",
+                            "text": "timeout tts",
+                        },
+                    }, ensure_ascii=False)),
+                    timeout=2,
+                )
+
+                robot_message = await self.recv_json(self.robot)
+                self.assertEqual(robot_message["type"], "audio.play_tts")
+                self.assertEqual(await asyncio.wait_for(self.robot.recv(), timeout=2), b"\x01\x02")
+                stream_end = json.loads(await asyncio.wait_for(self.robot.recv(), timeout=2))
+                self.assertEqual(stream_end["type"], "audio.stream_end")
+
+                ack = await self.recv_json(self.agent)
+                self.assertEqual(ack["type"], "agent.ack")
+                self.assertFalse(ack["payload"]["ok"])
+                self.assertIn("audio.playback_done", ack["payload"]["error"])
         finally:
             ws_server.synthesize_tts_pcm_stream = original_synthesizer
 

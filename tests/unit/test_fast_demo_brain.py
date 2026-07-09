@@ -13,11 +13,22 @@ from base_station.integration_console.fast_demo_brain import (
     decide_visual,
     decide_voice,
     execute_robot_plan,
+    iter_fast_demo_tts_texts,
     parse_reminder_due_at,
 )
 
 
 class FastDemoBrainTest(unittest.TestCase):
+    def test_fast_demo_tts_manifest_covers_all_reply_variants(self) -> None:
+        items = iter_fast_demo_tts_texts()
+        texts = [item["text"] for item in items]
+
+        self.assertEqual(len(items), 42)
+        self.assertEqual(len(texts), len(set(texts)))
+        self.assertTrue(any(item["intent"] == "reminder_due" for item in items))
+        self.assertTrue(any(item["link"] == "fast2" and item["intent"] == "visual_normal" for item in items))
+        self.assertTrue(all(item["text"] for item in items))
+
     def test_link1_reminder_decision_uses_public_brain_label(self) -> None:
         decision = decide_voice("fast1", "小安，十分钟后提醒我喝水")
 
@@ -38,6 +49,13 @@ class FastDemoBrainTest(unittest.TestCase):
         self.assertEqual(motion["params"]["distance_cm"], 8.0)
         self.assertEqual(motion["params"]["speed"], 0.56)
         self.assertEqual(motion["timeout_ms"], 1200)
+
+    def test_link3_return_base_station_phrase_returns_to_dock(self) -> None:
+        decision = decide_voice("fast3", "小安，返回基站")
+
+        self.assertEqual(decision["intent"], "return_to_dock")
+        motion = [step for step in decision["robot_plan"]["steps"] if step["kind"] == "motion"][0]
+        self.assertEqual(motion["action"], "move_back_to_dock")
 
     def test_visual_decision_uses_gate_cv_and_vlm_signals(self) -> None:
         decision = decide_visual(

@@ -163,6 +163,7 @@ def build_audio_file_event(
     device: str = "cpu",
     asr_language: str | None = None,
     asr_use_itn: bool = True,
+    asr_backend_instance: Any | None = None,
     trim_speech: bool = False,
     speech_trim_path: str | None = None,
     speech_trim_threshold: float = 0.01,
@@ -214,7 +215,7 @@ def build_audio_file_event(
     if not vad.get("speech_detected", False):
         return None, build_no_speech_output(vad=vad, audio=audio)
 
-    asr = create_asr_backend(
+    backend = asr_backend_instance or create_asr_backend(
         asr_backend,
         fake_transcript=fake_transcript,
         pattern=pattern,
@@ -222,7 +223,8 @@ def build_audio_file_event(
         device=device,
         language=asr_language,
         use_itn=asr_use_itn,
-    ).transcribe(audio_clip)
+    )
+    asr = backend.transcribe(audio_clip)
     text = str(asr.get("text") or "").strip()
     if not text:
         return None, {

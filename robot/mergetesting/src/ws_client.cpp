@@ -259,7 +259,12 @@ void WSClient::sendCommandAck(
   LOGI("WS", "command.ack %s -> %s", commandType ? commandType : "-", status ? status : "-");
 }
 
-void WSClient::sendAudioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs, const char* status) {
+void WSClient::sendAudioPlaybackDone(
+    uint32_t bytesWritten,
+    uint32_t durationMs,
+    const char* status,
+    const char* playbackMode,
+    uint32_t bufferedBytes) {
   auto doc = buildMsg(MsgType::AUDIO_PLAYBACK_DONE, _seq++);
   auto payload = doc["payload"].to<JsonObject>();
   payload["device_id"] = MERGETEST_DEVICE_ID;
@@ -267,13 +272,19 @@ void WSClient::sendAudioPlaybackDone(uint32_t bytesWritten, uint32_t durationMs,
   payload["bytes_written"] = bytesWritten;
   payload["duration_ms"] = durationMs;
   payload["status"] = status ? status : "unknown";
+  if (playbackMode && playbackMode[0]) {
+    payload["playback_mode"] = playbackMode;
+  }
+  payload["buffered_bytes"] = bufferedBytes;
   sendControl(doc);
   LOGI(
       "WS",
-      "audio.playback_done status=%s bytes=%lu duration_ms=%lu",
+      "audio.playback_done status=%s bytes=%lu duration_ms=%lu playback_mode=%s buffered_bytes=%lu",
       status ? status : "unknown",
       static_cast<unsigned long>(bytesWritten),
-      static_cast<unsigned long>(durationMs));
+      static_cast<unsigned long>(durationMs),
+      playbackMode ? playbackMode : "-",
+      static_cast<unsigned long>(bufferedBytes));
 }
 
 void WSClient::sendMotionCompleted(const char* actionId, const char* result, const char* position, bool facingUser) {
@@ -395,6 +406,9 @@ bool WSClient::isAudioConnected() const { return _audioConnected; }
 
 void WSClient::_handleControlDisconnect() {
   _controlConnected = false;
+  if (speaker_abort_pcm_stream("control_disconnected")) {
+    LOGW("WS", "Aborted active speaker PCM stream after control disconnect");
+  }
   LOGW("WS", "Control disconnected, retry in %u ms", _retryMs);
   _control.setReconnectInterval(_retryMs);
   _retryMs = min(_retryMs * 2, RETRY_MAX_MS);

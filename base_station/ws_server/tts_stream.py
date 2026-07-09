@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -13,10 +15,15 @@ import uuid
 import wave
 
 DEFAULT_TTS_TARGET_PEAK = 500
+TTS_CACHE_DIR_NAME = "tts_cache"
 TTS_COMMAND_ENV = "XIAOAN_TTS_COMMAND"
 TTS_TARGET_PEAK_ENV = "XIAOAN_TTS_TARGET_PEAK"
 TTS_VOICE_ENV = "XIAOAN_TTS_VOICE"
 TTS_RATE_ENV = "XIAOAN_TTS_RATE"
+EDGE_TTS_VOICE_ENV = "XIAOAN_EDGE_TTS_VOICE"
+EDGE_TTS_RATE_ENV = "XIAOAN_EDGE_TTS_RATE"
+EDGE_TTS_VOLUME_ENV = "XIAOAN_EDGE_TTS_VOLUME"
+DEFAULT_EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
 
 
 @dataclass(frozen=True)
@@ -45,6 +52,61 @@ def _read_pcm_s16le_wav(path: Path) -> tuple[bytes, int, int]:
         if channels != 1:
             raise RuntimeError(f"TTS WAV must be mono, got channels={channels}")
         return wav.readframes(wav.getnframes()), sample_rate, channels
+
+
+def _cache_identity(text: str) -> str:
+    command_template = tts_command_template_from_env()
+    return "\0".join([
+        os.name,
+        command_template,
+        os.environ.get(TTS_VOICE_ENV, ""),
+        os.environ.get(TTS_RATE_ENV, ""),
+        os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE),
+        os.environ.get(EDGE_TTS_RATE_ENV, "+0%"),
+        os.environ.get(EDGE_TTS_VOLUME_ENV, "+0%"),
+        text,
+    ])
+
+
+def _tts_cache_path(runtime_dir: Path, text: str) -> Path:
+    digest = hashlib.sha256(_cache_identity(text).encode("utf-8")).hexdigest()
+    return runtime_dir / TTS_CACHE_DIR_NAME / f"{digest}.wav"
+
+
+def tts_cache_path_for_text(text: str, runtime_dir: Path | str = Path("runtime")) -> Path:
+    return _tts_cache_path(Path(runtime_dir), (text or "").strip())
+
+
+def _copy_wav_to_cache(source: Path, cache_path: Path) -> None:
+    if not source.exists() or source.stat().st_size <= 0:
+        return
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = cache_path.with_suffix(".wav.tmp")
+    shutil.copyfile(source, tmp_path)
+    os.replace(tmp_path, cache_path)
+
+
+def _latest_legacy_tts_wav_for_text(runtime_dir: Path, text: str) -> Path | None:
+    tts_dir = runtime_dir / "tts"
+    try:
+        text_files = sorted(
+            tts_dir.glob("*.txt"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return None
+
+    for text_path in text_files:
+        try:
+            if text_path.read_text(encoding="utf-8").strip() != text:
+                continue
+            wav_path = text_path.with_suffix(".wav")
+            if wav_path.exists() and wav_path.stat().st_size > 0:
+                return wav_path
+        except OSError:
+            continue
+    return None
 
 
 def normalize_pcm_peak_s16le(pcm: bytes, target_peak: int = DEFAULT_TTS_TARGET_PEAK) -> bytes:
@@ -116,6 +178,45 @@ def tts_command_template_from_env() -> str:
 
 def external_tts_backend_configured() -> bool:
     return bool(tts_command_template_from_env())
+
+
+def tts_backend_runtime_settings() -> dict[str, object]:
+    command_template = tts_command_template_from_env()
+    default_edge_script = default_edge_tts_script_path()
+    if os.name == "nt":
+        backend = "windows_sapi"
+        voice = os.environ.get(TTS_VOICE_ENV, "")
+        rate = os.environ.get(TTS_RATE_ENV, "") or "0"
+        volume = ""
+    elif command_template == default_edge_tts_command_template():
+        backend = "edge_tts_to_wav.py"
+        voice = os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE)
+        rate = os.environ.get(EDGE_TTS_RATE_ENV, "+0%")
+        volume = os.environ.get(EDGE_TTS_VOLUME_ENV, "+0%")
+    elif command_template:
+        backend = "external_command"
+        voice = os.environ.get(TTS_VOICE_ENV, "")
+        rate = os.environ.get(TTS_RATE_ENV, "")
+        volume = ""
+    else:
+        backend = "unconfigured"
+        voice = ""
+        rate = ""
+        volume = ""
+    return {
+        "backend": backend,
+        "command_configured": bool(command_template),
+        "command_template": command_template,
+        "default_edge_script": str(default_edge_script),
+        "voice": voice,
+        "rate": rate,
+        "volume": volume,
+        "target_peak": tts_target_peak_from_env(),
+        "pcm_format": "pcm_s16le",
+        "sample_rate": 16000,
+        "channels": 1,
+        "wav_payload": "frames_only_no_header",
+    }
 
 
 def windows_sapi_script() -> str:
@@ -225,19 +326,33 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
         raise RuntimeError("TTS text is empty")
 
     audio_id = f"tts-{uuid.uuid4().hex[:8]}"
-    tts_dir = Path(runtime_dir) / "tts"
+    runtime_path = Path(runtime_dir)
+    tts_dir = runtime_path / "tts"
     tts_dir.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time() * 1000)
     text_path = tts_dir / f"{audio_id}-{stamp}.txt"
     wav_path = tts_dir / f"{audio_id}-{stamp}.wav"
+    cache_path = _tts_cache_path(runtime_path, text)
     text_path.write_text(text, encoding="utf-8")
 
-    if os.name == "nt":
-        _run_windows_sapi(text_path, wav_path)
+    source_wav_path = wav_path
+    if cache_path.exists() and cache_path.stat().st_size > 0:
+        source_wav_path = cache_path
     else:
-        _run_external_tts_command(text_path, wav_path)
+        try:
+            if os.name == "nt":
+                _run_windows_sapi(text_path, wav_path)
+            else:
+                _run_external_tts_command(text_path, wav_path)
+            _copy_wav_to_cache(wav_path, cache_path)
+        except RuntimeError:
+            legacy_wav = _latest_legacy_tts_wav_for_text(runtime_path, text)
+            if legacy_wav is None:
+                raise
+            _copy_wav_to_cache(legacy_wav, cache_path)
+            source_wav_path = legacy_wav
 
-    pcm, sample_rate, channels = _read_pcm_s16le_wav(wav_path)
+    pcm, sample_rate, channels = _read_pcm_s16le_wav(source_wav_path)
     pcm = normalize_pcm_peak_s16le(pcm, target_peak=tts_target_peak_from_env())
     if not pcm:
         raise RuntimeError("TTS backend produced an empty PCM stream")

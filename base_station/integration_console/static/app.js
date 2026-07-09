@@ -5,7 +5,10 @@ let lastPayload = null;
 let hiddenLogs = false;
 let visualSnapshotId = null;
 let visualRequestId = null;
+let fastVisualSnapshotId = null;
+let fastVisualRequestId = null;
 let cameraMtime = null;
+let fast2VisualMtime = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -110,6 +113,7 @@ function renderState() {
   const image = media.latest_image || {};
   const audio = media.latest_audio || {};
   const audioStats = media.audio_stats || {};
+  const ttsRuntime = state.tts_runtime || {};
   const consoleState = state.console || {};
   const openclaw = state.openclaw || {};
   $("runtimePath").textContent = `runtime: ${consoleState.runtime_dir || "-"}`;
@@ -181,6 +185,24 @@ function renderState() {
     last_audio_playback_done: robot.last_audio_playback_done,
     last_error: robot.last_error,
   });
+  const lastAck = robot.last_command_ack?.payload || {};
+  const lastPlayback = robot.last_audio_playback_done?.payload || {};
+  kv("ttsRuntimeKv", [
+    ["stream", ttsRuntime.control_stream_enabled],
+    ["peak", ttsRuntime.target_peak],
+    ["backend", ttsRuntime.backend],
+    ["voice", ttsRuntime.voice],
+    ["rate", ttsRuntime.rate],
+    ["chunk_bytes", ttsRuntime.chunk_bytes],
+    ["start_delay", ttsRuntime.start_delay_seconds],
+    ["pace_ratio", ttsRuntime.pace_ratio],
+    ["pcm", `${ttsRuntime.sample_rate || "-"}Hz ${ttsRuntime.channels || "-"}ch ${ttsRuntime.pcm_format || "-"}`],
+    ["mode", ttsRuntime.playback_mode_expected],
+  ]);
+  $("ttsPlaybackJson").textContent = pretty({
+    command_ack: lastAck.command_type === "audio.play_tts" ? robot.last_command_ack : null,
+    playback_done: lastPlayback.command_type === "audio.play_tts" ? robot.last_audio_playback_done : null,
+  });
   statusPill(
     $("manualRobotStatus"),
     robot.online ? "live" : "unavailable",
@@ -219,6 +241,42 @@ function renderCameraConnection() {
     ["age", msAge(image.age_ms)],
     ["状态", camera.status],
   ]);
+}
+
+function refreshCameraFrame() {
+  const image = state?.media?.latest_image || {};
+  const latestImage = $("cameraLatestImage");
+  if (!image.exists || !latestImage || latestImage.style.display === "none") {
+    return;
+  }
+  latestImage.src = `/api/latest-image?frame=${Date.now()}`;
+}
+
+function renderFast2VisualFrame(payload) {
+  const image = payload?.files?.latest_image || {};
+  const latestImage = $("fast2VisualLatestImage");
+  const imageEmpty = $("fast2VisualImageEmpty");
+  if (!latestImage || !imageEmpty) return;
+  if (image.exists) {
+    if (image.mtime !== fast2VisualMtime) {
+      fast2VisualMtime = image.mtime;
+      latestImage.src = `/api/fast-demo/visual/latest-image?mtime=${encodeURIComponent(fast2VisualMtime || Date.now())}`;
+    }
+    latestImage.style.display = "block";
+    imageEmpty.style.display = "none";
+  } else {
+    latestImage.style.display = "none";
+    imageEmpty.style.display = "grid";
+  }
+}
+
+function refreshFast2VisualFrame() {
+  const image = state?.fast_demo?.fast2?.visual?.files?.latest_image || {};
+  const latestImage = $("fast2VisualLatestImage");
+  if (!image.exists || !latestImage || latestImage.style.display === "none") {
+    return;
+  }
+  latestImage.src = `/api/fast-demo/visual/latest-image?frame=${Date.now()}`;
 }
 
 function chainStatusClass(status, runMode) {
@@ -357,6 +415,7 @@ function renderFastDemo() {
   renderFastVoiceLink("fast1", fast.fast1 || {});
   renderFastVoiceLink("fast3", fast.fast3 || {});
   const fast2 = fast.fast2 || {};
+  renderFastVisualTrace(fast2.visual || {});
   $("fast2BrainText").textContent = fast2.brain_text || "-";
   $("fast2DecisionJson").textContent = pretty(fast2.decision);
   $("fast2RobotJson").textContent = pretty(fast2.robot_plan);
@@ -367,6 +426,96 @@ function renderFastDemo() {
     age_ms: fast2.visual?.age_ms,
     files: fast2.visual?.files,
   });
+}
+
+function renderFastVisualTrace(payload) {
+  const freshness = $("fast2VisualFreshness");
+  const triggerImage = $("fast2VisualTriggerImage");
+  const triggerEmpty = $("fast2VisualTriggerEmpty");
+  const image = payload?.files?.latest_image || {};
+  const traceLive = !!payload?.ok && payload.freshness === "live";
+  renderFast2VisualFrame(payload);
+  if (!payload?.ok) {
+    statusPill(
+      freshness,
+      image.exists ? "stale" : "unavailable",
+      image.exists ? `TRACE STALE · ${msAge(image.age_ms)}` : "UNAVAILABLE",
+    );
+    $("fast2VisualCvMetrics").innerHTML = metricMarkup("状态", payload?.reason || "not_found");
+    $("fast2VisualGateRules").innerHTML = '<div class="empty-state">等待 Gate 数据</div>';
+    statusPill($("fast2VisualGateStatus"), "unavailable", "NO DATA");
+    statusPill($("fast2VisualVlmStatus"), "idle", "IDLE");
+    $("fast2VisualVlmDetails").innerHTML = "";
+    triggerImage.style.display = "none";
+    triggerEmpty.style.display = "grid";
+    $("fast2VisualFusion").textContent = "Fusion: -";
+    return;
+  }
+
+  const trace = payload.state || {};
+  const observation = trace.observation || {};
+  const cv = trace.cv_sample || {};
+  const gate = trace.gate || {};
+  const result = gate.result || {};
+  const vlm = trace.vlm || {};
+  const traceFreshness = `${String(payload.freshness || "stale").toUpperCase()} · ${msAge(payload.age_ms)}`;
+  statusPill(
+    freshness,
+    traceLive ? "live" : "stale",
+    `TRACE ${traceFreshness}`,
+  );
+  $("fast2VisualCvMetrics").innerHTML = [
+    metricMarkup("Frame", trace.frame_id),
+    metricMarkup("Face", observation.face_detected ? "detected" : "none"),
+    metricMarkup("EAR", observation.ear == null ? "-" : Number(observation.ear).toFixed(3)),
+    metricMarkup("MAR", observation.mar == null ? "-" : Number(observation.mar).toFixed(3)),
+    metricMarkup("Emotion", cv.emotion_tag),
+    metricMarkup("Confidence", cv.confidence),
+    metricMarkup("Fatigue", cv.fatigue_score),
+    metricMarkup("Quality", cv.observation_quality),
+  ].join("");
+
+  const force = gate.force || {};
+  const fatigue = gate.fatigue || {};
+  const negative = gate.single_negative || {};
+  const windowRule = gate.negative_window || {};
+  $("fast2VisualGateRules").innerHTML = [
+    ruleMarkup("Force", force.fired ? "ON" : "OFF", "manual", !!force.fired),
+    ruleMarkup("High fatigue", fatigue.value ?? "-", `>= ${fatigue.threshold ?? "-"}`, !!fatigue.fired),
+    ruleMarkup("Negative", `${negative.emotion || "-"} · ${negative.confidence ?? "-"}`, `>= ${negative.confidence_threshold ?? "-"}`, !!negative.fired),
+    ruleMarkup("Negative window", `${windowRule.count ?? 0}/${windowRule.count_threshold ?? "-"}`, `${windowRule.confidence_sum ?? 0}/${windowRule.confidence_sum_threshold ?? "-"}`, !!windowRule.fired),
+  ].join("");
+  statusPill(
+    $("fast2VisualGateStatus"),
+    result.should_trigger ? "triggered" : "normal",
+    result.should_trigger ? `TRIGGER · ${result.reason || "unknown"}` : "NORMAL",
+  );
+
+  const vlmStatus = String(vlm.status || "idle").toLowerCase();
+  statusPill($("fast2VisualVlmStatus"), vlmStatus, vlmStatus.toUpperCase());
+  $("fast2VisualVlmDetails").innerHTML = [
+    metricMarkup("Request", vlm.request_id),
+    metricMarkup("Trigger frame", vlm.trigger_frame_id),
+    metricMarkup("Reason", vlm.reason),
+    metricMarkup("Latency", vlm.latency_ms == null ? "-" : `${vlm.latency_ms} ms`),
+    metricMarkup("Result", vlm.result?.expression_label || vlm.result?.emotion_tag),
+    metricMarkup("Confidence", vlm.result?.confidence),
+  ].join("");
+  if (vlm.request_id) {
+    if (vlm.request_id !== fastVisualRequestId) {
+      fastVisualRequestId = vlm.request_id;
+      triggerImage.src = `/api/fast-demo/visual/trigger-image?request=${encodeURIComponent(fastVisualRequestId)}`;
+    }
+    triggerImage.style.display = "block";
+    triggerEmpty.style.display = "none";
+  } else {
+    triggerImage.style.display = "none";
+    triggerEmpty.style.display = "grid";
+  }
+  const fusion = vlm.fusion || {};
+  $("fast2VisualFusion").textContent = fusion.decision
+    ? `Fusion · ${fusion.decision} — ${fusion.reason || ""}`
+    : "Fusion: -";
 }
 
 function renderFastVoiceLink(key, link) {
@@ -617,7 +766,6 @@ function bindEvents() {
   }));
   $("sendTtsBtn").addEventListener("click", () => post("/api/robot/tts", {
     text: $("ttsText").value,
-    duration_ms: 3000,
   }));
   $("sendMotionBtn").addEventListener("click", () => {
     const action = $("motionAction").value;
@@ -707,3 +855,5 @@ refreshState();
 refreshVisualTrace();
 setInterval(refreshState, 1000);
 setInterval(refreshVisualTrace, 1000);
+setInterval(refreshCameraFrame, 200);
+setInterval(refreshFast2VisualFrame, 200);

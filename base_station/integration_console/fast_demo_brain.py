@@ -16,6 +16,7 @@ DECISION_SOURCE = "local_demo_brain"
 SCHEMA_VERSION = "xiaoan.fast_demo_decision.v1"
 VOICE_LINKS = {"fast1", "fast3"}
 REMINDER_SCHEMA_VERSION = "xiaoan.fast_demo_reminder.v1"
+POST_MOTION_TTS_SETTLE_SECONDS = 0.35
 
 LINK1_REPLIES = {
     "capture_reminder": (
@@ -95,6 +96,31 @@ LINK3_REPLIES = {
         "嗯嗯，我在听，你可以继续说。",
     ),
 }
+
+
+FAST_DEMO_REPLY_TABLES = {
+    "fast1": LINK1_REPLIES,
+    "fast2": LINK2_REPLIES,
+    "fast3": LINK3_REPLIES,
+}
+
+
+def iter_fast_demo_tts_texts(*, include_visual_normal: bool = True) -> list[dict[str, str]]:
+    """Return every deterministic Fast Demo sentence that may need local TTS."""
+
+    items: list[dict[str, str]] = []
+    for link, table in FAST_DEMO_REPLY_TABLES.items():
+        for intent, replies in table.items():
+            if not include_visual_normal and link == "fast2" and intent == "visual_normal":
+                continue
+            for index, text in enumerate(replies):
+                items.append({
+                    "link": link,
+                    "intent": intent,
+                    "variant": str(index),
+                    "text": text,
+                })
+    return items
 
 
 def normalize_text(text: str) -> str:
@@ -363,6 +389,9 @@ async def execute_robot_plan(
             "ok": True,
             "ack": _ack_summary(ack),
         })
+        if kind == "motion" and step.get("action") != "stop":
+            timeout_seconds = max(0.0, float(step.get("timeout_ms") or 1200) / 1000.0)
+            await asyncio.sleep(timeout_seconds + POST_MOTION_TTS_SETTLE_SECONDS)
         if kind in {"local_sound", "tts"}:
             await asyncio.sleep(0.2)
 
@@ -478,7 +507,7 @@ def _decide_link3(transcript: str) -> dict[str, Any]:
             motion_step={"action": "stop", "params": {}, "timeout_ms": 800},
             trigger={"transcript": transcript},
         )
-    if _has_any(text, ("回去", "回dock", "回家", "回窝", "回充电", "return")):
+    if _has_any(text, ("回去", "回dock", "回家", "回窝", "回充电", "返回基站", "回基站", "去基站", "基站", "return")):
         return _decision(
             link="fast3",
             intent="return_to_dock",

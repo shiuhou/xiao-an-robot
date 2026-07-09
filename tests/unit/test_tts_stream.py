@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import struct
+import tempfile
 import unittest
 from unittest import mock
+import wave
 
 from base_station.ws_server.tts_stream import (
     TTS_COMMAND_ENV,
@@ -17,9 +20,18 @@ from base_station.ws_server.tts_stream import (
     external_tts_backend_configured,
     limit_pcm_peak_s16le,
     normalize_pcm_peak_s16le,
+    synthesize_tts_pcm_stream,
     tts_target_peak_from_env,
     tts_command_template_from_env,
 )
+
+
+def _write_test_wav(path: Path, pcm: bytes | None = None) -> None:
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(pcm if pcm is not None else struct.pack("<hhhh", -1000, 0, 500, 1000))
 
 
 class TtsStreamTest(unittest.TestCase):
@@ -94,6 +106,52 @@ class TtsStreamTest(unittest.TestCase):
         with mock.patch.dict("os.environ", {TTS_COMMAND_ENV: "custom_tts {text_file} {wav_file}"}, clear=False):
             self.assertEqual(tts_command_template_from_env(), "custom_tts {text_file} {wav_file}")
             self.assertTrue(external_tts_backend_configured())
+
+    def test_synthesize_tts_reuses_cache_without_external_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            calls: list[Path] = []
+
+            def write_wav(_text_path: Path, wav_path: Path) -> None:
+                calls.append(wav_path)
+                _write_test_wav(wav_path)
+
+            with (
+                mock.patch.dict("os.environ", {TTS_COMMAND_ENV: "fake_tts {text_file} {wav_file}"}, clear=False),
+                mock.patch("base_station.ws_server.tts_stream._run_external_tts_command", side_effect=write_wav),
+            ):
+                first = synthesize_tts_pcm_stream("缓存测试", runtime_dir=temp_dir)
+                second = synthesize_tts_pcm_stream("缓存测试", runtime_dir=temp_dir)
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(first.pcm, second.pcm)
+        self.assertEqual(first.sample_rate, 16000)
+        self.assertEqual(second.channels, 1)
+
+    def test_synthesize_tts_falls_back_to_legacy_wav_when_external_command_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            tts_dir = runtime / "tts"
+            tts_dir.mkdir()
+            text_path = tts_dir / "tts-old-1.txt"
+            wav_path = tts_dir / "tts-old-1.wav"
+            text_path.write_text("网络失败兜底", encoding="utf-8")
+            _write_test_wav(wav_path)
+
+            with (
+                mock.patch.dict("os.environ", {TTS_COMMAND_ENV: "fake_tts {text_file} {wav_file}"}, clear=False),
+                mock.patch(
+                    "base_station.ws_server.tts_stream._run_external_tts_command",
+                    side_effect=RuntimeError("Temporary failure in name resolution"),
+                ),
+            ):
+                stream = synthesize_tts_pcm_stream("网络失败兜底", runtime_dir=runtime)
+
+            cached_files = list((runtime / "tts_cache").glob("*.wav"))
+
+        self.assertEqual(stream.sample_rate, 16000)
+        self.assertEqual(stream.channels, 1)
+        self.assertGreater(len(stream.pcm), 0)
+        self.assertEqual(len(cached_files), 1)
 
 
 if __name__ == "__main__":

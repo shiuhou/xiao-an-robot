@@ -14,7 +14,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from base_station.integration_console.fast_demo_brain import iter_fast_demo_tts_texts
-from base_station.ws_server.tts_stream import synthesize_tts_pcm_stream, tts_cache_path_for_text
+from base_station.perception.audio_diagnostics import pcm_s16le_stats
+from base_station.ws_server.tts_stream import (
+    synthesize_tts_pcm_stream,
+    tts_cache_path_for_text,
+    tts_robot_pcm_cache_path_for_text,
+    tts_target_peak_from_env,
+)
 
 
 def prepare_fast_demo_tts_cache(
@@ -25,15 +31,29 @@ def prepare_fast_demo_tts_cache(
     fail_fast: bool = False,
 ) -> dict[str, Any]:
     started = time.monotonic()
+    target_peak = tts_target_peak_from_env()
     items: list[dict[str, Any]] = []
     ok_count = 0
     failed_count = 0
     for entry in iter_fast_demo_tts_texts(include_visual_normal=include_visual_normal):
         text = entry["text"]
-        cache_path = tts_cache_path_for_text(text, runtime_dir=runtime_dir)
+        wav_cache_path = tts_cache_path_for_text(text, runtime_dir=runtime_dir)
+        pcm_cache_path = tts_robot_pcm_cache_path_for_text(
+            text,
+            runtime_dir=runtime_dir,
+            target_peak=target_peak,
+        )
         item = dict(entry)
-        item["cache_path"] = str(cache_path)
-        item["cached_before"] = cache_path.exists() and cache_path.stat().st_size > 0
+        item["cache_path"] = str(pcm_cache_path)
+        item["robot_pcm_cache_path"] = str(pcm_cache_path)
+        item["wav_cache_path"] = str(wav_cache_path)
+        item["format"] = "raw pcm_s16le"
+        item["sample_rate"] = 16000
+        item["channels"] = 1
+        item["sample_width_bytes"] = 2
+        item["target_peak"] = target_peak
+        item["speaker_stream_gain"] = 32
+        item["cached_before"] = pcm_cache_path.exists() and pcm_cache_path.stat().st_size > 0
         item_started = time.monotonic()
         try:
             stream = synthesize_tts_pcm_stream(text, runtime_dir=runtime_dir)
@@ -48,26 +68,40 @@ def prepare_fast_demo_tts_cache(
             if fail_fast:
                 break
             continue
-        cache_exists = cache_path.exists() and cache_path.stat().st_size > 0
+        cache_exists = pcm_cache_path.exists() and pcm_cache_path.stat().st_size > 0
+        pcm_stats = pcm_s16le_stats(
+            pcm_cache_path.read_bytes() if cache_exists else stream.pcm,
+            sample_rate=stream.sample_rate,
+            channels=stream.channels,
+        )
         item.update({
             "ok": cache_exists,
             "cached_after": cache_exists,
             "pcm_bytes": len(stream.pcm),
             "duration_ms": stream.duration_ms,
+            "peak": pcm_stats["peak"],
+            "rms": pcm_stats["rms"],
             "elapsed_sec": round(time.monotonic() - item_started, 3),
         })
-        if cache_exists:
+        if cache_exists and stream.sample_rate == 16000 and stream.channels == 1 and pcm_stats["peak"] <= target_peak:
             ok_count += 1
         else:
             failed_count += 1
-            item["error"] = "cache_file_missing_after_synthesis"
+            item["error"] = "robot_pcm_cache_invalid_after_synthesis"
         items.append(item)
 
     manifest = {
-        "schema_version": "xiaoan.fast_demo_tts_manifest.v1",
+        "schema_version": "xiaoan.fast_demo_tts_manifest.v2",
         "runtime_dir": str(runtime_dir),
         "manifest_path": str(manifest_path),
         "include_visual_normal": include_visual_normal,
+        "format": "raw pcm_s16le",
+        "sample_rate": 16000,
+        "channels": 1,
+        "sample_width_bytes": 2,
+        "target_peak": target_peak,
+        "speaker_stream_gain": 32,
+        "cache_payload": "robot_ready_raw_pcm_s16le",
         "total": len(items),
         "ok_count": ok_count,
         "failed_count": failed_count,
@@ -80,7 +114,7 @@ def prepare_fast_demo_tts_cache(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare cached Fast Demo TTS WAV files.")
+    parser = argparse.ArgumentParser(description="Prepare cached Fast Demo robot-ready raw PCM files.")
     parser.add_argument("--runtime-dir", default="runtime")
     parser.add_argument("--manifest-path", default="runtime/integration_console/fast_demo/tts_manifest.json")
     parser.add_argument("--exclude-visual-normal", action="store_true")

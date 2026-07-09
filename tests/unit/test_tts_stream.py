@@ -21,6 +21,7 @@ from base_station.ws_server.tts_stream import (
     limit_pcm_peak_s16le,
     normalize_pcm_peak_s16le,
     synthesize_tts_pcm_stream,
+    tts_robot_pcm_cache_path_for_text,
     tts_target_peak_from_env,
     tts_command_template_from_env,
 )
@@ -127,6 +128,35 @@ class TtsStreamTest(unittest.TestCase):
         self.assertEqual(first.sample_rate, 16000)
         self.assertEqual(second.channels, 1)
 
+    def test_synthesize_tts_writes_robot_ready_raw_pcm_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            calls: list[Path] = []
+            source_pcm = struct.pack("<hhhh", -2000, 0, 1000, 4000)
+
+            def write_wav(_text_path: Path, wav_path: Path) -> None:
+                calls.append(wav_path)
+                _write_test_wav(wav_path, source_pcm)
+
+            with (
+                mock.patch.dict("os.environ", {TTS_COMMAND_ENV: "fake_tts {text_file} {wav_file}"}, clear=False),
+                mock.patch("base_station.ws_server.tts_stream._run_external_tts_command", side_effect=write_wav),
+            ):
+                first = synthesize_tts_pcm_stream("机器人直发缓存", runtime_dir=runtime)
+                pcm_cache = tts_robot_pcm_cache_path_for_text("机器人直发缓存", runtime_dir=runtime, target_peak=500)
+                cached_bytes = pcm_cache.read_bytes()
+                second = synthesize_tts_pcm_stream("机器人直发缓存", runtime_dir=runtime)
+
+        samples = struct.unpack("<" + "h" * (len(cached_bytes) // 2), cached_bytes)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(first.pcm, cached_bytes)
+        self.assertEqual(second.pcm, cached_bytes)
+        self.assertEqual(pcm_cache.suffix, ".pcm")
+        self.assertEqual(first.sample_rate, 16000)
+        self.assertEqual(first.channels, 1)
+        self.assertLessEqual(max(abs(sample) for sample in samples), 500)
+        self.assertGreaterEqual(max(abs(sample) for sample in samples), 499)
+
     def test_synthesize_tts_falls_back_to_legacy_wav_when_external_command_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = Path(temp_dir)
@@ -146,12 +176,14 @@ class TtsStreamTest(unittest.TestCase):
             ):
                 stream = synthesize_tts_pcm_stream("网络失败兜底", runtime_dir=runtime)
 
-            cached_files = list((runtime / "tts_cache").glob("*.wav"))
+            cached_wav_files = list((runtime / "tts_cache").glob("*.wav"))
+            cached_pcm_files = list((runtime / "tts_cache").glob("*.pcm"))
 
         self.assertEqual(stream.sample_rate, 16000)
         self.assertEqual(stream.channels, 1)
         self.assertGreater(len(stream.pcm), 0)
-        self.assertEqual(len(cached_files), 1)
+        self.assertEqual(len(cached_wav_files), 1)
+        self.assertEqual(len(cached_pcm_files), 1)
 
 
 if __name__ == "__main__":

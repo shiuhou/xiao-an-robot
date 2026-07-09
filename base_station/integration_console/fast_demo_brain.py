@@ -513,7 +513,7 @@ def _decide_link1(transcript: str) -> dict[str, Any]:
             motion=False,
             trigger={"transcript": transcript, "schedule": parse_reminder_due_at(transcript)},
         )
-    if _has_any(text, ("提醒", "待会", "等会", "过会", "明天", "几点", "分钟后", "小时后", "闹钟", "到点")):
+    if _has_any(text, ("提醒", "待会", "等会", "过会", "明天", "几点", "秒后", "秒钟后", "分钟后", "小时后", "闹钟", "到点")):
         return _decision(
             link="fast1",
             intent="capture_reminder",

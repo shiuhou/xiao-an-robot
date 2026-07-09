@@ -114,6 +114,7 @@ class FastDemoBrainTest(unittest.TestCase):
             "小安，把准备路演材料加入todo list": "capture_task",
             "小安，把明天下午三点做路演彩排加入日程": "capture_schedule",
             "小安，三十秒后提醒我检查摄像头": "capture_reminder",
+            "小安，30秒后叫我一下喝水": "capture_reminder",
         }
         for text, expected in cases.items():
             with self.subTest(text=text):

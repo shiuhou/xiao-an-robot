@@ -23,7 +23,7 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         ws_server.reset_state_for_tests()
 
-    async def test_control_pcm_stream_is_paced_slightly_ahead_of_audio_duration(self) -> None:
+    async def test_control_pcm_stream_uses_no_start_delay_and_fast_pacing(self) -> None:
         websocket = FakeControlWebSocket()
         ws_server.sessions["speaker-test"] = {"ws": websocket}
         stream = ws_server.TtsPcmStream(
@@ -53,8 +53,9 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(error)
         self.assertEqual(len([msg for msg in websocket.sent if isinstance(msg, bytes)]), 2)
         self.assertEqual(len(sleeps), 3)
-        self.assertTrue(all(duration > 0 for duration in sleeps))
-        self.assertGreaterEqual(ws_server.CONTROL_TTS_START_DELAY_SECONDS, 1.0)
+        self.assertEqual(sleeps[0], 0.0)
+        self.assertTrue(all(duration > 0 for duration in sleeps[1:]))
+        self.assertEqual(ws_server.CONTROL_TTS_START_DELAY_SECONDS, 0.0)
         self.assertAlmostEqual(sleeps[0], ws_server.CONTROL_TTS_START_DELAY_SECONDS, places=3)
         self.assertAlmostEqual(
             sleeps[1],
@@ -65,8 +66,8 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
 
     def test_control_tts_chunks_fit_firmware_pcm_queue_budget(self) -> None:
         self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_BYTES, 2048)
-        self.assertGreater(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.75)
-        self.assertLess(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 1.0)
+        self.assertGreaterEqual(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.25)
+        self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.5)
 
     def test_control_tts_stream_defaults_to_configured_backend(self) -> None:
         with (
@@ -92,11 +93,13 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(settings["control_stream_enabled"])
         self.assertEqual(settings["target_peak"], 500)
         self.assertEqual(settings["chunk_bytes"], 2048)
-        self.assertEqual(settings["start_delay_seconds"], 1.2)
-        self.assertEqual(settings["pace_ratio"], 0.85)
+        self.assertEqual(settings["start_delay_seconds"], 0.0)
+        self.assertEqual(settings["pace_ratio"], 0.35)
         self.assertEqual(settings["pcm_format"], "pcm_s16le")
         self.assertEqual(settings["sample_rate"], 16000)
         self.assertEqual(settings["channels"], 1)
+        self.assertEqual(settings["sample_width_bytes"], 2)
+        self.assertEqual(settings["cache_payload"], "robot_ready_raw_pcm_s16le")
         self.assertEqual(settings["playback_mode_expected"], "buffered_after_stream_end")
 
     async def test_tts_synthesis_runs_off_event_loop_thread(self) -> None:

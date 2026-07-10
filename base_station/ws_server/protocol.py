@@ -34,6 +34,7 @@ class MessageType(str, Enum):
     AUDIO_PLAY_TTS     = "audio.play_tts"
     AUDIO_PLAY_LOCAL   = "audio.play_local"
     AUDIO_STREAM_END   = "audio.stream_end"
+    DEMO_SING_DANCE    = "demo.sing_dance"
     CONFIG_UPDATE      = "config.update"
     SYSTEM_SHUTDOWN    = "system.shutdown"
 
@@ -140,6 +141,12 @@ def make_play_local(sound: str, volume: float = 0.7) -> dict:
 def make_audio_stream_end(audio_id: str) -> dict:
     return build_message(MessageType.AUDIO_STREAM_END, {
         "audio_id": audio_id,
+    })
+
+def make_demo_sing_dance(style: str = "ode_to_joy", duration_ms: int = 13000) -> dict:
+    return build_message(MessageType.DEMO_SING_DANCE, {
+        "style": style,
+        "duration_ms": duration_ms,
     })
 
 

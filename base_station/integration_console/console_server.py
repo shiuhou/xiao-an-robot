@@ -25,6 +25,7 @@ from typing import Any, Callable
 from urllib.parse import unquote, urlparse, urlsplit
 
 from base_station.integration_console.fast_demo_brain import (
+    DANCE_INTRO_TEXT,
     POST_MOTION_TTS_SETTLE_SECONDS,
     build_reminder_due_decision,
     decide_visual,
@@ -73,6 +74,7 @@ EXPRESSIONS = {
 LOCAL_SOUNDS = {"care_01", "success_ding"}
 STANDARD_LINKS = ("link1", "link2", "link3")
 FAST_DEMO_LINKS = ("fast1", "fast2", "fast3")
+DANCE_KEYWORDS = ("跳舞", "唱歌跳舞", "跳个舞")
 
 
 def _now_iso() -> str:
@@ -306,6 +308,10 @@ class IntegrationConsoleApp:
     @property
     def fast_demo_story_voice_path(self) -> Path:
         return self.event_dir / "fast_demo" / "story_voice.json"
+
+    @property
+    def fast_demo_dance_voice_path(self) -> Path:
+        return self.event_dir / "fast_demo" / "dance_voice.json"
 
     @property
     def process_log_dir(self) -> Path:
@@ -790,6 +796,40 @@ class IntegrationConsoleApp:
         ]
         mic_device = self._first_env_text(
             "XIAOAN_STORY_MIC_DEVICE",
+            "XIAOAN_FAST3_MIC_DEVICE",
+            "XIAOAN_FAST_DEMO_MIC_DEVICE",
+            "XIAOAN_LINK3_MIC_DEVICE",
+            "XIAOAN_MIC_DEVICE",
+        )
+        if mic_device:
+            command.extend(["--device", mic_device])
+        return command
+
+    def fast_demo_dance_voice_command(self) -> list[str]:
+        duration = self._env_text("XIAOAN_DANCE_MIC_WINDOW", self._env_text("XIAOAN_FAST_DEMO_MIC_WINDOW", "6.0"))
+        command = [
+            sys.executable,
+            "-m",
+            "base_station.monitor.voice_runtime",
+            "--source",
+            "local_mic",
+            "--gateway-url",
+            self.ws_url,
+            "--session-id",
+            "integration-console-dance",
+            "--duration",
+            duration,
+            "--asr-language",
+            self._env_text("XIAOAN_LINK3_ASR_LANGUAGE", "zh"),
+            "--latest-output",
+            str(self.fast_demo_dance_voice_path),
+            "--once",
+            "--decision-mode",
+            "asr_only",
+            "--verbose",
+        ]
+        mic_device = self._first_env_text(
+            "XIAOAN_DANCE_MIC_DEVICE",
             "XIAOAN_FAST3_MIC_DEVICE",
             "XIAOAN_FAST_DEMO_MIC_DEVICE",
             "XIAOAN_LINK3_MIC_DEVICE",
@@ -1367,6 +1407,7 @@ class IntegrationConsoleApp:
             "fast1": fast1,
             "fast2": fast2,
             "fast3": fast3,
+            "dance": self.fast_demo_dance_state(robot=robot),
         }
 
     def fast_demo_story_state(self) -> dict[str, Any]:
@@ -1377,6 +1418,107 @@ class IntegrationConsoleApp:
         summary["voice"] = voice if isinstance(voice, dict) else {}
         summary["voice_error"] = voice_error
         return summary
+
+    def fast_demo_dance_state(self, *, robot: dict[str, Any] | None = None) -> dict[str, Any]:
+        voice, voice_error = _load_json_file(self.fast_demo_dance_voice_path)
+        voice = voice if isinstance(voice, dict) else {}
+        output = self._display_voice_output(voice)
+        transcript = self._voice_text(output)
+        matched = self._dance_keyword_matched(transcript)
+        execution = voice.get("robot_execution") if isinstance(voice.get("robot_execution"), dict) else {}
+        audio = self._voice_audio_info(output)
+        info = _file_info(self.fast_demo_dance_voice_path)
+        robot_summary = self._robot_execution_summary(robot or {})
+        steps = [
+            _step("麦克风", bool(transcript) or voice.get("event_type") == "dance.voice_recording", audio.get("audio_path") or voice.get("reason")),
+            _step("ASR 文本", bool(transcript), transcript),
+            _step("关键词：跳舞", matched, "matched" if matched else "waiting"),
+            _step("唱歌跳舞命令", bool(execution.get("ok")) or bool(execution.get("skipped")), execution or robot_summary),
+        ]
+        active = voice.get("event_type") == "dance.voice_recording"
+        return {
+            "ok": bool(voice),
+            "status": "recording" if active else (self._status_from_steps(steps) if voice else "idle"),
+            "done": bool(voice) and all(step["ok"] for step in steps),
+            "path": str(self.fast_demo_dance_voice_path),
+            "age_ms": info.get("age_ms"),
+            "updated_at": info.get("updated_at"),
+            "voice_error": voice_error,
+            "voice": voice,
+            "voice_phase": self._voice_phase(output, {"running": active} if active else {}),
+            "asr_text": transcript,
+            "keyword_matched": matched,
+            "robot_execution": execution or robot_summary,
+            "steps": steps,
+        }
+
+    @staticmethod
+    def _dance_keyword_matched(transcript: str) -> bool:
+        text = str(transcript or "").strip()
+        return any(keyword in text for keyword in DANCE_KEYWORDS)
+
+    def listen_fast_demo_dance(self, body: dict[str, Any]) -> dict[str, Any]:
+        request_id = uuid.uuid4().hex[:12]
+        started = time.time()
+        voice = self._capture_dance_voice(body)
+        transcript = self._voice_text(self._display_voice_output(voice))
+        matched = self._dance_keyword_matched(transcript)
+        send_to_robot = bool(body.get("send_to_robot", False))
+        allow_motion = bool(body.get("allow_motion", False))
+        if not matched:
+            execution = {
+                "ok": False,
+                "skipped": True,
+                "reason": "dance_keyword_not_matched",
+                "expected_keywords": list(DANCE_KEYWORDS),
+            }
+        elif not send_to_robot:
+            execution = {"ok": True, "skipped": True, "reason": "send_to_robot_disabled"}
+        elif not allow_motion:
+            execution = {"ok": True, "skipped": True, "reason": "allow_motion_disabled"}
+        else:
+            execution = self.send_dance_demo_sequence({
+                "device_id": body.get("device_id"),
+                "style": "ode_to_joy",
+                "duration_ms": body.get("duration_ms", 13000),
+            })
+
+        output = dict(voice)
+        output.update({
+            "event_type": voice.get("event_type") or "dance.voice_result",
+            "handled": matched,
+            "reason": "dance_keyword_matched" if matched else "dance_keyword_not_matched",
+            "text": transcript,
+            "dance_keyword_matched": matched,
+            "robot_execution": execution,
+            "updated_at": _now_iso(),
+        })
+        _atomic_write_json(self.fast_demo_dance_voice_path, output)
+        result = {
+            "ok": bool(matched and execution.get("ok")),
+            "request_id": request_id,
+            "transcript": transcript,
+            "keyword_matched": matched,
+            "send_to_robot": send_to_robot,
+            "allow_motion": allow_motion,
+            "voice": output,
+            "execution": execution,
+            "duration_ms": int((time.time() - started) * 1000),
+        }
+        self.log_event(
+            event_type="fast_demo.dance.listen",
+            request_id=request_id,
+            action="dance.listen",
+            payload_summary={
+                "transcript": transcript,
+                "keyword_matched": matched,
+                "send_to_robot": send_to_robot,
+                "allow_motion": allow_motion,
+            },
+            result="ok" if result["ok"] else "skipped",
+            raw_response_summary=result,
+        )
+        return result
 
     def start_fast_demo_story(self, body: dict[str, Any]) -> dict[str, Any]:
         send_to_robot = bool(body.get("send_to_robot", False))
@@ -1715,6 +1857,81 @@ class IntegrationConsoleApp:
             "returncode": completed.returncode,
             "command_preview": " ".join(command),
             "log_path": str(log_path),
+        }
+
+    def _capture_dance_voice(self, body: dict[str, Any]) -> dict[str, Any]:
+        transcript = str(body.get("transcript") or "").strip()
+        if transcript:
+            output = {
+                "text": transcript,
+                "event_type": "asr.transcript",
+                "handled": False,
+                "reason": "provided_transcript",
+                "updated_at": _now_iso(),
+            }
+            _atomic_write_json(self.fast_demo_dance_voice_path, output)
+            return output
+
+        command = self.fast_demo_dance_voice_command()
+        self.process_log_dir.mkdir(parents=True, exist_ok=True)
+        self.fast_demo_dance_voice_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path = self.process_log_dir / "dance_voice.log"
+        _atomic_write_json(
+            self.fast_demo_dance_voice_path,
+            {
+                "event_type": "dance.voice_recording",
+                "handled": False,
+                "reason": "recording",
+                "text": "",
+                "updated_at": _now_iso(),
+                "duration_ms": int(float(command[command.index("--duration") + 1]) * 1000)
+                if "--duration" in command
+                else None,
+                "command_preview": " ".join(command),
+                "log_path": str(log_path),
+            },
+        )
+        with log_path.open("ab") as log_file:
+            log_file.write(f"\n[{_now_iso()}] START {' '.join(command)}\n".encode("utf-8"))
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=_repo_root(),
+                    env=self.fast_demo_environment(),
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    timeout=_clamp_float(os.environ.get("XIAOAN_DANCE_VOICE_TIMEOUT"), 90.0, 10.0, 180.0),
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as exc:
+                output = {
+                    "event_type": "dance.voice_timeout",
+                    "handled": False,
+                    "reason": "voice_runtime_timeout",
+                    "text": "",
+                    "command_preview": " ".join(command),
+                    "timeout": exc.timeout,
+                    "log_path": str(log_path),
+                    "updated_at": _now_iso(),
+                }
+                _atomic_write_json(self.fast_demo_dance_voice_path, output)
+                return output
+
+        output, error = _load_json_file(self.fast_demo_dance_voice_path)
+        if isinstance(output, dict):
+            output.setdefault("returncode", completed.returncode)
+            output.setdefault("log_path", str(log_path))
+            return output
+        return {
+            "event_type": "dance.voice_error",
+            "handled": False,
+            "reason": error or "missing_latest_output",
+            "text": "",
+            "returncode": completed.returncode,
+            "command_preview": " ".join(command),
+            "log_path": str(log_path),
+            "updated_at": _now_iso(),
         }
 
     def _load_fast_demo_story(self) -> dict[str, Any]:
@@ -2292,7 +2509,7 @@ class IntegrationConsoleApp:
     def _voice_phase(output: dict[str, Any], process: dict[str, Any]) -> dict[str, Any]:
         event_type = output.get("event_type")
         reason = output.get("reason")
-        if event_type == "voice.recording":
+        if event_type in {"voice.recording", "story.voice_recording", "dance.voice_recording"}:
             return {
                 "phase": "recording",
                 "mic": "on",
@@ -2551,6 +2768,11 @@ class IntegrationConsoleApp:
             return False, f"audio_cooldown:{round(AUDIO_COOLDOWN_SECONDS - elapsed, 2)}s"
         return True, None
 
+    def _wait_audio_cooldown(self) -> None:
+        elapsed = time.time() - self.last_audio_sent_at
+        if elapsed < AUDIO_COOLDOWN_SECONDS:
+            time.sleep(AUDIO_COOLDOWN_SECONDS - elapsed)
+
     def send_local_sound(self, body: dict[str, Any]) -> dict[str, Any]:
         allowed, reason = self._audio_allowed()
         if not allowed:
@@ -2588,6 +2810,56 @@ class IntegrationConsoleApp:
         if result.get("ok"):
             self.last_audio_sent_at = time.time()
         return result
+
+    def send_sing_dance_demo(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = body or {}
+        payload = {
+            "device_id": body.get("device_id"),
+            "command": "demo.sing_dance",
+            "style": str(body.get("style") or "ode_to_joy"),
+            "duration_ms": _clamp_int(body.get("duration_ms"), 13000, 8000, 15000),
+        }
+        return self.send_agent_command(payload, action="demo.sing_dance", event_type="robot.demo")
+
+    def send_dance_demo_sequence(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        body = body or {}
+        steps: list[dict[str, Any]] = []
+        device_id = body.get("device_id")
+
+        started = time.time()
+        expression = self.send_expression({
+            "device_id": device_id,
+            "expression": "surprised",
+            "duration_ms": 1800,
+            "loop": False,
+        })
+        self._append_step(steps, "expression:surprised", started, expression)
+        if not expression.get("ok"):
+            return {"ok": False, "steps": steps, "failed_step": "expression:surprised"}
+
+        self._wait_audio_cooldown()
+        started = time.time()
+        intro = self.send_tts({
+            "device_id": device_id,
+            "text": DANCE_INTRO_TEXT,
+            "playback_mode": "buffered",
+        })
+        self._append_step(steps, "tts:dance_intro", started, intro)
+        if not intro.get("ok"):
+            return {"ok": False, "steps": steps, "failed_step": "tts:dance_intro"}
+
+        started = time.time()
+        dance = self.send_sing_dance_demo({
+            "device_id": device_id,
+            "style": body.get("style") or "ode_to_joy",
+            "duration_ms": body.get("duration_ms", 13000),
+        })
+        self._append_step(steps, "demo.sing_dance", started, dance)
+        return {
+            "ok": all(step.get("ok") for step in steps),
+            "steps": steps,
+            "intro_text": DANCE_INTRO_TEXT,
+        }
 
     def run_scenario(self, body: dict[str, Any]) -> dict[str, Any]:
         scenario = str(body.get("scenario") or "")
@@ -2940,6 +3212,8 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.start_fast_demo_story(body))
                 elif path == "/api/fast-demo/story/listen":
                     self._write_json(app.listen_fast_demo_story(body))
+                elif path == "/api/fast-demo/dance/listen":
+                    self._write_json(app.listen_fast_demo_dance(body))
                 elif path == "/api/fast-demo/story/choose":
                     self._write_json(app.choose_fast_demo_story(body))
                 elif path == "/api/fast-demo/story/stop":

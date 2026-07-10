@@ -398,6 +398,7 @@ function renderFastDemo() {
   const fast = state?.fast_demo || {};
   const reminders = state?.fast_demo_reminders || {};
   renderStoryDemo(state?.fast_demo_story || {});
+  renderDanceDemo(fast.dance || {});
   ["fast1", "fast2", "fast3"].forEach((key) => {
     renderRunStatus(key, fast[key] || {});
     renderChainSteps(`${key}Steps`, fast[key]?.steps || []);
@@ -426,6 +427,34 @@ function renderFastDemo() {
     freshness: fast2.visual?.freshness,
     age_ms: fast2.visual?.age_ms,
     files: fast2.visual?.files,
+  });
+}
+
+function renderDanceDemo(dance) {
+  const voice = dance.voice || {};
+  const phase = dance.voice_phase || {};
+  const audio = voice.event?.payload?.audio || voice.audio || {};
+  renderChainSteps("fastDanceSteps", dance.steps || []);
+  statusPill(
+    $("fastDanceStatus"),
+    dance.status === "recording" ? "live" : (dance.keyword_matched ? "triggered" : (dance.status === "idle" ? "unavailable" : dance.status)),
+    dance.status === "recording" ? "MIC ON" : (dance.keyword_matched ? "TRIGGERED" : String(dance.status || "IDLE").toUpperCase()),
+  );
+  kv("fastDanceMicKv", [
+    ["mic", phase.label || "-"],
+    ["阶段", phase.detail || phase.phase || "-"],
+    ["关键词", "跳舞 / 唱歌跳舞"],
+    ["命中", dance.keyword_matched ? "yes" : "no"],
+    ["output age", msAge(dance.age_ms)],
+    ["audio", audio.audio_path || "-"],
+    ["sample_rate", audio.sample_rate],
+    ["duration_ms", audio.duration_ms],
+  ]);
+  $("fastDanceAsrText").textContent = dance.asr_text || "-";
+  $("fastDanceJson").textContent = pretty({
+    keyword_matched: dance.keyword_matched,
+    execution: dance.robot_execution,
+    voice: dance.voice,
   });
 }
 
@@ -895,6 +924,20 @@ function bindEvents() {
       }
       await refreshState();
     });
+  });
+  $("fastDanceRunSwitch").addEventListener("change", async (event) => {
+    if (!event.target.checked) return;
+    if ($("fastDemoSendRobotSwitch").checked && !$("fastDemoAllowMotionSwitch").checked) {
+      toast("请先打开允许运动，再触发唱歌跳舞");
+      event.target.checked = false;
+      return;
+    }
+    const result = await post("/api/fast-demo/dance/listen", {
+      send_to_robot: $("fastDemoSendRobotSwitch").checked,
+      allow_motion: $("fastDemoAllowMotionSwitch").checked,
+    });
+    $("fastDanceJson").textContent = pretty(result);
+    event.target.checked = false;
   });
   ["fast1", "fast2", "fast3"].forEach((key) => {
     const node = $(`${key}RunSwitch`);

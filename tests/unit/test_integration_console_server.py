@@ -20,6 +20,7 @@ from base_station.integration_console.console_server import (
     _agent_ack_timeout_seconds,
     read_ws_state,
 )
+from base_station.integration_console.fast_demo_brain import DANCE_INTRO_TEXT, iter_fast_demo_tts_texts
 from base_station.integration_console.story_demo import get_story_node
 
 
@@ -96,6 +97,12 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "storyNodeText",
             "storyChoiceButtons",
             "storyJson",
+            "fastDanceRunSwitch",
+            "fastDanceStatus",
+            "fastDanceSteps",
+            "fastDanceMicKv",
+            "fastDanceAsrText",
+            "fastDanceJson",
             "fast1RunSwitch",
             "fast1Steps",
             "fast1BrainText",
@@ -936,6 +943,59 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertTrue(restarted["ok"])
         self.assertEqual(restarted["action"], "story.voice_start")
         self.assertEqual(restarted["result"]["story"]["current_node"]["id"], "intro")
+
+    def test_fast_demo_dance_voice_keyword_sends_intro_then_sing_dance_command(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, command_sender=sender)
+            result = app.listen_fast_demo_dance({
+                "transcript": "小安，跳个舞",
+                "send_to_robot": True,
+                "allow_motion": True,
+            })
+            state = app.fast_demo_dance_state(robot={})
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["keyword_matched"])
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts", "demo.sing_dance"])
+        self.assertEqual(sent[0]["expression"], "surprised")
+        self.assertEqual(sent[1]["text"], DANCE_INTRO_TEXT)
+        self.assertEqual(sent[1]["playback_mode"], "buffered")
+        self.assertEqual(sent[2]["style"], "ode_to_joy")
+        self.assertEqual(sent[2]["duration_ms"], 13000)
+        self.assertEqual(state["asr_text"], "小安，跳个舞")
+        self.assertTrue(state["keyword_matched"])
+
+    def test_fast_demo_tts_texts_include_dance_intro(self) -> None:
+        items = iter_fast_demo_tts_texts()
+
+        self.assertTrue(any(
+            item.get("link") == "dance" and item.get("intent") == "intro" and item.get("text") == DANCE_INTRO_TEXT
+            for item in items
+        ))
+
+    def test_fast_demo_dance_voice_ignores_non_keyword_text(self) -> None:
+        sent: list[dict] = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(
+                runtime_dir=temp_dir,
+                command_sender=lambda payload: sent.append(payload) or {"ok": True, "ack": {"payload": {"ok": True}}},
+            )
+            result = app.listen_fast_demo_dance({
+                "transcript": "小安你好",
+                "send_to_robot": True,
+                "allow_motion": True,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["keyword_matched"])
+        self.assertEqual(sent, [])
 
     def test_fast_demo_story_voice_start_moves_out_before_first_tts_when_allowed(self) -> None:
         sent: list[dict] = []

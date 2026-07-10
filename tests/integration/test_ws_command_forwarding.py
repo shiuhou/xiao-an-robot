@@ -206,6 +206,19 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(robot_message["payload"]["sound"], sound)
                 self.assertAlmostEqual(robot_message["payload"]["volume"], 0.7)
 
+    async def test_sing_dance_demo_command_is_forwarded(self) -> None:
+        robot_message = await self.send_agent_command_and_assert_forwarded(
+            {
+                "command": "demo.sing_dance",
+                "style": "ode_to_joy",
+                "duration_ms": 11000,
+            },
+            "demo.sing_dance",
+        )
+
+        self.assertEqual(robot_message["payload"]["style"], "ode_to_joy")
+        self.assertEqual(robot_message["payload"]["duration_ms"], 11000)
+
     async def test_audio_play_tts_command_defaults_to_metadata_only(self) -> None:
         text = "hello xiao an"
 

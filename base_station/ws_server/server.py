@@ -33,6 +33,7 @@ from .protocol import (
     MotionAction,
     make_expression,
     make_audio_stream_end,
+    make_demo_sing_dance,
     make_motion,
     make_play_local,
     make_play_tts,
@@ -950,6 +951,12 @@ def build_robot_message(command_payload: dict) -> dict:
         return make_play_local(
             sound=command_payload.get("sound", "care_01"),
             volume=float(command_payload.get("volume", 0.7)),
+        )
+
+    if command == MessageType.DEMO_SING_DANCE.value:
+        return make_demo_sing_dance(
+            style=str(command_payload.get("style") or "ode_to_joy"),
+            duration_ms=int(command_payload.get("duration_ms") or 13000),
         )
 
     raise ValueError(f"Unsupported agent command: {command}")

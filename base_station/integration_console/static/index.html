@@ -511,6 +511,32 @@
           </article>
         </div>
       </section>
+
+      <section class="fast-demo-block">
+        <div class="chain-header inline-chain-header">
+          <div>
+            <div class="section-label">DANCE MODE</div>
+            <h2>唱歌跳舞：欢乐颂旋律 + 左右摆动</h2>
+          </div>
+          <label class="run-switch"><input id="fastDanceRunSwitch" type="checkbox"> 舞蹈模式</label>
+          <span class="status-pill unavailable" id="fastDanceStatus">IDLE</span>
+        </div>
+        <div class="chain-flow" id="fastDanceSteps"></div>
+        <div class="grid three">
+          <article class="card">
+            <h2>麦克风收音情况</h2>
+            <div class="kv" id="fastDanceMicKv"></div>
+          </article>
+          <article class="card">
+            <h2>ASR 文本</h2>
+            <pre class="textbox" id="fastDanceAsrText">-</pre>
+          </article>
+          <article class="card">
+            <h2>跳舞触发 / 执行</h2>
+            <pre class="jsonbox compact-json" id="fastDanceJson">{}</pre>
+          </article>
+        </div>
+      </section>
     </section>
 
     <section class="panel" id="tab-audio">

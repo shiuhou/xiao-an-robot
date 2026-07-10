@@ -114,6 +114,8 @@ void CommandRouter::handle(const String& type, JsonObject payload) {
     handleAudioPlayTts(payload);
   } else if (type == MsgType::AUDIO_STREAM_END) {
     handleAudioStreamEnd(payload);
+  } else if (type == MsgType::DEMO_SING_DANCE) {
+    handleDemoSingDance(payload);
   } else if (type == MsgType::CONFIG_UPDATE) {
     _status.ack(MsgType::CONFIG_UPDATE, "ok");
   } else if (type == MsgType::SYSTEM_SHUTDOWN) {
@@ -187,6 +189,71 @@ void CommandRouter::handleAudioPlayLocal(JsonObject payload) {
         ErrorCode::AUDIO_UNSUPPORTED);
     _status.ack(MsgType::AUDIO_PLAY_LOCAL, "error", detail);
   }
+}
+
+void CommandRouter::handleDemoSingDance(JsonObject payload) {
+  const char* style = payload["style"] | "ode_to_joy";
+  const uint32_t durationMs = constrain(payload["duration_ms"] | 13000, 8000, 15000);
+  if (strcmp(style, "ode_to_joy") != 0) {
+    _status.error(MsgType::DEMO_SING_DANCE, "unsupported sing dance style");
+    _status.ack(MsgType::DEMO_SING_DANCE, "error", "unsupported_style");
+    return;
+  }
+
+  if (!speaker_play_ode_to_joy()) {
+    const char* detail = speakerFailureDetail();
+    _status.error(
+        MsgType::DEMO_SING_DANCE,
+        speakerFailureMessage(detail),
+        ErrorCode::AUDIO_UNSUPPORTED);
+    _status.ack(MsgType::DEMO_SING_DANCE, "error", detail);
+    return;
+  }
+
+  display_emotion(Expression::SURPRISED, 7);
+  _state.setExpression(Expression::SURPRISED);
+  _status.sendCurrent();
+  _status.ack(MsgType::DEMO_SING_DANCE, "ok", "started");
+
+  const uint32_t startedMs = millis();
+  uint8_t step = 0;
+  while (millis() - startedMs < durationMs) {
+    JsonDocument motionDoc;
+    JsonObject motion = motionDoc.to<JsonObject>();
+    char actionId[32] = {};
+    snprintf(actionId, sizeof(actionId), "dance-%lu-%u", static_cast<unsigned long>(startedMs), step);
+    motion["action"] = MotionAction::TURN;
+    motion["action_id"] = actionId;
+    JsonObject params = motion["params"].to<JsonObject>();
+    params["speed"] = 0.45f;
+    params["angle_deg"] = (step % 2 == 0) ? -14.0f : 14.0f;
+    params["duration_ms"] = 320;
+    motion["timeout_ms"] = 620;
+    _motion.execute(motion);
+
+    const uint32_t turnStartedMs = millis();
+    while (millis() - turnStartedMs < 400) {
+      _motion.loop();
+      delay(10);
+    }
+    const uint32_t restStartedMs = millis();
+    while (millis() - restStartedMs < 180) {
+      _motion.loop();
+      delay(10);
+    }
+    ++step;
+  }
+
+  JsonDocument stopDoc;
+  JsonObject stop = stopDoc.to<JsonObject>();
+  stop["action"] = MotionAction::STOP;
+  stop["action_id"] = "dance-stop";
+  _motion.execute(stop);
+  _motion.loop();
+  speaker_stop();
+  display_emotion(Expression::NEUTRAL, 5);
+  _state.setExpression(Expression::NEUTRAL);
+  _status.sendCurrent();
 }
 
 void CommandRouter::handleAudioPlayTts(JsonObject payload) {

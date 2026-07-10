@@ -226,6 +226,9 @@ bool writeSilence(uint32_t durationMs) {
       static_cast<uint64_t>(MERGETEST_SPEAKER_SAMPLE_RATE) * durationMs / 1000);
   uint32_t framesWritten = 0;
   while (framesWritten < totalFrames) {
+    if (!gPlaying) {
+      return false;
+    }
     const uint32_t chunk = min<uint32_t>(FRAMES_PER_BUFFER, totalFrames - framesWritten);
     if (!writeFrames(stereoBuffer, chunk)) {
       return false;
@@ -244,6 +247,9 @@ bool playTone(uint32_t frequencyHz, uint32_t durationMs, int amplitude = SPEAKER
       (static_cast<uint64_t>(frequencyHz) << 32) / MERGETEST_SPEAKER_SAMPLE_RATE);
 
   while (framesWritten < totalFrames) {
+    if (!gPlaying) {
+      return false;
+    }
     const uint32_t chunk = min<uint32_t>(FRAMES_PER_BUFFER, totalFrames - framesWritten);
     for (uint32_t i = 0; i < chunk; ++i) {
       phase += phaseStep;
@@ -282,6 +288,29 @@ bool playWakeChime() {
          playTone(988, 220, SPEAKER_AMPLITUDE);
 }
 
+bool playOdeToJoyMelody() {
+  struct Note {
+    uint16_t hz;
+    uint16_t ms;
+  };
+  constexpr Note notes[] = {
+      {330, 340}, {330, 340}, {349, 340}, {392, 340},
+      {392, 340}, {349, 340}, {330, 340}, {294, 340},
+      {262, 340}, {262, 340}, {294, 340}, {330, 340},
+      {330, 360}, {294, 360}, {294, 430},
+      {330, 340}, {330, 340}, {349, 340}, {392, 340},
+      {392, 340}, {349, 340}, {330, 340}, {294, 340},
+      {262, 340}, {262, 340}, {294, 340}, {330, 340},
+      {294, 360}, {262, 360}, {262, 580},
+  };
+  for (const Note& note : notes) {
+    if (!playTone(note.hz, note.ms, 2100) || !writeSilence(70)) {
+      return false;
+    }
+  }
+  return writeSilence(140);
+}
+
 bool playLocalBlocking(const char* sound) {
   bool ok = false;
   if (strcmp(sound, LocalSound::CARE_01) == 0 || strcmp(sound, "wakeup_chime") == 0) {
@@ -290,6 +319,8 @@ bool playLocalBlocking(const char* sound) {
     ok = ensureSpeakerReady() && playAlarmBeeps();
   } else if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
     ok = ensureSpeakerReady() && playWakeChime();
+  } else if (strcmp(sound, "ode_to_joy") == 0) {
+    ok = ensureSpeakerReady() && playOdeToJoyMelody();
   }
   releaseSpeakerI2S();
   return ok;
@@ -722,6 +753,7 @@ bool speaker_play_local(const char* sound) {
   if (strcmp(sound, LocalSound::CARE_01) == 0 || strcmp(sound, "wakeup_chime") == 0) {
   } else if (strcmp(sound, LocalSound::ALARM_01) == 0 || strcmp(sound, "error_beep") == 0) {
   } else if (strcmp(sound, LocalSound::WAKE_01) == 0 || strcmp(sound, "success_ding") == 0) {
+  } else if (strcmp(sound, "ode_to_joy") == 0) {
   } else {
     LOGW("Speaker", "unsupported local sound %s", sound);
     setLastErrorDetail("unsupported_sound");
@@ -729,6 +761,10 @@ bool speaker_play_local(const char* sound) {
   }
 
   return startPlaybackTask(sound);
+}
+
+bool speaker_play_ode_to_joy() {
+  return speaker_play_local("ode_to_joy");
 }
 
 bool speaker_play_tts_mock(const char* textPreview) {
@@ -945,6 +981,7 @@ void speaker_stop() {
 
 bool speaker_init() { return false; }
 bool speaker_play_local(const char*) { return false; }
+bool speaker_play_ode_to_joy() { return false; }
 bool speaker_play_tts_mock(const char*) { return false; }
 bool speaker_take_tts_playback_result(SpeakerPlaybackResult*) { return false; }
 const char* speaker_last_error_detail() { return "speaker_disabled"; }

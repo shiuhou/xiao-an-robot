@@ -40,6 +40,7 @@ private:
   void handleDisplayExpression(JsonObject payload);
   void handleAudioPlayLocal(JsonObject payload);
   void handleAudioPlayTts(JsonObject payload);
+  void handleDemoSingDance(JsonObject payload);
   void startPendingPcmStream();
   void finishPendingPcmStream();
   void handleAudioStreamEnd(JsonObject payload);

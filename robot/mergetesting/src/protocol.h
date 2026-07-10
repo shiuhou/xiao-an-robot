@@ -25,6 +25,7 @@ namespace MsgType {
   constexpr const char* AUDIO_PLAY_TTS         = "audio.play_tts";
   constexpr const char* AUDIO_PLAY_LOCAL     = "audio.play_local";
   constexpr const char* AUDIO_STREAM_END     = "audio.stream_end";
+  constexpr const char* DEMO_SING_DANCE      = "demo.sing_dance";
   constexpr const char* CONFIG_UPDATE        = "config.update";
   constexpr const char* SYSTEM_SHUTDOWN      = "system.shutdown";
 }

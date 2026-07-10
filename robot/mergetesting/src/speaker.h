@@ -12,6 +12,7 @@ struct SpeakerPlaybackResult {
 
 bool speaker_init();
 bool speaker_play_local(const char* sound);
+bool speaker_play_ode_to_joy();
 bool speaker_play_tts_mock(const char* textPreview);
 bool speaker_take_tts_playback_result(SpeakerPlaybackResult* result);
 const char* speaker_last_error_detail();

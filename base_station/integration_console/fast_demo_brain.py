@@ -178,6 +178,8 @@ FAST_DEMO_REPLY_TABLES = {
     "fast3": LINK3_REPLIES,
 }
 
+DANCE_INTRO_TEXT = "哇，音乐响起来啦，小安准备跳舞。"
+
 
 def iter_fast_demo_tts_texts(*, include_visual_normal: bool = True) -> list[dict[str, str]]:
     """Return every deterministic Fast Demo sentence that may need local TTS."""
@@ -201,6 +203,12 @@ def iter_fast_demo_tts_texts(*, include_visual_normal: bool = True) -> list[dict
             "variant": expression,
             "text": text,
         })
+    items.append({
+        "link": "dance",
+        "intent": "intro",
+        "variant": "0",
+        "text": DANCE_INTRO_TEXT,
+    })
     items.extend(iter_story_demo_tts_texts())
     return items
 

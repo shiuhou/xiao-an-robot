@@ -80,7 +80,7 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-1.0 safe range.",
                 },
                 "distance_cm": {
                     "type": "number",
@@ -111,7 +111,7 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
             "properties": {
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-1.0 safe range.",
                 },
                 "timeout_ms": {
                     "type": "integer",
@@ -150,7 +150,7 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
                 },
                 "speed": {
                     "type": "number",
-                    "description": "Optional motion speed, clamped to the calibrated 0.52-0.56 safe range.",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-1.0 safe range.",
                 },
                 "distance_cm": {
                     "type": "number",

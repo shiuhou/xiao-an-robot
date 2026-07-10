@@ -521,7 +521,8 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn("unsupported local sound", local_body)
         self.assertIn("ErrorCode::AUDIO_UNSUPPORTED", local_body)
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_LOCAL, "error", "unsupported_sound")', local_body)
-        self.assertIn("speaker_init_fail", local_body)
+        self.assertIn("speakerFailureDetail", local_body)
+        self.assertIn("speaker_last_error_detail", router_cpp)
 
     def test_audio_router_tts_failure_reports_error_and_reports_accepted_ack(self) -> None:
         router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
@@ -534,8 +535,22 @@ class MergetestingLayeringTest(unittest.TestCase):
         self.assertIn('LOGI("Router", "audio.play_tts mock tone', tts_body)
         self.assertIn('_status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "queued")', tts_body)
         self.assertIn("_status.error", tts_body)
-        self.assertIn("speaker not ready", tts_body)
+        self.assertIn("speakerFailureMessage", tts_body)
+        self.assertIn("speaker not ready", router_cpp)
         self.assertIn("ErrorCode::AUDIO_UNSUPPORTED", tts_body)
+
+    def test_audio_router_can_request_runtime_streaming_tts(self) -> None:
+        router_cpp = (MERGETEST_SRC / "services" / "command_router.cpp").read_text(
+            encoding="utf-8"
+        )
+        router_h = (MERGETEST_SRC / "services" / "command_router.h").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('payload["playback_mode"]', router_cpp)
+        self.assertIn('strcmp(playbackMode, "streaming") == 0', router_cpp)
+        self.assertIn("speaker_begin_pcm_stream(pending.sampleRate, pending.channels, pending.buffered)", router_cpp)
+        self.assertIn("bool buffered", router_h)
 
     def test_speaker_defaults_match_max98357a_wiring(self) -> None:
         pins = (MERGETEST_SRC / "hardware_pins.h").read_text(encoding="utf-8")

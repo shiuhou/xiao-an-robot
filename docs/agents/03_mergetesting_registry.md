@@ -15,6 +15,7 @@
 | `mergetesting_care_demo_face240_ota` | ST7789 | 关 | 关 | 上述 care demo OTA | ✅ P |
 | `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；USB 首刷后启用 ArduinoOTA；0708 buffered PCM 新喇叭基准 | ✅ H 2026-07-08 |
 | `mergetesting_care_demo_face240_spoken_tts_din41_ota` | ST7789 | 关 | 关 | DIN41 spoken TTS care demo；无线 OTA 更新目标 | ✅ H 2026-07-05 |
+| `mergetesting_care_demo_face240_spoken_tts_din41_gain16_ota` | ST7789 | 关 | 关 | DIN41 spoken TTS OTA 诊断；`MERGETEST_SPEAKER_STREAM_GAIN=16`，用于对比 gain32 的沙音/电音 | 🟡 H partial 2026-07-11 |
 | `mergetesting_cam_only` | 关 | 开 | 关 | **Phase 3 传画** QVGA | ✅ 2026-06-26 |
 | `mergetesting_cam_only_ota` | 关 | 开 | 关 | camera OTA + `/video` 落图 | ✅ 2026-06-26 |
 | `mergetesting_mic_only` | 关 | 关 | 开 | PCM → `/audio` | ✅ 2026-06-26 |
@@ -48,6 +49,8 @@
 2026-07-08 新喇叭基准：更换为 `4 ohm 3 W, 500-5000 Hz` 喇叭后，当前 accepted spoken TTS path 是 `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb`，MAX98357A BCLK=39/LRC=40/DIN=41，`MERGETEST_SPEAKER_BUFFERED_STREAM=1`，`MERGETEST_SPEAKER_STREAM_GAIN=32`，base-station `XIAOAN_TTS_TARGET_PEAK=500`。固件端只缓存 PCM chunk，收到 `audio.stream_end` 后才启动 I2S 播放。Windows SAPI 现场验证使用 `XIAOAN_TTS_VOICE='Microsoft Hanhan Desktop'`；Linux 默认 edge-tts helper 不读取该变量，改用 `XIAOAN_EDGE_TTS_VOICE`。现场证据：`audio.playback_done status=ok bytes_written=367384 duration_ms=5763`，用户反馈“非常清楚”。
 
 2026-07-09 buffered receive 诊断：`mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` USB 上传 `/dev/ttyACM0` PASS；临时日志显示 runtime PSRAM 可用（begin `free_psram=8370979`）。三档 direct `/agent` TTS 均完整收到 `audio.stream_end` 并进入 buffered playback：38400、66816、158976 buffered bytes，`failed=0`，对应 `audio.playback_done ok bytes_written=65992/122828/307148`。未复现上一轮 direct 长句断链。
+
+2026-07-11 gain16 OTA 诊断：新增 `mergetesting_care_demo_face240_spoken_tts_din41_gain16_usb` 与 `mergetesting_care_demo_face240_spoken_tts_din41_gain16_ota`，只把 DIN41 buffered TTS 的 `MERGETEST_SPEAKER_STREAM_GAIN` 从 32 降到 16。`pio run -e mergetesting_care_demo_face240_spoken_tts_din41_gain16_ota` PASS；OTA 到 `192.168.137.116` 从 host `192.168.137.139` PASS，机器人以 `reset_reason=software` 重连。短句 `十六倍增益测试。你好。` 返回 `audio.playback_done ok bytes_written=203268 duration_ms=3204`；中等长度清晰度句 `十六倍增益清晰度测试。一二三四五，七八九十。` 在 `command.ack accepted` 后机器人 software reset/reconnect，未返回 playback_done。gain16 暂列为 H partial/不稳定，不替代 gain32 基准。
 
 编译验证：2026-06-26 全部 split env 编译 SUCCESS；实机 H 见 `docs/status/2026-06-26.md` 与 `docs/agents/08_priority_queue_results.json`（T07-T17 全部 PASS_H）。`mergetesting_full_face240` 已在 2026-06-27 通过 full env `/control` motor、face240、speaker、`/video`、`/audio` 硬件 smoke。
 

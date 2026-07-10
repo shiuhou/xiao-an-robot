@@ -18,7 +18,7 @@ const char* speaker_last_error_detail();
 bool speaker_pcm_stream_active();
 uint32_t speaker_pcm_stream_age_ms();
 bool speaker_abort_pcm_stream(const char* reason);
-bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels);
+bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels, bool bufferedStream);
 bool speaker_write_pcm_chunk(const uint8_t* pcm, size_t len);
 void speaker_end_pcm_stream();
 void speaker_stop();

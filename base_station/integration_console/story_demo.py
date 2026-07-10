@@ -51,7 +51,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "intro": StoryNode(
         id="intro",
         expression="thinking",
-        text="小安发现月亮门。选齿轮，还是按钮？",
+        text="今晚，小安在基站旁边发现了一扇很小的月亮门。门上写着：愿意一起做选择的人，才能打开星尘工作台。你想让我先检查蓝色齿轮，还是按下银色按钮？",
         choices=(
             StoryChoice("gear", "检查蓝色齿轮", "gear", ("齿轮", "蓝色齿轮", "检查齿轮")),
             StoryChoice("button", "按下银色按钮", "button", ("按钮", "银色按钮", "按按钮")),
@@ -60,7 +60,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "gear": StoryNode(
         id="gear",
         expression="thinking",
-        text="齿轮亮起星图。去档案室，还是升降台？",
+        text="小安轻轻转动蓝色齿轮，屏幕上浮出一张星图。星图缺了一个角，需要找回一颗小小的星尘螺丝。现在有两条路：安静的档案室，或者发光的升降台。你选哪边？",
         choices=(
             StoryChoice("archive", "去档案室", "archive", ("档案室", "安静的档案室")),
             StoryChoice("lift", "去升降台", "lift", ("升降台", "发光的升降台")),
@@ -69,7 +69,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "button": StoryNode(
         id="button",
         expression="surprised",
-        text="按钮打开轨道。选勇气，还是耐心？",
+        text="银色按钮一亮，月亮门发出叮的一声。里面不是房间，而是一条漂浮的小轨道。轨道尽头有两个工具箱：一个写着勇气，一个写着耐心。你想打开哪个？",
         choices=(
             StoryChoice("courage", "打开勇气工具箱", "courage", ("勇气", "勇气工具箱")),
             StoryChoice("patience", "打开耐心工具箱", "patience", ("耐心", "耐心工具箱")),
@@ -78,7 +78,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "archive": StoryNode(
         id="archive",
         expression="caring",
-        text="档案室有便签。慢慢找，还是扫描？",
+        text="档案室里很安静，所有旧计划都排成一行。小安找到一张便签，上面写着：重要的东西不是最快找到，而是有人陪你一起找。我们要继续慢慢找，还是让小安扫描一下？",
         choices=(
             StoryChoice("slow", "继续慢慢找", "ending_warm", ("慢慢找", "继续找")),
             StoryChoice("scan", "让小安扫描一下", "ending_scan", ("扫描", "扫描一下")),
@@ -87,7 +87,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "lift": StoryNode(
         id="lift",
         expression="happy",
-        text="升降台升起。伸手拿，还是稳住平台？",
+        text="升降台慢慢升起，整个工作台像星空一样亮了起来。小安看到那颗星尘螺丝就在最高处，但平台轻轻晃了一下。你要我伸手拿，还是先稳住平台？",
         choices=(
             StoryChoice("reach", "伸手拿", "ending_bright", ("拿", "伸手拿")),
             StoryChoice("steady", "先稳住平台", "ending_steady", ("稳住", "稳住平台")),
@@ -96,7 +96,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "courage": StoryNode(
         id="courage",
         expression="happy",
-        text="勇气箱发光。打开月亮门，还是叫醒工作台？",
+        text="勇气工具箱打开了，里面没有工具，只有一束暖暖的光。小安把光别在胸前，说：那我们今天就勇敢一点点。你想直接打开月亮门，还是先叫醒工作台？",
         choices=(
             StoryChoice("open", "直接打开月亮门", "ending_door", ("打开月亮门", "直接打开")),
             StoryChoice("wake", "叫醒工作台", "ending_workbench", ("叫醒", "叫醒工作台")),
@@ -105,7 +105,7 @@ STORY_NODES: dict[str, StoryNode] = {
     "patience": StoryNode(
         id="patience",
         expression="idle",
-        text="耐心箱有沙漏。等沙漏，还是敲门？",
+        text="耐心工具箱里有一个小沙漏。沙子落下的时候，工作台的灯一点一点亮起来。小安说：慢一点也没关系，我们正在靠近答案。你想等沙漏走完，还是轻轻敲门？",
         choices=(
             StoryChoice("wait", "等沙漏走完", "ending_lamp", ("等沙漏", "沙漏")),
             StoryChoice("knock", "轻轻敲门", "ending_knock", ("敲门", "轻轻敲门")),
@@ -114,42 +114,42 @@ STORY_NODES: dict[str, StoryNode] = {
     "ending_warm": StoryNode(
         id="ending_warm",
         expression="caring",
-        text="你们找到了螺丝。月亮门温柔地亮了。",
+        text="小安陪你慢慢找，最后在一页旧计划下面发现了星尘螺丝。月亮门亮起来，说：认真生活的人，总会被温柔找到。",
     ),
     "ending_scan": StoryNode(
         id="ending_scan",
         expression="thinking",
-        text="扫描发现螺丝就在桌角。答案其实很近。",
+        text="小安启动扫描，小屏幕上跳出一颗闪闪的小点。星尘螺丝就在桌角。小安说：有时候答案很近，只是需要换一种看法。",
     ),
     "ending_bright": StoryNode(
         id="ending_bright",
         expression="happy",
-        text="小安拿到螺丝。工作台亮成银河。",
+        text="小安伸手拿到星尘螺丝，工作台一下子亮成小小银河。屏幕写着：选择完成，陪伴继续。今天的小冒险成功啦。",
     ),
     "ending_steady": StoryNode(
         id="ending_steady",
         expression="caring",
-        text="小安稳住平台。稳稳来，也很勇敢。",
+        text="小安先稳住平台，再轻轻拿下螺丝。工作台没有晃，月亮门也慢慢打开。小安说：稳稳来，也是一种很厉害的勇敢。",
     ),
     "ending_door": StoryNode(
         id="ending_door",
         expression="surprised",
-        text="月亮门打开。小安递给你一盏小灯。",
+        text="月亮门被勇气之光推开，里面不是宝藏，而是一盏给认真工作的人准备的小灯。小安把灯递给你：今天辛苦啦。",
     ),
     "ending_workbench": StoryNode(
         id="ending_workbench",
         expression="speaking",
-        text="工作台醒了。小安说，我准备好啦。",
+        text="小安叫醒工作台，所有按钮都轻轻回应。工作台说：已经准备好陪你开始下一个任务。小安也亮起表情：我也准备好啦。",
     ),
     "ending_lamp": StoryNode(
         id="ending_lamp",
         expression="idle",
-        text="沙漏走完，工作台亮了。等待也有力量。",
+        text="沙漏走完，工作台自己亮了起来。小安小声说：你看，等待不是停下，而是在给答案一点点出现的时间。",
     ),
     "ending_knock": StoryNode(
         id="ending_knock",
         expression="happy",
-        text="星尘落在小安掌心。故事完成啦。",
+        text="你轻轻敲门，月亮门也轻轻回应。门后飘出一颗星尘，落在小安掌心。小安说：谢谢你和我一起完成这个故事。",
     ),
 }
 

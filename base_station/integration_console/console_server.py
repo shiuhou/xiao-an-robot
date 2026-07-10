@@ -57,7 +57,7 @@ FRESH_IMAGE_MS = 3000
 FRESH_AUDIO_MS = 5000
 FRESH_VISUAL_MS = 3000
 FAST2_AUTO_CARE_COOLDOWN_SECONDS = 20.0
-STORY_TTS_MAX_PCM_BYTES = 180_000
+STORY_TTS_MAX_PCM_BYTES = 512_000
 MOTION_ACTIONS = {"move_out_of_dock", "move_back_to_dock", "turn", "stop"}
 EXPRESSIONS = {
     "happy",
@@ -1612,6 +1612,7 @@ class IntegrationConsoleApp:
                     result = self.send_tts({
                         "text": step.get("text"),
                         "duration_ms": step.get("duration_ms"),
+                        "playback_mode": "buffered",
                     })
             steps.append({
                 "name": step["name"],
@@ -1624,7 +1625,7 @@ class IntegrationConsoleApp:
     def _story_tts_guard(self, text: str) -> tuple[bool, dict[str, Any]]:
         manifest_path = self.runtime_dir / "integration_console" / "fast_demo" / "tts_manifest.json"
         manifest, _ = _load_json_file(manifest_path)
-        max_bytes = _clamp_int(os.environ.get("XIAOAN_STORY_TTS_MAX_PCM_BYTES"), STORY_TTS_MAX_PCM_BYTES, 32000, 512000)
+        max_bytes = _clamp_int(os.environ.get("XIAOAN_STORY_TTS_MAX_PCM_BYTES"), STORY_TTS_MAX_PCM_BYTES, 32_000, 1_200_000)
         if not isinstance(manifest, dict):
             return True, {"ok": True, "skipped": False, "reason": "manifest_unavailable"}
         for item in manifest.get("items") if isinstance(manifest.get("items"), list) else []:
@@ -2517,7 +2518,7 @@ class IntegrationConsoleApp:
             return None, f"unsupported_motion:{action}"
         raw_params = body.get("params") if isinstance(body.get("params"), dict) else {}
         bench = bool(body.get("bench", False))
-        speed = _clamp_float(raw_params.get("speed"), 0.56, 0.0 if bench else 0.52, 1.0 if bench else 0.56)
+        speed = _clamp_float(raw_params.get("speed"), 1.0, 0.0 if bench else 0.52, 1.0)
         timeout_ms = _clamp_int(raw_params.get("timeout_ms", body.get("timeout_ms")), 1200, 1, 10000 if bench else 1200)
         params: dict[str, Any] = {}
         if action in {"move_out_of_dock", "move_back_to_dock", "turn"}:
@@ -2580,6 +2581,9 @@ class IntegrationConsoleApp:
             "command": "audio.play_tts",
             "text": text[:300],
         }
+        playback_mode = body.get("playback_mode")
+        if playback_mode in {"buffered", "streaming"}:
+            payload["playback_mode"] = playback_mode
         result = self.send_agent_command(payload, action="tts", event_type="robot.tts")
         if result.get("ok"):
             self.last_audio_sent_at = time.time()
@@ -2664,7 +2668,7 @@ class IntegrationConsoleApp:
 
     def _scenario_motion(self, steps: list[dict[str, Any]], device_id: Any, action: str, action_id: str | None = None) -> None:
         started = time.time()
-        params = {"speed": 0.56, "distance_cm": 8, "timeout_ms": 1200}
+        params = {"speed": 1.0, "distance_cm": 8, "timeout_ms": 1200}
         if action == "turn":
             params["angle_deg"] = 15
         result = self.send_motion({

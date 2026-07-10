@@ -749,7 +749,7 @@ function motionBody(action, angle) {
     action,
     bench: $("benchMode").checked,
     params: {
-      speed: Number($("motionSpeed").value || 0.56),
+      speed: Number($("motionSpeed").value || 1.0),
       distance_cm: Number($("motionDistance").value || 8),
       angle_deg: angle === undefined ? Number($("motionAngle").value || -15) : Number(angle),
       duration_ms: durationValue === "" ? undefined : Number(durationValue),

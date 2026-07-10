@@ -34,19 +34,17 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
             channels=1,
         )
 
-        original_chunk_bytes = ws_server.CONTROL_TTS_CHUNK_BYTES
         original_sleep = ws_server.asyncio.sleep
         sleeps: list[float] = []
 
         async def fake_sleep(duration: float) -> None:
             sleeps.append(duration)
 
-        ws_server.CONTROL_TTS_CHUNK_BYTES = 2048
         ws_server.asyncio.sleep = fake_sleep
         try:
-            ok, error = await ws_server.stream_control_binary_to_robot(stream, "speaker-test")
+            with mock.patch.dict("os.environ", {}, clear=True):
+                ok, error = await ws_server.stream_control_binary_to_robot(stream, "speaker-test")
         finally:
-            ws_server.CONTROL_TTS_CHUNK_BYTES = original_chunk_bytes
             ws_server.asyncio.sleep = original_sleep
 
         self.assertTrue(ok, error)
@@ -65,9 +63,20 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("audio.stream_end", websocket.sent[-1])
 
     def test_control_tts_chunks_fit_firmware_pcm_queue_budget(self) -> None:
-        self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_BYTES, 2048)
-        self.assertGreaterEqual(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.25)
-        self.assertLessEqual(ws_server.CONTROL_TTS_CHUNK_PACE_RATIO, 0.5)
+        with mock.patch.dict("os.environ", {}, clear=True):
+            self.assertLessEqual(ws_server.control_tts_chunk_bytes(), 2048)
+            self.assertGreaterEqual(ws_server.control_tts_chunk_pace_ratio(), 0.25)
+            self.assertLessEqual(ws_server.control_tts_chunk_pace_ratio(), 0.5)
+
+    def test_control_tts_pace_can_be_overridden_for_streaming_probe(self) -> None:
+        with mock.patch.dict("os.environ", {
+            ws_server.CONTROL_TTS_CHUNK_PACE_RATIO_ENV: "1.0",
+            ws_server.CONTROL_TTS_CHUNK_BYTES_ENV: "1024",
+            ws_server.CONTROL_TTS_START_DELAY_ENV: "0",
+        }, clear=True):
+            self.assertEqual(ws_server.control_tts_chunk_bytes(), 1024)
+            self.assertEqual(ws_server.control_tts_start_delay_seconds(), 0.0)
+            self.assertEqual(ws_server.control_tts_chunk_pace_ratio(), 1.0)
 
     def test_control_tts_stream_defaults_to_configured_backend(self) -> None:
         with (
@@ -101,6 +110,20 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings["sample_width_bytes"], 2)
         self.assertEqual(settings["cache_payload"], "robot_ready_raw_pcm_s16le")
         self.assertEqual(settings["playback_mode_expected"], "buffered_after_stream_end")
+
+    def test_tts_runtime_settings_show_streaming_probe_overrides(self) -> None:
+        with mock.patch.dict("os.environ", {
+            ws_server.CONTROL_TTS_STREAM_ENV: "1",
+            ws_server.CONTROL_TTS_CHUNK_PACE_RATIO_ENV: "1.0",
+            ws_server.CONTROL_TTS_CHUNK_BYTES_ENV: "1024",
+            ws_server.CONTROL_TTS_START_DELAY_ENV: "0",
+        }, clear=True):
+            settings = ws_server.tts_runtime_settings()
+
+        self.assertEqual(settings["chunk_bytes"], 1024)
+        self.assertEqual(settings["start_delay_seconds"], 0.0)
+        self.assertEqual(settings["pace_ratio"], 1.0)
+        self.assertEqual(settings["pace_ratio_env"], "1.0")
 
     async def test_tts_synthesis_runs_off_event_loop_thread(self) -> None:
         expected_stream = ws_server.TtsPcmStream(

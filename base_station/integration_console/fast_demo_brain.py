@@ -78,6 +78,21 @@ LINK1_REPLIES = {
         "收到，我把这句话先保存起来。",
         "这条笔记我记下啦，之后可以慢慢把它长成方案。",
     ),
+    "capture_preference": (
+        "我记住啦，你喜欢科幻故事。",
+    ),
+    "recall_preference": (
+        "你喜欢科幻故事，所以我下次可以给你讲星际探险。",
+    ),
+    "recall_identity": (
+        "我知道你是小安项目的负责人，正在带我准备今天的演示。",
+    ),
+    "recall_current_work": (
+        "你最近正在准备小安机器人的成品演示，我会帮你把提醒、日程和互动环节稳稳记住。",
+    ),
+    "recall_demo_goal": (
+        "你希望我展示语音记忆、主动提醒、视觉关怀和具身陪伴能力。",
+    ),
     "no_speech": (
         "我刚刚没听清。你再叫我一声，我会竖起小耳朵认真听。",
         "好像有点太轻啦，再说一次，我把耳朵竖起来。",
@@ -505,6 +520,61 @@ def _decide_link1(transcript: str) -> dict[str, Any]:
             expression="thinking",
             motion=False,
         )
+    if _has_any(text, ("我是谁", "知道我是谁", "记得我是谁", "认识我吗")):
+        return _decision(
+            link="fast1",
+            intent="recall_identity",
+            confidence=0.92,
+            reason="matched_identity_memory_question",
+            reply=LINK1_REPLIES["recall_identity"][0],
+            expression="speaking",
+            motion=False,
+            trigger={"transcript": transcript, "memory_key": "identity"},
+        )
+    if _has_any(text, ("最近在做什么", "正在做什么", "我在做什么", "最近忙什么", "现在在做什么")):
+        return _decision(
+            link="fast1",
+            intent="recall_current_work",
+            confidence=0.92,
+            reason="matched_current_work_memory_question",
+            reply=LINK1_REPLIES["recall_current_work"][0],
+            expression="speaking",
+            motion=False,
+            trigger={"transcript": transcript, "memory_key": "current_work"},
+        )
+    if _has_any(text, ("我的目标", "演示目标", "展示目标", "想展示什么", "要展示什么")):
+        return _decision(
+            link="fast1",
+            intent="recall_demo_goal",
+            confidence=0.9,
+            reason="matched_demo_goal_memory_question",
+            reply=LINK1_REPLIES["recall_demo_goal"][0],
+            expression="speaking",
+            motion=False,
+            trigger={"transcript": transcript, "memory_key": "demo_goal"},
+        )
+    if _has_any(text, ("喜欢什么故事", "我喜欢什么故事", "记得我喜欢什么", "我喜欢什么类型", "喜欢什么类型")):
+        return _decision(
+            link="fast1",
+            intent="recall_preference",
+            confidence=0.93,
+            reason="matched_preference_memory_question",
+            reply=LINK1_REPLIES["recall_preference"][0],
+            expression="speaking",
+            motion=False,
+            trigger={"transcript": transcript, "memory_key": "preference_story"},
+        )
+    if _has_any(text, ("我喜欢科幻故事", "喜欢科幻故事", "爱看科幻故事", "喜欢星际探险")):
+        return _decision(
+            link="fast1",
+            intent="capture_preference",
+            confidence=0.9,
+            reason="matched_preference_memory_capture",
+            reply=LINK1_REPLIES["capture_preference"][0],
+            expression="happy",
+            motion=False,
+            trigger={"transcript": transcript, "memory_key": "preference_story", "value": "科幻故事"},
+        )
     if _has_any(text, ("日程", "日历", "行程", "schedule", "calendar")):
         return _decision(
             link="fast1",
@@ -627,7 +697,7 @@ def _decide_link3(transcript: str) -> dict[str, Any]:
             reason="matched_care_keyword",
             reply=_pick_reply("companion_care", transcript, LINK3_REPLIES["companion_care"]),
             expression="caring",
-            motion_step={"action": "move_out_of_dock", "params": {"speed": 0.56, "distance_cm": 8.0}, "timeout_ms": 1200},
+            motion_step={"action": "move_out_of_dock", "params": {"speed": 1.0, "distance_cm": 8.0}, "timeout_ms": 1200},
             trigger={"transcript": transcript},
         )
     if _has_any(text, ("小安", "你好", "在吗", "hello", "嗨")):
@@ -674,7 +744,7 @@ def _decision(
         steps.append({
             "kind": "motion",
             "action": "move_out_of_dock",
-            "params": {"speed": 0.56, "distance_cm": 8.0},
+            "params": {"speed": 1.0, "distance_cm": 8.0},
             "timeout_ms": 1200,
         })
     if intent not in {"visual_normal"}:

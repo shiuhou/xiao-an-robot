@@ -87,7 +87,7 @@ class SendRobotCommandTest(unittest.TestCase):
             "command": "motion.execute",
             "action": "move_out_of_dock",
             "params": {
-                "speed": 0.56,
+                "speed": 1.0,
                 "distance_cm": 10.0,
             },
             "timeout_ms": 1200,

@@ -62,8 +62,8 @@ ws_runtime_dir = Path("runtime")
 server_started_at = time.time()
 audio_latest_pcm_max_bytes = 16000 * 2 * 5  # 5 seconds of 16kHz mono s16le PCM.
 MIN_SAFE_SPEED = 0.52
-MAX_SAFE_SPEED = 0.56
-DEFAULT_SAFE_SPEED = 0.56
+MAX_SAFE_SPEED = 1.0
+DEFAULT_SAFE_SPEED = 1.0
 MAX_SAFE_DISTANCE_CM = 10.0
 DEFAULT_SAFE_DISTANCE_CM = 10.0
 MAX_SAFE_TIMEOUT_MS = 2600
@@ -76,6 +76,9 @@ CONTROL_TTS_CHUNK_BYTES = 2048
 CONTROL_TTS_START_DELAY_SECONDS = 0.0
 CONTROL_TTS_CHUNK_PACE_RATIO = 0.35
 CONTROL_TTS_STREAM_ENV = "XIAOAN_CONTROL_TTS_STREAM"
+CONTROL_TTS_CHUNK_BYTES_ENV = "XIAOAN_CONTROL_TTS_CHUNK_BYTES"
+CONTROL_TTS_START_DELAY_ENV = "XIAOAN_CONTROL_TTS_START_DELAY_SEC"
+CONTROL_TTS_CHUNK_PACE_RATIO_ENV = "XIAOAN_CONTROL_TTS_CHUNK_PACE_RATIO"
 CONTROL_TTS_REQUIRE_PLAYBACK_DONE_ENV = "XIAOAN_CONTROL_TTS_REQUIRE_PLAYBACK_DONE"
 CONTROL_TTS_PLAYBACK_TIMEOUT_ENV = "XIAOAN_CONTROL_TTS_PLAYBACK_TIMEOUT_SEC"
 TRUE_ENV_VALUES = {"1", "true", "yes", "on"}
@@ -239,7 +242,56 @@ def control_tts_playback_timeout_seconds(pcm_stream: TtsPcmStream) -> float:
     if override is not None and override > 0:
         return override
     expected_seconds = max(0.0, pcm_stream.duration_ms / 1000.0)
-    return max(8.0, expected_seconds + CONTROL_TTS_START_DELAY_SECONDS + 6.0)
+    return max(8.0, expected_seconds + control_tts_start_delay_seconds() + 6.0)
+
+
+def _float_env(name: str, default: float, *, min_value: float, max_value: float) -> float:
+    raw = os.getenv(name)
+    try:
+        value = float(raw) if raw is not None and raw.strip() else default
+    except (TypeError, ValueError):
+        return default
+    if value < min_value or value > max_value:
+        return default
+    return value
+
+
+def _int_env(name: str, default: int, *, min_value: int, max_value: int) -> int:
+    raw = os.getenv(name)
+    try:
+        value = int(raw) if raw is not None and raw.strip() else default
+    except (TypeError, ValueError):
+        return default
+    if value < min_value or value > max_value:
+        return default
+    return value
+
+
+def control_tts_chunk_bytes() -> int:
+    return _int_env(
+        CONTROL_TTS_CHUNK_BYTES_ENV,
+        CONTROL_TTS_CHUNK_BYTES,
+        min_value=320,
+        max_value=8192,
+    )
+
+
+def control_tts_start_delay_seconds() -> float:
+    return _float_env(
+        CONTROL_TTS_START_DELAY_ENV,
+        CONTROL_TTS_START_DELAY_SECONDS,
+        min_value=0.0,
+        max_value=2.0,
+    )
+
+
+def control_tts_chunk_pace_ratio() -> float:
+    return _float_env(
+        CONTROL_TTS_CHUNK_PACE_RATIO_ENV,
+        CONTROL_TTS_CHUNK_PACE_RATIO,
+        min_value=0.1,
+        max_value=2.0,
+    )
 
 
 def tts_runtime_settings() -> dict[str, object]:
@@ -251,9 +303,12 @@ def tts_runtime_settings() -> dict[str, object]:
         "playback_done_required": control_tts_playback_done_required(),
         "playback_done_timeout_env": os.getenv(CONTROL_TTS_PLAYBACK_TIMEOUT_ENV, ""),
         "transport": "control_raw_pcm_stream",
-        "chunk_bytes": CONTROL_TTS_CHUNK_BYTES,
-        "start_delay_seconds": CONTROL_TTS_START_DELAY_SECONDS,
-        "pace_ratio": CONTROL_TTS_CHUNK_PACE_RATIO,
+        "chunk_bytes": control_tts_chunk_bytes(),
+        "chunk_bytes_env": os.getenv(CONTROL_TTS_CHUNK_BYTES_ENV, ""),
+        "start_delay_seconds": control_tts_start_delay_seconds(),
+        "start_delay_env": os.getenv(CONTROL_TTS_START_DELAY_ENV, ""),
+        "pace_ratio": control_tts_chunk_pace_ratio(),
+        "pace_ratio_env": os.getenv(CONTROL_TTS_CHUNK_PACE_RATIO_ENV, ""),
         "playback_mode_expected": "buffered_after_stream_end",
     })
     return settings
@@ -407,6 +462,21 @@ def _safe_motion_payload(action: MotionAction, payload: dict) -> tuple[dict, int
         if raw_params.get("duration_ms") is not None:
             params["duration_ms"] = _clamp_int(raw_params.get("duration_ms"), max_duration, 1, max_duration)
         return params, timeout_ms
+
+    if action == MotionAction.MOTOR_RAW:
+        params = {
+            "l_in1": _clamp_int(raw_params.get("l_in1"), 0, 0, 255),
+            "l_in2": _clamp_int(raw_params.get("l_in2"), 0, 0, 255),
+            "r_in1": _clamp_int(raw_params.get("r_in1"), 0, 0, 255),
+            "r_in2": _clamp_int(raw_params.get("r_in2"), 0, 0, 255),
+            "duration_ms": _clamp_int(
+                raw_params.get("duration_ms"),
+                800,
+                1,
+                BENCH_MAX_DURATION_MS,
+            ),
+        }
+        return params, BENCH_MAX_TIMEOUT_MS
 
     return raw_params, int(payload.get("timeout_ms", 5000) or 5000)
 
@@ -812,6 +882,8 @@ async def send_to_robot(message: dict, device_id: Optional[str] = None) -> tuple
 async def stream_control_binary_to_robot(
     pcm_stream: TtsPcmStream,
     device_id: str,
+    *,
+    pace_ratio: float | None = None,
 ) -> tuple[bool, Optional[str]]:
     """Send synthesized PCM bytes to the robot on the existing /control socket."""
 
@@ -821,13 +893,16 @@ async def stream_control_binary_to_robot(
 
     websocket = session["ws"]
     try:
-        await asyncio.sleep(CONTROL_TTS_START_DELAY_SECONDS)
-        for offset in range(0, len(pcm_stream.pcm), CONTROL_TTS_CHUNK_BYTES):
-            chunk = pcm_stream.pcm[offset:offset + CONTROL_TTS_CHUNK_BYTES]
+        start_delay_seconds = control_tts_start_delay_seconds()
+        chunk_bytes = control_tts_chunk_bytes()
+        resolved_pace_ratio = pace_ratio if pace_ratio is not None else control_tts_chunk_pace_ratio()
+        await asyncio.sleep(start_delay_seconds)
+        for offset in range(0, len(pcm_stream.pcm), chunk_bytes):
+            chunk = pcm_stream.pcm[offset:offset + chunk_bytes]
             await websocket.send(chunk)
             await asyncio.sleep(
                 pcm_stream_chunk_duration_seconds(pcm_stream, len(chunk))
-                * CONTROL_TTS_CHUNK_PACE_RATIO
+                * resolved_pace_ratio
             )
         await websocket.send(json.dumps(make_audio_stream_end(pcm_stream.audio_id), ensure_ascii=False))
     except ConnectionClosed:
@@ -880,8 +955,8 @@ def build_robot_message(command_payload: dict) -> dict:
     raise ValueError(f"Unsupported agent command: {command}")
 
 
-def build_tts_robot_message(pcm_stream: TtsPcmStream) -> dict:
-    return make_play_tts(
+def build_tts_robot_message(pcm_stream: TtsPcmStream, *, playback_mode: str | None = None) -> dict:
+    message = make_play_tts(
         audio_id=pcm_stream.audio_id,
         audio_url=f"stream://control/{pcm_stream.audio_id}",
         duration_ms=pcm_stream.duration_ms,
@@ -890,6 +965,9 @@ def build_tts_robot_message(pcm_stream: TtsPcmStream) -> dict:
         sample_rate=pcm_stream.sample_rate,
         channels=pcm_stream.channels,
     )
+    if playback_mode in {"buffered", "streaming"}:
+        message.setdefault("payload", {})["playback_mode"] = playback_mode
+    return message
 
 
 async def synthesize_tts_pcm_stream_async(text: str) -> TtsPcmStream:
@@ -990,17 +1068,26 @@ async def handle_agent(websocket: ServerConnection):
                     ws_state.setdefault("counters", {}).get("agent_commands", 0)
                 ) + 1
                 write_ws_state_snapshot()
+                playback_mode = None
                 if (
                     payload.get("command") == MessageType.AUDIO_PLAY_TTS.value
                     and control_tts_stream_enabled()
                 ):
                     tts_stream = await synthesize_tts_pcm_stream_async(payload.get("text", ""))
-                    robot_message = build_tts_robot_message(tts_stream)
+                    playback_mode = payload.get("playback_mode")
+                    robot_message = build_tts_robot_message(
+                        tts_stream,
+                        playback_mode=playback_mode if playback_mode in {"buffered", "streaming"} else None,
+                    )
                 else:
                     robot_message = build_robot_message(payload)
                 ok, selected_device_id, error = await send_to_robot(robot_message, device_id=device_id)
                 if ok and tts_stream is not None and selected_device_id is not None:
-                    ok, error = await stream_control_binary_to_robot(tts_stream, selected_device_id)
+                    ok, error = await stream_control_binary_to_robot(
+                        tts_stream,
+                        selected_device_id,
+                        pace_ratio=1.0 if playback_mode == "streaming" else None,
+                    )
                     if ok and control_tts_playback_done_required():
                         try:
                             playback_done_event = await wait_for_audio_playback_done(

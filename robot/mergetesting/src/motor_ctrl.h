@@ -12,7 +12,9 @@ constexpr uint32_t MOTOR_PWM_FREQ_HZ  = 20000;
 constexpr uint8_t  MOTOR_PWM_RES_BITS = 8;
 constexpr float DRIVE_CM_PER_SEC   = 18.0f;
 constexpr float TURN_MS_PER_DEG    = 6.5f;
-constexpr int   TURN_DEFAULT_SPEED = 200;
+constexpr int   MOTOR_LEFT_STRAIGHT_DUTY = 178;
+constexpr int   MOTOR_RIGHT_STRAIGHT_DUTY = 182;
+constexpr int   TURN_DEFAULT_SPEED = MOTOR_LEFT_STRAIGHT_DUTY;
 constexpr int   MOTOR_MIN_BENCH_DUTY = 160;
 
 #ifndef MERGE_PULSE_FORWARD_MS

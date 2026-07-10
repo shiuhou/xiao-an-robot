@@ -122,7 +122,7 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_message["payload"]["action"], "move_out_of_dock")
         self.assertEqual(robot_message["payload"]["action_id"], "agent-test-001")
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.56,
+            "speed": 1.0,
             "distance_cm": 10.0,
         })
         self.assertEqual(robot_message["payload"]["timeout_ms"], 1200)
@@ -142,7 +142,7 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(robot_message["payload"]["params"], {
-            "speed": 0.56,
+            "speed": 1.0,
             "distance_cm": 10.0,
         })
         self.assertEqual(robot_message["payload"]["timeout_ms"], 2600)

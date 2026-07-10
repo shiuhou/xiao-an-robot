@@ -53,6 +53,7 @@ def prepare_fast_demo_tts_cache(
         item["sample_width_bytes"] = 2
         item["target_peak"] = target_peak
         item["speaker_stream_gain"] = 32
+        item["cache_payload"] = "robot_ready_raw_pcm_s16le"
         item["cached_before"] = pcm_cache_path.exists() and pcm_cache_path.stat().st_size > 0
         item_started = time.monotonic()
         try:

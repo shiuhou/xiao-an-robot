@@ -49,6 +49,8 @@
 
 | 变更 | 路径 | 影响 |
 |------|------|------|
+| **DIN41 TTS stream gain16 OTA check 2026-07-11** | `robot/mergetesting/platformio.ini`, live robot `192.168.137.116` | Added `mergetesting_care_demo_face240_spoken_tts_din41_gain16_usb/_ota` for MAX98357A DIN41 buffered spoken TTS with `MERGETEST_SPEAKER_STREAM_GAIN=16`. Build and OTA upload PASS from host `192.168.137.139`; robot reconnected with `reset_reason=software`. Short TTS `十六倍增益测试。你好。` returned `audio.playback_done ok bytes_written=203268 duration_ms=3204`, but a 22-char clarity sentence accepted then robot software-reconnected before playback_done. Treat gain16 as unstable for medium TTS until serial logs identify whether reset occurs during buffered playback. |
+| **New WiFi burn 2026-07-10** | `robot/mergetesting/src/config.local.h` ignored local config, `mergetesting_care_demo_face240_spoken_tts_din41_ota_usb` | Local config was changed to SSID `z (2)` without committing credentials; corrected credential USB build/upload to `/dev/ttyACM0` PASS. Follow-up serial capture no longer showed WiFi timeout, but `/control` was still disconnected because firmware targets base station `192.168.31.253:8765` while this host remained on SSID `PnX`; new-network end-to-end WS still needs base station on the same WiFi and matching IP. |
 | 仓库整理 2026-06-23 | `archive/`, `experiments/`, env 收斂 | 31→22 env；`tfttest`/`face240_espi`/8×tftprobe 移除 |
 | 边界说明 | `robot/firmware/MIGRATION_FROM_MERGETESTING.md` | firmware 验证单项功能，mergetesting 做 DK-2500 联调 |
 | 联调工程 | `robot/mergetesting/` | DK-2500 联调烧这个，不跑 firmware 的集成 env |

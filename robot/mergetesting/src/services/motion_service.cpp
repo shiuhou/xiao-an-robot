@@ -15,7 +15,7 @@ constexpr uint32_t DEFAULT_TIMEOUT_MS = 5000;
 constexpr uint32_t MAX_TIMEOUT_MS = 10000;
 constexpr uint32_t MIN_MOTION_MS = 250;
 constexpr uint32_t MAX_BENCH_DURATION_MS = 10000;
-constexpr float DEFAULT_SPEED = 0.56f;
+constexpr float DEFAULT_SPEED = 1.0f;
 constexpr float MIN_EFFECTIVE_SPEED = 0.52f;
 
 uint32_t clampDuration(uint32_t durationMs, uint32_t timeoutMs) {
@@ -106,7 +106,10 @@ int MotionService::speedToDuty(float speed) const {
   if (speed <= 0.0f) {
     return 0;
   }
-  const int duty = constrain(static_cast<int>(80.0f + speed * 175.0f), 0, 255);
+  const int duty = constrain(
+      static_cast<int>(roundf(speed * MOTOR_LEFT_STRAIGHT_DUTY)),
+      0,
+      MOTOR_LEFT_STRAIGHT_DUTY);
 #if MERGETEST_ENABLE_MOTOR
   return max(duty, MOTOR_MIN_BENCH_DUTY);
 #else
@@ -118,6 +121,7 @@ bool MotionService::isSupportedAction(const char* action) const {
   return strcmp(action, MotionAction::MOVE_OUT_OF_DOCK) == 0 ||
          strcmp(action, MotionAction::MOVE_BACK_TO_DOCK) == 0 ||
          strcmp(action, MotionAction::TURN) == 0 ||
+         strcmp(action, MotionAction::MOTOR_RAW) == 0 ||
          strcmp(action, MotionAction::STOP) == 0;
 }
 
@@ -226,6 +230,39 @@ void MotionService::execute(JsonObject payload) {
 
   if (_active) {
     completeActive("interrupted");
+  }
+
+  if (strcmp(action, MotionAction::MOTOR_RAW) == 0) {
+    JsonObject params = payload["params"].as<JsonObject>();
+    const int lIn1 = constrain(params["l_in1"] | 0, 0, 255);
+    const int lIn2 = constrain(params["l_in2"] | 0, 0, 255);
+    const int rIn1 = constrain(params["r_in1"] | 0, 0, 255);
+    const int rIn2 = constrain(params["r_in2"] | 0, 0, 255);
+    const uint32_t durationMs = constrain(params["duration_ms"] | 800, MIN_MOTION_MS, MAX_BENCH_DURATION_MS);
+
+    _state.setBusy(true);
+    _state.setMotion(action);
+    display_set_motion("MOVE");
+    _status.sendCurrent();
+#if MERGETEST_ENABLE_MOTOR
+    _motor.debugDriveRaw(lIn1, lIn2, rIn1, rIn2, durationMs);
+#endif
+    _state.setMotion("idle");
+    _state.setBusy(false);
+    display_set_motion("IDLE");
+    _status.sendCurrent();
+    _status.motionCompleted(actionId, "success", _motor.isDocked() ? "in_dock" : "unknown", false);
+    _status.ack(MsgType::MOTION_EXECUTE, "ok", "raw_done", actionId);
+    LOGI(
+        "Motion",
+        "raw done action_id=%s l=%d/%d r=%d/%d duration=%lu ms",
+        actionId,
+        lIn1,
+        lIn2,
+        rIn1,
+        rIn2,
+        static_cast<unsigned long>(durationMs));
+    return;
   }
 
   const float param = paramFromPayload(payload, action);

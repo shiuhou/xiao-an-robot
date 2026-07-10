@@ -15,6 +15,9 @@ import uuid
 import wave
 
 DEFAULT_TTS_TARGET_PEAK = 500
+TTS_SAMPLE_RATE = 16000
+TTS_CHANNELS = 1
+TTS_SAMPLE_WIDTH_BYTES = 2
 TTS_CACHE_DIR_NAME = "tts_cache"
 TTS_COMMAND_ENV = "XIAOAN_TTS_COMMAND"
 TTS_TARGET_PEAK_ENV = "XIAOAN_TTS_TARGET_PEAK"
@@ -47,10 +50,12 @@ def _read_pcm_s16le_wav(path: Path) -> tuple[bytes, int, int]:
         sample_width = wav.getsampwidth()
         channels = wav.getnchannels()
         sample_rate = wav.getframerate()
-        if sample_width != 2:
+        if sample_width != TTS_SAMPLE_WIDTH_BYTES:
             raise RuntimeError(f"TTS WAV must be 16-bit PCM, got sample_width={sample_width}")
-        if channels != 1:
+        if channels != TTS_CHANNELS:
             raise RuntimeError(f"TTS WAV must be mono, got channels={channels}")
+        if sample_rate != TTS_SAMPLE_RATE:
+            raise RuntimeError(f"TTS WAV must be 16000 Hz, got sample_rate={sample_rate}")
         return wav.readframes(wav.getnframes()), sample_rate, channels
 
 
@@ -77,6 +82,32 @@ def tts_cache_path_for_text(text: str, runtime_dir: Path | str = Path("runtime")
     return _tts_cache_path(Path(runtime_dir), (text or "").strip())
 
 
+def _tts_robot_pcm_cache_identity(text: str, target_peak: int) -> str:
+    return "\0".join([
+        _cache_identity(text),
+        "raw_pcm_s16le",
+        str(TTS_SAMPLE_RATE),
+        str(TTS_CHANNELS),
+        str(TTS_SAMPLE_WIDTH_BYTES),
+        str(target_peak),
+    ])
+
+
+def _tts_robot_pcm_cache_path(runtime_dir: Path, text: str, *, target_peak: int) -> Path:
+    digest = hashlib.sha256(_tts_robot_pcm_cache_identity(text, target_peak).encode("utf-8")).hexdigest()
+    return runtime_dir / TTS_CACHE_DIR_NAME / f"{digest}.pcm"
+
+
+def tts_robot_pcm_cache_path_for_text(
+    text: str,
+    runtime_dir: Path | str = Path("runtime"),
+    *,
+    target_peak: int | None = None,
+) -> Path:
+    peak = tts_target_peak_from_env() if target_peak is None else max(1, min(int(target_peak), 32767))
+    return _tts_robot_pcm_cache_path(Path(runtime_dir), (text or "").strip(), target_peak=peak)
+
+
 def _copy_wav_to_cache(source: Path, cache_path: Path) -> None:
     if not source.exists() or source.stat().st_size <= 0:
         return
@@ -84,6 +115,25 @@ def _copy_wav_to_cache(source: Path, cache_path: Path) -> None:
     tmp_path = cache_path.with_suffix(".wav.tmp")
     shutil.copyfile(source, tmp_path)
     os.replace(tmp_path, cache_path)
+
+
+def _read_robot_pcm_cache(path: Path) -> bytes | None:
+    try:
+        pcm = path.read_bytes()
+    except OSError:
+        return None
+    if not pcm or len(pcm) % TTS_SAMPLE_WIDTH_BYTES:
+        return None
+    return pcm
+
+
+def _write_robot_pcm_cache(path: Path, pcm: bytes) -> None:
+    if not pcm or len(pcm) % TTS_SAMPLE_WIDTH_BYTES:
+        raise RuntimeError("robot PCM cache must be non-empty raw pcm_s16le")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".pcm.tmp")
+    tmp_path.write_bytes(pcm)
+    os.replace(tmp_path, path)
 
 
 def _latest_legacy_tts_wav_for_text(runtime_dir: Path, text: str) -> Path | None:
@@ -213,9 +263,10 @@ def tts_backend_runtime_settings() -> dict[str, object]:
         "volume": volume,
         "target_peak": tts_target_peak_from_env(),
         "pcm_format": "pcm_s16le",
-        "sample_rate": 16000,
-        "channels": 1,
-        "wav_payload": "frames_only_no_header",
+        "sample_rate": TTS_SAMPLE_RATE,
+        "channels": TTS_CHANNELS,
+        "sample_width_bytes": TTS_SAMPLE_WIDTH_BYTES,
+        "cache_payload": "robot_ready_raw_pcm_s16le",
     }
 
 
@@ -333,7 +384,19 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
     text_path = tts_dir / f"{audio_id}-{stamp}.txt"
     wav_path = tts_dir / f"{audio_id}-{stamp}.wav"
     cache_path = _tts_cache_path(runtime_path, text)
+    target_peak = tts_target_peak_from_env()
+    pcm_cache_path = _tts_robot_pcm_cache_path(runtime_path, text, target_peak=target_peak)
     text_path.write_text(text, encoding="utf-8")
+
+    cached_pcm = _read_robot_pcm_cache(pcm_cache_path)
+    if cached_pcm is not None:
+        return TtsPcmStream(
+            audio_id=audio_id,
+            text_preview=text,
+            pcm=cached_pcm,
+            sample_rate=TTS_SAMPLE_RATE,
+            channels=TTS_CHANNELS,
+        )
 
     source_wav_path = wav_path
     if cache_path.exists() and cache_path.stat().st_size > 0:
@@ -353,9 +416,10 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
             source_wav_path = legacy_wav
 
     pcm, sample_rate, channels = _read_pcm_s16le_wav(source_wav_path)
-    pcm = normalize_pcm_peak_s16le(pcm, target_peak=tts_target_peak_from_env())
+    pcm = normalize_pcm_peak_s16le(pcm, target_peak=target_peak)
     if not pcm:
         raise RuntimeError("TTS backend produced an empty PCM stream")
+    _write_robot_pcm_cache(pcm_cache_path, pcm)
     return TtsPcmStream(
         audio_id=audio_id,
         text_preview=text,

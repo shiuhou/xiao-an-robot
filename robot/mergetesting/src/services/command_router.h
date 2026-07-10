@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ArduinoJson.h>
+#include "config.h"
 #include "services/motion_service.h"
 #include "services/robot_state.h"
 #include "services/status_service.h"
@@ -16,6 +17,7 @@ public:
 private:
   struct PendingPcmStream {
     bool active = false;
+    bool buffered = MERGETEST_SPEAKER_BUFFERED_STREAM != 0;
     uint32_t sampleRate = 0;
     uint8_t channels = 0;
     char url[80] = {};

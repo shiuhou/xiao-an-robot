@@ -213,7 +213,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tts-text", default="I can speak now.", help="Text preview sent with audio.play_tts.")
     parser.add_argument("--include-motion", action="store_true", help="Include short safe motion steps.")
     parser.add_argument("--bench-motion", action="store_true", help="Mark motion commands as bench mode for lifted-wheel tests.")
-    parser.add_argument("--motion-speed", type=float, default=0.56, help="Motion speed used by the demo.")
+    parser.add_argument("--motion-speed", type=float, default=1.0, help="Motion speed used by the demo.")
     parser.add_argument("--forward-ms", type=int, default=800, help="Forward motion duration.")
     parser.add_argument("--forward-timeout-ms", type=int, default=1200, help="Forward motion timeout.")
     parser.add_argument("--turn-ms", type=int, default=450, help="Turn motion duration.")

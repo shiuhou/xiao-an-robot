@@ -54,6 +54,7 @@ class MotionAction(str, Enum):
     MOVE_OUT_OF_DOCK  = "move_out_of_dock"
     MOVE_BACK_TO_DOCK = "move_back_to_dock"
     TURN              = "turn"
+    MOTOR_RAW         = "motor_raw"
     NOD_HEAD          = "nod_head"
     TILT_HEAD         = "tilt_head"
     WIGGLE_EARS       = "wiggle_ears"

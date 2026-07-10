@@ -18,7 +18,7 @@ Use it with:
 | Reliable audible demo path | streamed `audio.play_tts` plus `audio.play_local wake_01/care_01` |
 | Current P0 speaker pins | MAX98357A BCLK=39, LRC/WS=40, DIN=41; robot mic disabled |
 | Product-candidate speaker pins | MAX98357A BCLK=39, LRC/WS=40, DIN=47; robot mic can keep SD=41 |
-| Practical floor motion speed | `0.56` |
+| Practical floor motion speed | `1.0` maps to calibrated PWM L=178/R=182 |
 | Full-demo upload note | USB upload was reliable at `460800` during handoff |
 | Local config | `src/config.local.h` from `src/config.local.example.h`; do not commit |
 
@@ -70,8 +70,8 @@ Run direct repo commands before testing higher-level OpenClaw routing:
 
 ```powershell
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression happy
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion forward --bench --speed 0.56 --duration-ms 2000 --timeout-ms 2200
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion left --bench --speed 0.56 --duration-ms 500 --timeout-ms 700
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion forward --bench --speed 1.0 --duration-ms 2000 --timeout-ms 2200
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion left --bench --speed 1.0 --duration-ms 500 --timeout-ms 700
 python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 python tools\run_openclaw_preflight_p0.py --device-id xiaoan_robot_01
 ```

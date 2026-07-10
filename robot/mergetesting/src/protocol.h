@@ -48,6 +48,7 @@ namespace MotionAction {
   constexpr const char* MOVE_OUT_OF_DOCK  = "move_out_of_dock";
   constexpr const char* MOVE_BACK_TO_DOCK = "move_back_to_dock";
   constexpr const char* TURN              = "turn";
+  constexpr const char* MOTOR_RAW         = "motor_raw";
   constexpr const char* NOD_HEAD          = "nod_head";
   constexpr const char* TILT_HEAD         = "tilt_head";
   constexpr const char* WIGGLE_EARS       = "wiggle_ears";

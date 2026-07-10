@@ -71,6 +71,7 @@ int16_t stereoBuffer[FRAMES_PER_BUFFER * 2];
 bool gReady = false;
 volatile bool gPlaying = false;
 volatile bool gPcmStreaming = false;
+bool gPcmBufferedStream = MERGETEST_SPEAKER_BUFFERED_STREAM != 0;
 uint32_t gPcmStreamStartedMs = 0;
 TaskHandle_t gTaskHandle = nullptr;
 TaskHandle_t gPcmTaskHandle = nullptr;
@@ -789,7 +790,7 @@ bool speaker_abort_pcm_stream(const char* reason) {
   return true;
 }
 
-bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
+bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels, bool bufferedStream) {
   if (gPcmStreaming) {
     setLastErrorDetail("");
     return true;
@@ -811,6 +812,7 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
 
   resetPcmBuffer();
   resetBufferedPcm();
+  gPcmBufferedStream = bufferedStream;
   LOGI(
       "Speaker",
       "pcm stream begin memory free_heap=%u free_psram=%u",
@@ -818,20 +820,19 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
       static_cast<unsigned>(freePsramBytes()));
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
-#if MERGETEST_SPEAKER_BUFFERED_STREAM
-#else
-  if (!ensureSpeakerReady()) {
-    LOGE("Speaker", "pcm stream speaker init failed");
-    setLastErrorDetail("speaker_init_fail");
-    return false;
+  if (!gPcmBufferedStream) {
+    if (!ensureSpeakerReady()) {
+      LOGE("Speaker", "pcm stream speaker init failed");
+      setLastErrorDetail("speaker_init_fail");
+      return false;
+    }
+    gPcmQueue = xQueueCreate(PCM_QUEUE_DEPTH, sizeof(PcmStreamJob));
+    if (!gPcmQueue) {
+      LOGE("Speaker", "pcm queue create failed");
+      setLastErrorDetail("pcm_queue_create_fail");
+      return false;
+    }
   }
-  gPcmQueue = xQueueCreate(PCM_QUEUE_DEPTH, sizeof(PcmStreamJob));
-  if (!gPcmQueue) {
-    LOGE("Speaker", "pcm queue create failed");
-    setLastErrorDetail("pcm_queue_create_fail");
-    return false;
-  }
-#endif
 #endif
 
   gPcmStreaming = true;
@@ -839,24 +840,23 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
   gPcmStreamStartedMs = millis();
 
 #if !MERGETEST_SPEAKER_PCM_DRAIN_ONLY
-#if MERGETEST_SPEAKER_BUFFERED_STREAM
-#else
-  const BaseType_t created = xTaskCreate(
-      pcmStreamTask,
-      "speaker_pcm",
-      4096,
-      nullptr,
-      1,
-      &gPcmTaskHandle);
-  if (created != pdPASS) {
-    closePcmQueue();
-    gPcmStreaming = false;
-    gPlaying = false;
-    setLastErrorDetail("task_create_fail");
-    LOGE("Speaker", "pcm stream task create failed");
-    return false;
+  if (!gPcmBufferedStream) {
+    const BaseType_t created = xTaskCreate(
+        pcmStreamTask,
+        "speaker_pcm",
+        4096,
+        nullptr,
+        1,
+        &gPcmTaskHandle);
+    if (created != pdPASS) {
+      closePcmQueue();
+      gPcmStreaming = false;
+      gPlaying = false;
+      setLastErrorDetail("task_create_fail");
+      LOGE("Speaker", "pcm stream task create failed");
+      return false;
+    }
   }
-#endif
 #endif
 
   LOGI(
@@ -865,7 +865,7 @@ bool speaker_begin_pcm_stream(uint32_t sampleRate, uint8_t channels) {
       static_cast<unsigned long>(sampleRate),
       channels,
       static_cast<unsigned>(MERGETEST_SPEAKER_PCM_DRAIN_ONLY),
-      static_cast<unsigned>(MERGETEST_SPEAKER_BUFFERED_STREAM));
+      gPcmBufferedStream ? 1U : 0U);
   setLastErrorDetail("");
   return true;
 }
@@ -882,10 +882,8 @@ bool speaker_write_pcm_chunk(const uint8_t* pcm, size_t len) {
 
 #if MERGETEST_SPEAKER_PCM_DRAIN_ONLY
   return true;
-#elif MERGETEST_SPEAKER_BUFFERED_STREAM
-  return appendBufferedPcm(pcm, len);
 #else
-  return enqueuePcmChunk(pcm, len);
+  return gPcmBufferedStream ? appendBufferedPcm(pcm, len) : enqueuePcmChunk(pcm, len);
 #endif
 }
 
@@ -904,27 +902,29 @@ void speaker_end_pcm_stream() {
 #if MERGETEST_SPEAKER_PCM_DRAIN_ONLY
   resetPcmBuffer();
   gPlaying = false;
-#elif MERGETEST_SPEAKER_BUFFERED_STREAM
-  const BaseType_t created = xTaskCreate(
-      pcmBufferedPlaybackTask,
-      "speaker_pcm_buf",
-      4096,
-      nullptr,
-      1,
-      &gPcmTaskHandle);
-  if (created != pdPASS) {
-    LOGE("Speaker", "pcm buffered playback task create failed");
-    resetBufferedPcm();
-    resetPcmBuffer();
-    gPlaying = false;
-    storeTtsPlaybackResult(false, 0, 0, "buffered", static_cast<uint32_t>(gBufferedPcmLen));
-  }
 #else
-  if (!enqueuePcmEnd()) {
-    finishPcmPlayback();
-    closePcmQueue();
-    resetPcmBuffer();
-    gPlaying = false;
+  if (gPcmBufferedStream) {
+    const BaseType_t created = xTaskCreate(
+        pcmBufferedPlaybackTask,
+        "speaker_pcm_buf",
+        4096,
+        nullptr,
+        1,
+        &gPcmTaskHandle);
+    if (created != pdPASS) {
+      LOGE("Speaker", "pcm buffered playback task create failed");
+      resetBufferedPcm();
+      resetPcmBuffer();
+      gPlaying = false;
+      storeTtsPlaybackResult(false, 0, 0, "buffered", static_cast<uint32_t>(gBufferedPcmLen));
+    }
+  } else {
+    if (!enqueuePcmEnd()) {
+      finishPcmPlayback();
+      closePcmQueue();
+      resetPcmBuffer();
+      gPlaying = false;
+    }
   }
 #endif
 }
@@ -951,7 +951,7 @@ const char* speaker_last_error_detail() { return "speaker_disabled"; }
 bool speaker_pcm_stream_active() { return false; }
 uint32_t speaker_pcm_stream_age_ms() { return 0; }
 bool speaker_abort_pcm_stream(const char*) { return false; }
-bool speaker_begin_pcm_stream(uint32_t, uint8_t) { return false; }
+bool speaker_begin_pcm_stream(uint32_t, uint8_t, bool) { return false; }
 bool speaker_write_pcm_chunk(const uint8_t*, size_t) { return false; }
 void speaker_end_pcm_stream() {}
 void speaker_stop() {}

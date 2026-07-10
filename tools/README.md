@@ -81,7 +81,7 @@ Move true tests into `tests/` over time; keep probe/manual scripts named as prob
 
 ```powershell
 python tools\send_robot_command.py --device-id xiaoan_robot_01 expression happy
-python tools\send_robot_command.py --device-id xiaoan_robot_01 motion forward --bench --speed 0.56 --duration-ms 2000 --timeout-ms 2200
+python tools\send_robot_command.py --device-id xiaoan_robot_01 motion forward --bench --speed 1.0 --duration-ms 2000 --timeout-ms 2200
 python tools\send_robot_command.py --device-id xiaoan_robot_01 local care_01
 ```
 

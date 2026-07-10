@@ -949,7 +949,7 @@ def build_rule_action_plan(transcript: str) -> dict[str, Any]:
             "name": "motion.execute",
             "arguments": {
                 "action": "move_out_of_dock",
-                "params": {"speed": 0.56, "distance_cm": 10.0},
+                "params": {"speed": 1.0, "distance_cm": 10.0},
                 "timeout_ms": 1200,
             },
         },
@@ -960,7 +960,7 @@ def build_rule_action_plan(transcript: str) -> dict[str, Any]:
                 "name": "motion.execute",
                 "arguments": {
                     "action": "left",
-                    "params": {"speed": 0.52, "angle_deg": -20},
+                    "params": {"speed": 1.0, "angle_deg": -20},
                     "timeout_ms": 700,
                 },
             }

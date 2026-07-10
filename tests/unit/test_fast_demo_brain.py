@@ -36,6 +36,7 @@ class FastDemoBrainTest(unittest.TestCase):
         self.assertTrue(any(item["variant"] == "happy" and "开心模式" in item["text"] for item in items))
         self.assertTrue(any(item["link"] == "fast3" and item["intent"] == "status_intro" for item in items))
         self.assertTrue(any(item["link"] == "fast2" and item["intent"] == "visual_normal" for item in items))
+        self.assertTrue(any(item["link"] == "fast1" and item["intent"] == "recall_preference" for item in items))
         self.assertTrue(all(item["text"] for item in items))
 
     def test_link1_reminder_decision_uses_public_brain_label(self) -> None:
@@ -56,7 +57,7 @@ class FastDemoBrainTest(unittest.TestCase):
         motion = [step for step in decision["robot_plan"]["steps"] if step["kind"] == "motion"][0]
         self.assertEqual(motion["action"], "move_out_of_dock")
         self.assertEqual(motion["params"]["distance_cm"], 8.0)
-        self.assertEqual(motion["params"]["speed"], 0.56)
+        self.assertEqual(motion["params"]["speed"], 1.0)
         self.assertEqual(motion["timeout_ms"], 1200)
 
     def test_link3_return_base_station_phrase_returns_to_dock(self) -> None:
@@ -119,6 +120,35 @@ class FastDemoBrainTest(unittest.TestCase):
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertEqual(decide_voice("fast1", text)["intent"], expected)
+
+    def test_link1_demo_memory_questions_use_preset_replies(self) -> None:
+        cases = {
+            "小安记一下，我喜欢科幻故事": ("capture_preference", "preference_story", "我记住啦，你喜欢科幻故事。"),
+            "小安，你记得我喜欢什么故事吗": ("recall_preference", "preference_story", "你喜欢科幻故事，所以我下次可以给你讲星际探险。"),
+            "小安，你知道我是谁吗": ("recall_identity", "identity", "我知道你是小安项目的负责人，正在带我准备今天的演示。"),
+            "小安，我最近在做什么": ("recall_current_work", "current_work", "你最近正在准备小安机器人的成品演示，我会帮你把提醒、日程和互动环节稳稳记住。"),
+            "小安，你记得我的目标吗": ("recall_demo_goal", "demo_goal", "你希望我展示语音记忆、主动提醒、视觉关怀和具身陪伴能力。"),
+        }
+        for text, (intent, memory_key, reply) in cases.items():
+            with self.subTest(text=text):
+                decision = decide_voice("fast1", text)
+                self.assertEqual(decision["intent"], intent)
+                self.assertEqual(decision["reply_text"], reply)
+                self.assertEqual(decision["robot_plan"]["steps"][0]["expression"], "happy" if intent == "capture_preference" else "speaking")
+                self.assertEqual(decision["trigger"]["memory_key"], memory_key)
+
+    def test_link1_demo_memory_does_not_write_dashboard_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dashboard_path = Path(temp_dir) / "state" / "dashboard.json"
+            decision = decide_voice("fast1", "小安，你记得我喜欢什么故事吗")
+            result = publish_fast_demo_dashboard_capture(
+                decision,
+                "小安，你记得我喜欢什么故事吗",
+                dashboard_path=dashboard_path,
+            )
+
+        self.assertIsNone(result)
+        self.assertFalse(dashboard_path.exists())
 
     def test_visual_decision_uses_gate_cv_and_vlm_signals(self) -> None:
         decision = decide_visual(

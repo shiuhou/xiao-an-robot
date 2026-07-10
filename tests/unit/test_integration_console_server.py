@@ -20,6 +20,7 @@ from base_station.integration_console.console_server import (
     _agent_ack_timeout_seconds,
     read_ws_state,
 )
+from base_station.integration_console.story_demo import get_story_node
 
 
 class FakeRunningProcess:
@@ -859,6 +860,39 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
         self.assertIn("月亮门", sent[1]["text"])
+        self.assertEqual(sent[1]["playback_mode"], "buffered")
+
+    def test_fast_demo_story_guard_allows_original_long_intro_pcm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            manifest_path = runtime / "integration_console" / "fast_demo" / "tts_manifest.json"
+            manifest_path.parent.mkdir(parents=True)
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+            intro = get_story_node("intro").text
+            manifest_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "xiaoan.fast_demo_tts_manifest.v2",
+                        "items": [
+                            {
+                                "link": "story",
+                                "intent": "intro",
+                                "text": intro,
+                                "pcm_bytes": 485376,
+                                "duration_ms": 15168,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            ok, guard = app._story_tts_guard(intro)
+
+        self.assertTrue(ok)
+        self.assertEqual(guard["pcm_bytes"], 485376)
+        self.assertEqual(guard["max_pcm_bytes"], 512000)
 
     def test_fast_demo_story_voice_starts_only_after_story_keyword(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1038,7 +1072,7 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         payload = sent[0]
         self.assertEqual(payload["command"], "motion.execute")
         self.assertEqual(payload["action"], "move_out_of_dock")
-        self.assertEqual(payload["params"]["speed"], 0.56)
+        self.assertEqual(payload["params"]["speed"], 0.9)
         self.assertEqual(payload["params"]["distance_cm"], 10.0)
         self.assertEqual(payload["timeout_ms"], 1200)
         self.assertTrue(payload["action_id"].startswith("console-"))

@@ -16,6 +16,17 @@ static const char* motorName(uint8_t motor) {
     return motor == 0 ? "left" : "right";
 }
 
+static int calibratedMotorDuty(uint8_t motor, int speed) {
+    const int leftDuty = constrain(speed, 0, MOTOR_LEFT_STRAIGHT_DUTY);
+    if (motor == 0) {
+        return leftDuty;
+    }
+    return constrain(
+        (leftDuty * MOTOR_RIGHT_STRAIGHT_DUTY + MOTOR_LEFT_STRAIGHT_DUTY / 2) / MOTOR_LEFT_STRAIGHT_DUTY,
+        0,
+        MOTOR_RIGHT_STRAIGHT_DUTY);
+}
+
 static uint8_t motorForwardChannel(uint8_t motor) {
     if (motor == 0) {
         return MOTOR_LEFT_FORWARD_USES_IN1 ? MOTOR_CH_L_IN1 : MOTOR_CH_L_IN2;
@@ -104,7 +115,7 @@ void MotorController::begin() {
 void MotorController::setMotor(uint8_t motor, int dir, int speed) {
     const uint8_t chForward = motorForwardChannel(motor);
     const uint8_t chReverse = motorReverseChannel(motor);
-    const int duty = constrain(speed, 0, 255);
+    const int duty = calibratedMotorDuty(motor, speed);
     int dutyForward = 0;
     int dutyReverse = 0;
 
@@ -117,10 +128,11 @@ void MotorController::setMotor(uint8_t motor, int dir, int speed) {
     ledcWrite(chForward, dutyForward);
     ledcWrite(chReverse, dutyReverse);
 
-    Serial.printf("[Motor] motor=%s dir=%d speed=%d -> forward_ch%d=%d reverse_ch%d=%d\n",
+    Serial.printf("[Motor] motor=%s dir=%d speed=%d duty=%d -> forward_ch%d=%d reverse_ch%d=%d\n",
                   motorName(motor),
                   dir,
                   speed,
+                  duty,
                   chForward,
                   dutyForward,
                   chReverse,
@@ -189,7 +201,7 @@ void MotorController::turnRight(int speed) {
 void MotorController::moveForward(int speed, float distance_cm) {
     _frontLimitHit = false;   // clear stale flag before motion
 
-    float   dutyFrac = constrain(speed, 1, 255) / 255.0f;
+    float   dutyFrac = constrain(speed, 1, MOTOR_LEFT_STRAIGHT_DUTY) / static_cast<float>(MOTOR_LEFT_STRAIGHT_DUTY);
     float   secsEst  = distance_cm / (DRIVE_CM_PER_SEC * dutyFrac);
     uint32_t durMs   = (uint32_t)(secsEst * 1000.0f);
 

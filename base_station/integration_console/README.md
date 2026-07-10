@@ -48,7 +48,7 @@ http://<DK2500-IP>:8090/console
 - 默认不自动运动。
 - 所有运动按钮在前端确认，`stop` 除外。
 - 页面顶部常驻 `STOP ALL / 急停`。
-- 后端也钳制 safe 参数：默认速度 `0.56`，距离不超过 `10cm`，超时不超过 `1200ms`，除非显式 bench。
+- 后端也钳制 safe 参数：默认速度 `1.0`，距离不超过 `10cm`，超时不超过 `1200ms`，除非显式 bench。
 - bench 模式需要高级开关，UI 标明“危险 / 仅空载测试”。
 - 音频命令有保守 cooldown，避免 TTS 和 local sound 连续触发 speaker not ready。
 - 工具执行只接受白名单 tool id。

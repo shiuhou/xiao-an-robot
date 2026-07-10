@@ -193,18 +193,25 @@ void CommandRouter::handleAudioPlayTts(JsonObject payload) {
   const char* url = payload["audio_url"] | "";
   const char* preview = payload["text_preview"] | payload["text"] | "";
   const char* audioFormat = payload["audio_format"] | "";
+  const char* playbackMode = payload["playback_mode"] | "";
   const uint32_t sampleRate = payload["sample_rate"] | MERGETEST_SPEAKER_SAMPLE_RATE;
   const uint8_t channels = payload["channels"] | 1;
+  const bool bufferedStream =
+      strcmp(playbackMode, "streaming") == 0
+          ? false
+          : (strcmp(playbackMode, "buffered") == 0 ? true : (MERGETEST_SPEAKER_BUFFERED_STREAM != 0));
 
   if (strcmp(audioFormat, "pcm_s16le") == 0 || strncmp(url, "stream://control/", 17) == 0) {
     LOGI(
         "Router",
-        "audio.play_tts pcm_stream url=%s preview=%s sample_rate=%lu channels=%u",
+        "audio.play_tts pcm_stream url=%s preview=%s sample_rate=%lu channels=%u playback_mode=%s",
         url,
         preview,
         static_cast<unsigned long>(sampleRate),
-        static_cast<unsigned>(channels));
+        static_cast<unsigned>(channels),
+        bufferedStream ? "buffered" : "streaming");
     _pendingPcmStream.active = true;
+    _pendingPcmStream.buffered = bufferedStream;
     _pendingPcmStream.sampleRate = sampleRate;
     _pendingPcmStream.channels = channels;
     strncpy(_pendingPcmStream.url, url, sizeof(_pendingPcmStream.url) - 1);
@@ -236,13 +243,14 @@ void CommandRouter::startPendingPcmStream() {
 
   LOGI(
       "Router",
-      "audio.play_tts pcm_stream start url=%s preview=%s sample_rate=%lu channels=%u",
+      "audio.play_tts pcm_stream start url=%s preview=%s sample_rate=%lu channels=%u playback_mode=%s",
       pending.url,
       pending.preview,
       static_cast<unsigned long>(pending.sampleRate),
-      static_cast<unsigned>(pending.channels));
+      static_cast<unsigned>(pending.channels),
+      pending.buffered ? "buffered" : "streaming");
 
-  const bool ok = speaker_begin_pcm_stream(pending.sampleRate, pending.channels);
+  const bool ok = speaker_begin_pcm_stream(pending.sampleRate, pending.channels, pending.buffered);
   if (ok) {
     _status.sendCurrent();
     _status.ack(MsgType::AUDIO_PLAY_TTS, "accepted", "pcm_stream");

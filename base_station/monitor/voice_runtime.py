@@ -23,6 +23,7 @@ from base_station.integration_console.fast_demo_brain import (
     build_fast_demo_voice_output,
     build_reminder_record,
     execute_robot_plan,
+    parse_reminder_due_at,
     publish_fast_demo_dashboard_capture,
 )
 from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output, create_asr_backend
@@ -117,6 +118,8 @@ async def process_text(
     *,
     session_id: str = "voice-runtime",
     disable_companion_fast_path: bool = False,
+    gateway_url: str = "ws://127.0.0.1:8765/agent",
+    local_demo_reminders_path: str | None = None,
 ) -> dict:
     """Send one terminal transcript through link 1 using an existing runtime."""
 
@@ -127,6 +130,14 @@ async def process_text(
         event["payload"]["disable_companion_fast_path"] = True
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
+    _maybe_schedule_openclaw_reminder_fallback(
+        output,
+        transcript,
+        reminders_path=local_demo_reminders_path,
+        send_to_robot=True,
+        allow_motion=False,
+        gateway_url=gateway_url,
+    )
     _publish_latest_reply(
         runtime,
         output,
@@ -241,6 +252,14 @@ async def process_audio_file(
     _write_latest_output(latest_output_path, _openclaw_pending_output(transcript, event))
     result = await runtime.brain.handle_event(event)
     output = build_voice_output(transcript, event, result)
+    _maybe_schedule_openclaw_reminder_fallback(
+        output,
+        transcript,
+        reminders_path=local_demo_reminders_path,
+        send_to_robot=True,
+        allow_motion=False,
+        gateway_url=gateway_url,
+    )
     _publish_latest_reply(
         runtime,
         output,
@@ -307,6 +326,8 @@ async def run_text_loop(
                 text,
                 session_id=session_id,
                 disable_companion_fast_path=disable_companion_fast_path,
+                gateway_url=gateway_url,
+                local_demo_reminders_path=local_demo_reminders_path,
             )
             handled_count += 1
             if verbose:
@@ -662,6 +683,100 @@ def _append_fast_demo_reminder(path: str | None, record: dict[str, Any]) -> None
     tmp.replace(target)
 
 
+def _maybe_schedule_openclaw_reminder_fallback(
+    output: dict,
+    transcript: str,
+    *,
+    reminders_path: str | None,
+    send_to_robot: bool,
+    allow_motion: bool,
+    gateway_url: str,
+) -> dict[str, Any] | None:
+    capture = _openclaw_capture(output)
+    if not _is_local_reminder_fallback_capture(capture):
+        return None
+
+    reminder = parse_reminder_due_at(transcript)
+    has_capture_due_at = False
+    if isinstance(capture, dict):
+        due_at = str(capture.get("due_at") or "").strip()
+        if due_at:
+            reminder["due_at"] = due_at
+            has_capture_due_at = True
+        title = str(capture.get("title") or "").strip()
+        if title:
+            reminder["title"] = title
+    if not has_capture_due_at and not _has_explicit_reminder_time(reminder):
+        return None
+
+    decision = {
+        "intent": "capture_reminder",
+        "reply_text": output.get("reply_text") or output.get("display_text"),
+        "trigger": {"reminder": reminder},
+    }
+    record = build_reminder_record(
+        decision,
+        transcript=transcript,
+        send_to_robot=send_to_robot,
+        allow_motion=allow_motion,
+        gateway_url=gateway_url,
+    )
+    if record is None:
+        return None
+
+    record["source"] = "openclaw_reminder_fallback"
+    record["openclaw_capture"] = capture
+    _append_fast_demo_reminder(reminders_path, record)
+    output["scheduled_reminder"] = record
+    output["local_reminder_fallback"] = {
+        "ok": True,
+        "reason": "openclaw_missing_cron_tool",
+        "reminders_path": reminders_path,
+        "reminder_id": record.get("id"),
+        "due_at": record.get("due_at"),
+    }
+    return record
+
+
+def _openclaw_capture(output: dict) -> dict[str, Any] | None:
+    raw = output.get("openclaw_raw")
+    if isinstance(raw, dict) and isinstance(raw.get("capture"), dict):
+        return raw["capture"]
+    result = output.get("openclaw_result")
+    if isinstance(result, dict):
+        nested_raw = result.get("openclaw_raw")
+        if isinstance(nested_raw, dict) and isinstance(nested_raw.get("capture"), dict):
+            return nested_raw["capture"]
+    return None
+
+
+def _is_local_reminder_fallback_capture(capture: dict[str, Any] | None) -> bool:
+    if not isinstance(capture, dict):
+        return False
+    if str(capture.get("kind") or "").strip().lower() not in {"reminder", "alarm"}:
+        return False
+    if str(capture.get("status") or "").strip().lower() != "captured":
+        return False
+    if str(capture.get("source_of_truth") or "") == "base_station_local_reminder_fallback":
+        return True
+    metadata = capture.get("metadata")
+    return (
+        isinstance(metadata, dict)
+        and str(metadata.get("fallback_reason") or "") == "openclaw_missing_cron_tool"
+    )
+
+
+def _has_explicit_reminder_time(reminder: dict[str, Any]) -> bool:
+    if not isinstance(reminder, dict):
+        return False
+    confidence = reminder.get("time_parse_confidence")
+    try:
+        score = float(confidence)
+    except (TypeError, ValueError):
+        score = 0.0
+    return score >= 0.5 and str(reminder.get("time_text") or "") != "默认1分钟后"
+
+
 def prewarm_asr_model(
     *,
     asr_backend: str = "sensevoice",
@@ -845,6 +960,11 @@ async def main(args: argparse.Namespace | None = None) -> int:
         prompt=not args.no_prompt,
         latest_output_path=args.latest_output,
         disable_companion_fast_path=args.disable_companion_fast_path,
+        decision_mode=args.decision_mode,
+        local_demo_link=args.local_demo_link,
+        local_demo_send_to_robot=args.local_demo_send_to_robot,
+        local_demo_allow_motion=args.local_demo_allow_motion,
+        local_demo_reminders_path=args.local_demo_reminders_path,
     )
     return 0
 

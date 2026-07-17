@@ -7,6 +7,7 @@ keeps local event routing and robot action compatibility paths.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from agent.core.action_executor import ActionExecutor
@@ -21,6 +22,7 @@ from agent.skills.companion_request import CompanionRequestSkill
 from agent.skills.emotion_monitor import EmotionMonitorSkill
 from agent.skills.robot_motion import RobotMotionSkill
 from base_station.monitor.emotion_db import EmotionDB
+from base_station.integration_console.fast_demo_brain import parse_reminder_due_at
 
 
 SUPPORTED_EMOTION_EVENTS = {"emotion.sample", "emotion.alert"}
@@ -178,6 +180,7 @@ class XiaoAnBrain:
                 context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
+            decision = self._rewrite_failed_reminder_for_local_fallback(decision, text)
             execution_result = await self.action_executor.execute(decision)
             execution_result["route"] = "link_1_openclaw"
             execution_result["reason"] = "openclaw_decision"
@@ -211,6 +214,7 @@ class XiaoAnBrain:
                 context=openclaw_context,
             )
             decision = self.openclaw_adapter.handle_event(openclaw_event)
+            decision = self._rewrite_failed_reminder_for_local_fallback(decision, payload.get("text", ""))
             execution_result = await self.action_executor.execute(decision)
             execution_result["route"] = "frontend_openclaw"
             execution_result["reason"] = "openclaw_decision"
@@ -221,6 +225,112 @@ class XiaoAnBrain:
             "reason": "unsupported_event",
             "message": f"Unsupported event type: {event_type}",
         }
+
+    def _rewrite_failed_reminder_for_local_fallback(
+        self,
+        decision: Any,
+        text: str | None,
+    ) -> Any:
+        capture = self._decision_capture(decision)
+        if not self._capture_needs_cron_fallback(capture):
+            return decision
+
+        reminder = parse_reminder_due_at(text or "")
+        if not self._has_explicit_reminder_time(reminder):
+            return decision
+        due_at = str(reminder.get("due_at") or "").strip()
+        if not due_at:
+            return decision
+
+        raw = deepcopy(getattr(decision, "raw", None)) if isinstance(getattr(decision, "raw", None), dict) else {}
+        raw_capture = raw.get("capture") if isinstance(raw.get("capture"), dict) else {}
+        title = (
+            str(raw_capture.get("title") or "").strip()
+            or self._reminder_title_from_text(text)
+            or "这件事"
+        )
+        time_text = str(reminder.get("time_text") or "").strip() or "到点"
+        display_text = f"好呀，{time_text}提醒你{title}。"
+        spoken_text = f"好呀，{time_text}提醒你{title}，小安帮你看着。"
+
+        raw_capture.update({
+            "status": "captured",
+            "kind": "reminder",
+            "source_of_truth": "base_station_local_reminder_fallback",
+            "title": title,
+            "content": str(raw_capture.get("content") or text or "").strip(),
+            "due_at": due_at,
+            "time_text": time_text,
+            "date": self._date_from_iso(due_at),
+            "time": self._time_from_iso(due_at),
+            "missing_fields": [],
+            "metadata": {
+                **(raw_capture.get("metadata") if isinstance(raw_capture.get("metadata"), dict) else {}),
+                "fallback_reason": "openclaw_missing_cron_tool",
+                "original_status": capture.get("status"),
+            },
+        })
+        raw["capture"] = raw_capture
+        raw["display_text"] = display_text
+        raw["spoken_text"] = spoken_text
+        raw["reply_text"] = display_text
+
+        decision.display_text = display_text
+        decision.spoken_text = spoken_text
+        decision.reply_text = display_text
+        decision.suppress_auto_tts = False
+        decision.tool_calls = []
+        decision.raw = raw
+        return decision
+
+    @staticmethod
+    def _decision_capture(decision: Any) -> dict[str, Any] | None:
+        raw = getattr(decision, "raw", None)
+        if isinstance(raw, dict) and isinstance(raw.get("capture"), dict):
+            return raw["capture"]
+        return None
+
+    @staticmethod
+    def _capture_needs_cron_fallback(capture: dict[str, Any] | None) -> bool:
+        if not isinstance(capture, dict):
+            return False
+        if str(capture.get("kind") or "").strip().lower() not in {"reminder", "alarm"}:
+            return False
+        if str(capture.get("status") or "").strip().lower() != "failed":
+            return False
+        missing_fields = capture.get("missing_fields")
+        if not isinstance(missing_fields, list):
+            return False
+        return "cron_tool" in {str(item).strip().lower() for item in missing_fields}
+
+    @staticmethod
+    def _has_explicit_reminder_time(reminder: dict[str, Any]) -> bool:
+        if not isinstance(reminder, dict):
+            return False
+        confidence = reminder.get("time_parse_confidence")
+        try:
+            score = float(confidence)
+        except (TypeError, ValueError):
+            score = 0.0
+        return score >= 0.5 and str(reminder.get("time_text") or "") != "默认1分钟后"
+
+    @staticmethod
+    def _reminder_title_from_text(text: str | None) -> str:
+        value = str(text or "").strip()
+        for token in ("提醒我", "提醒"):
+            if token in value:
+                tail = value.split(token, 1)[1].strip(" ，。,.")
+                if tail:
+                    return tail
+        return ""
+
+    @staticmethod
+    def _date_from_iso(value: str) -> str:
+        return value[:10] if len(value) >= 10 else ""
+
+    @staticmethod
+    def _time_from_iso(value: str) -> str:
+        return value[11:16] if len(value) >= 16 else ""
 
     async def _handle_companion_fast_path(
         self,

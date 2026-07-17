@@ -151,7 +151,7 @@ class XiaoAnBrainFrontendEventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_adapter.events[0].type, "companion.request")
         self.assertEqual(openclaw_adapter.events[0].source, "frontend")
         self.assertEqual(openclaw_adapter.events[0].text, "我有点累")
-        self.assertEqual([call[0] for call in gateway.calls], ["expression", "motion", "tts"])
+        self.assertEqual([call[0] for call in gateway.calls], ["expression", "tts", "motion", "tts"])
         self.assertEqual(gateway.calls[-1][1], "我在，先陪你缓一缓。")
 
     async def test_frontend_greeting_does_not_use_companion_fast_path(self) -> None:

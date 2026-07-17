@@ -1081,10 +1081,15 @@ async def handle_agent(websocket: ServerConnection):
                     and control_tts_stream_enabled()
                 ):
                     tts_stream = await synthesize_tts_pcm_stream_async(payload.get("text", ""))
-                    playback_mode = payload.get("playback_mode")
+                    requested_playback_mode = payload.get("playback_mode")
+                    playback_mode = (
+                        requested_playback_mode
+                        if requested_playback_mode in {"buffered", "streaming"}
+                        else "buffered"
+                    )
                     robot_message = build_tts_robot_message(
                         tts_stream,
-                        playback_mode=playback_mode if playback_mode in {"buffered", "streaming"} else None,
+                        playback_mode=playback_mode,
                     )
                 else:
                     robot_message = build_robot_message(payload)

@@ -468,6 +468,12 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--once", link2)
         self.assertIn("--disable-companion-fast-path", link1)
         self.assertNotIn("--disable-companion-fast-path", link3)
+        self.assertIn("--local-demo-reminders-path", link1)
+        self.assertEqual(
+            link1[link1.index("--local-demo-reminders-path") + 1],
+            str(app.fast_demo_reminders_path),
+        )
+        self.assertNotIn("--local-demo-reminders-path", link3)
         self.assertIn("openface_ov", link2)
         self.assertIn("openvino_qwen_vl", link2)
         self.assertEqual(link2[link2.index("--vlm-max-new-tokens") + 1], "128")

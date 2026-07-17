@@ -326,6 +326,7 @@ class WebSocketCommandForwardingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_message["payload"]["audio_format"], "pcm_s16le")
         self.assertEqual(robot_message["payload"]["sample_rate"], 16000)
         self.assertEqual(robot_message["payload"]["channels"], 1)
+        self.assertEqual(robot_message["payload"]["playback_mode"], "buffered")
 
     async def test_audio_play_tts_stream_synthesis_error_returns_agent_ack(self) -> None:
         original_synthesizer = ws_server.synthesize_tts_pcm_stream

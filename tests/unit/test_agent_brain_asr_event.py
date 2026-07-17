@@ -9,7 +9,7 @@ from pathlib import Path
 from agent.core.brain import XiaoAnBrain
 from agent.core.memory import XiaoAnMemoryStore
 from agent.core.openclaw_adapter import FakeOpenClawAdapter, OpenClawDecision
-from agent.skills.companion_request import PRE_RESPONSE_TEXT
+from agent.skills.companion_request import LOCAL_CARE_MOTION, PRE_RESPONSE_TEXTS
 
 
 class FakeGateway:
@@ -248,8 +248,12 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([call[0] for call in gateway.calls[:3]], ["expression", "tts", "motion"])
         self.assertEqual(gateway.calls[0][1], "caring")
-        self.assertEqual(gateway.calls[1][1], PRE_RESPONSE_TEXT)
+        self.assertIn(gateway.calls[1][1], PRE_RESPONSE_TEXTS)
         self.assertEqual(gateway.calls[2][1], "move_out_of_dock")
+        self.assertEqual(gateway.calls[2][2]["speed"], LOCAL_CARE_MOTION["speed"])
+        self.assertEqual(gateway.calls[2][2]["distance_cm"], float(LOCAL_CARE_MOTION["distance_cm"]))
+        self.assertEqual(gateway.calls[2][2]["duration_ms"], 2200)
+        self.assertEqual(gateway.calls[2][3], LOCAL_CARE_MOTION["timeout_ms"])
 
     async def test_companion_fast_path_pre_response_runs_before_openclaw(self) -> None:
         gateway = FakeGateway()
@@ -320,7 +324,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["handled"])
         self.assertEqual(result["route"], "link_3_companion_fast_path")
         self.assertEqual([call[0] for call in gateway.calls], ["expression", "tts", "motion", "tts"])
-        self.assertEqual(gateway.calls[1][1], PRE_RESPONSE_TEXT)
+        self.assertIn(gateway.calls[1][1], PRE_RESPONSE_TEXTS)
         self.assertEqual(gateway.calls[-1][1], "先休息一下，我会陪着你。")
         self.assertEqual(result["openclaw_result"]["handled"], True)
         self.assertEqual(result["openclaw_result"]["executed_actions"][0]["source"], "reply_text")
@@ -458,6 +462,87 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gateway.calls[0][1], "weather reply")
         self.assertEqual(result["executed_actions"][0]["name"], "robot.say")
         self.assertEqual(result["executed_actions"][0]["source"], "reply_text")
+
+    async def test_failed_openclaw_reminder_uses_local_fallback_before_tts(self) -> None:
+        gateway = FakeGateway()
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(
+                handled=True,
+                display_text="需要定时提醒能力才能创建 1 分钟后的提醒；当前事件没有提供可用工具。",
+                spoken_text="我先记到这里，但现在还不能真正定时提醒你。",
+                reply_text="需要定时提醒能力才能创建 1 分钟后的提醒；当前事件没有提供可用工具。",
+                raw={
+                    "handled": True,
+                    "capture": {
+                        "status": "failed",
+                        "kind": "reminder",
+                        "source_of_truth": "openclaw_xiaoan_runtime",
+                        "title": "喝水",
+                        "content": "1 分钟后提醒喝水。",
+                        "missing_fields": ["cron_tool"],
+                    },
+                },
+            ),
+        )
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        result = await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "小安，一分钟后提醒我喝水。"},
+        })
+
+        self.assertEqual(result["route"], "link_1_openclaw")
+        self.assertEqual([call[0] for call in gateway.calls], ["tts"])
+        self.assertEqual(gateway.calls[0][1], "好呀，一分钟后提醒你喝水，小安帮你看着。")
+        self.assertNotIn("不能真正定时提醒", gateway.calls[0][1])
+        capture = result["openclaw_raw"]["capture"]
+        self.assertEqual(capture["status"], "captured")
+        self.assertEqual(capture["source_of_truth"], "base_station_local_reminder_fallback")
+        self.assertEqual(capture["title"], "喝水")
+        self.assertEqual(capture["time_text"], "一分钟后")
+        self.assertIn("T", capture["due_at"])
+        self.assertEqual(capture["missing_fields"], [])
+        self.assertEqual(capture["metadata"]["fallback_reason"], "openclaw_missing_cron_tool")
+
+    async def test_failed_openclaw_reminder_without_time_does_not_default_to_one_minute(self) -> None:
+        gateway = FakeGateway()
+        failure_text = "需要具体提醒时间才能创建提醒。"
+        openclaw_adapter = FakeOpenClawAdapter(
+            decision=OpenClawDecision(
+                handled=True,
+                display_text=failure_text,
+                spoken_text=failure_text,
+                reply_text=failure_text,
+                raw={
+                    "handled": True,
+                    "capture": {
+                        "status": "failed",
+                        "kind": "reminder",
+                        "title": "喝水",
+                        "missing_fields": ["cron_tool"],
+                    },
+                },
+            ),
+        )
+        brain = XiaoAnBrain(
+            gateway=gateway,
+            memory=FakeMemory(),
+            openclaw_adapter=openclaw_adapter,
+        )
+
+        result = await brain.handle_event({
+            "type": "asr.transcript",
+            "payload": {"text": "小安提醒我喝水。"},
+        })
+
+        self.assertEqual(gateway.calls[0][1], failure_text)
+        capture = result["openclaw_raw"]["capture"]
+        self.assertEqual(capture["status"], "failed")
+        self.assertNotIn("due_at", capture)
 
     async def test_openclaw_normal_text_does_not_move_out_of_dock(self) -> None:
         gateway = FakeGateway()

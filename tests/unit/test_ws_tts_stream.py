@@ -108,6 +108,7 @@ class WebSocketTtsStreamTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings["sample_rate"], 16000)
         self.assertEqual(settings["channels"], 1)
         self.assertEqual(settings["sample_width_bytes"], 2)
+        self.assertEqual(settings["rate"], "+0%")
         self.assertEqual(settings["cache_payload"], "robot_ready_raw_pcm_s16le")
         self.assertEqual(settings["playback_mode_expected"], "buffered_after_stream_end")
 

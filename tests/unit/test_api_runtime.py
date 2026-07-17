@@ -201,6 +201,34 @@ class ApiRuntimeDashboardSyncTest(unittest.TestCase):
         self.assertEqual(dashboard["reminders"], [])
         self.assertIsNone(dashboard["next_item"])
 
+    def test_openclaw_schedule_capture_falls_back_to_time_in_content(self) -> None:
+        self.runtime._set_latest_reply(
+            notification_type="asr.transcript.final",
+            display_text="已加入日程：今天晚上10点上课。",
+            spoken_text="收到啦，已经放进日程，小安帮你记着。",
+            reply_text="已加入日程：今天晚上10点上课。",
+            tool_calls=[],
+            metadata={"transcript": "小安，把晚上10点钟上课加入日程。"},
+            session_id="voice-runtime",
+            source="voice_runtime.text_loop",
+            execution_result={
+                "openclaw_raw": {
+                    "capture": {
+                        "status": "captured",
+                        "kind": "schedule",
+                        "title": "上课",
+                        "content": "2026-07-17 22:00 上课。",
+                    }
+                }
+            },
+        )
+
+        dashboard = self.read_dashboard()
+        self.assertEqual(dashboard["schedules"][0]["title"], "上课")
+        self.assertEqual(dashboard["schedules"][0]["date"], "2026-07-17")
+        self.assertEqual(dashboard["schedules"][0]["time"], "22:00")
+        self.assertEqual(dashboard["next_item"], dashboard["schedules"][0])
+
     def test_invalid_dashboard_json_recovers_to_minimal_valid_structure(self) -> None:
         dashboard_path = self.runtime.openclaw_dashboard_path
         dashboard_path.parent.mkdir(parents=True, exist_ok=True)

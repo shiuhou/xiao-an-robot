@@ -193,6 +193,77 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(latest["metadata"]["route"], "link_1_openclaw")
         self.assertEqual(latest["session_id"], "native-work")
 
+    def test_openclaw_reminder_fallback_appends_local_reminder_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reminders_path = Path(temp_dir) / "reminders.json"
+            output = {
+                "display_text": "好呀，一分钟后提醒你喝水。",
+                "reply_text": "好呀，一分钟后提醒你喝水。",
+                "openclaw_raw": {
+                    "capture": {
+                        "status": "captured",
+                        "kind": "reminder",
+                        "source_of_truth": "base_station_local_reminder_fallback",
+                        "title": "喝水",
+                        "due_at": "2026-07-17T22:00:00+08:00",
+                        "time_text": "一分钟后",
+                        "metadata": {"fallback_reason": "openclaw_missing_cron_tool"},
+                    },
+                },
+            }
+
+            record = voice_runtime._maybe_schedule_openclaw_reminder_fallback(
+                output,
+                "小安，一分钟后提醒我喝水。",
+                reminders_path=str(reminders_path),
+                send_to_robot=True,
+                allow_motion=False,
+                gateway_url="ws://127.0.0.1:8765/agent",
+            )
+            saved = json.loads(reminders_path.read_text(encoding="utf-8"))
+
+        self.assertIsNotNone(record)
+        self.assertEqual(saved["schema_version"], "xiaoan.fast_demo_reminders.v1")
+        self.assertEqual(len(saved["items"]), 1)
+        item = saved["items"][0]
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["source"], "openclaw_reminder_fallback")
+        self.assertEqual(item["due_at"], "2026-07-17T22:00:00+08:00")
+        self.assertEqual(item["reminder"]["title"], "喝水")
+        self.assertTrue(item["send_to_robot"])
+        self.assertFalse(item["allow_motion"])
+        self.assertEqual(output["scheduled_reminder"]["id"], item["id"])
+        self.assertEqual(output["local_reminder_fallback"]["reason"], "openclaw_missing_cron_tool")
+
+    def test_openclaw_reminder_fallback_without_explicit_time_is_not_scheduled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reminders_path = Path(temp_dir) / "reminders.json"
+            output = {
+                "display_text": "需要具体提醒时间才能创建提醒。",
+                "openclaw_raw": {
+                    "capture": {
+                        "status": "captured",
+                        "kind": "reminder",
+                        "source_of_truth": "base_station_local_reminder_fallback",
+                        "title": "喝水",
+                        "metadata": {"fallback_reason": "openclaw_missing_cron_tool"},
+                    },
+                },
+            }
+
+            record = voice_runtime._maybe_schedule_openclaw_reminder_fallback(
+                output,
+                "小安提醒我喝水。",
+                reminders_path=str(reminders_path),
+                send_to_robot=True,
+                allow_motion=False,
+                gateway_url="ws://127.0.0.1:8765/agent",
+            )
+
+            self.assertIsNone(record)
+            self.assertFalse(reminders_path.exists())
+            self.assertNotIn("scheduled_reminder", output)
+
     async def test_text_loop_reuses_one_runtime_for_multiple_lines(self) -> None:
         input_stream = io.StringIO("\n第一句\n第二句\n")
         output_stream = io.StringIO()

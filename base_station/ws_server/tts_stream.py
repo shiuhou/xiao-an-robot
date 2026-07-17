@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import hashlib
 import os
@@ -27,6 +28,8 @@ EDGE_TTS_VOICE_ENV = "XIAOAN_EDGE_TTS_VOICE"
 EDGE_TTS_RATE_ENV = "XIAOAN_EDGE_TTS_RATE"
 EDGE_TTS_VOLUME_ENV = "XIAOAN_EDGE_TTS_VOLUME"
 DEFAULT_EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+DEFAULT_EDGE_TTS_RATE = "+0%"
+DEFAULT_EDGE_TTS_VOLUME = "+0%"
 
 
 @dataclass(frozen=True)
@@ -67,8 +70,8 @@ def _cache_identity(text: str) -> str:
         os.environ.get(TTS_VOICE_ENV, ""),
         os.environ.get(TTS_RATE_ENV, ""),
         os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE),
-        os.environ.get(EDGE_TTS_RATE_ENV, "+0%"),
-        os.environ.get(EDGE_TTS_VOLUME_ENV, "+0%"),
+        os.environ.get(EDGE_TTS_RATE_ENV, DEFAULT_EDGE_TTS_RATE),
+        os.environ.get(EDGE_TTS_VOLUME_ENV, DEFAULT_EDGE_TTS_VOLUME),
         text,
     ])
 
@@ -238,11 +241,16 @@ def tts_backend_runtime_settings() -> dict[str, object]:
         voice = os.environ.get(TTS_VOICE_ENV, "")
         rate = os.environ.get(TTS_RATE_ENV, "") or "0"
         volume = ""
+    elif _use_default_edge_direct_pcm():
+        backend = "edge_tts_direct_pcm"
+        voice = os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE)
+        rate = os.environ.get(EDGE_TTS_RATE_ENV, DEFAULT_EDGE_TTS_RATE)
+        volume = os.environ.get(EDGE_TTS_VOLUME_ENV, DEFAULT_EDGE_TTS_VOLUME)
     elif command_template == default_edge_tts_command_template():
         backend = "edge_tts_to_wav.py"
         voice = os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE)
-        rate = os.environ.get(EDGE_TTS_RATE_ENV, "+0%")
-        volume = os.environ.get(EDGE_TTS_VOLUME_ENV, "+0%")
+        rate = os.environ.get(EDGE_TTS_RATE_ENV, DEFAULT_EDGE_TTS_RATE)
+        volume = os.environ.get(EDGE_TTS_VOLUME_ENV, DEFAULT_EDGE_TTS_VOLUME)
     elif command_template:
         backend = "external_command"
         voice = os.environ.get(TTS_VOICE_ENV, "")
@@ -267,6 +275,7 @@ def tts_backend_runtime_settings() -> dict[str, object]:
         "channels": TTS_CHANNELS,
         "sample_width_bytes": TTS_SAMPLE_WIDTH_BYTES,
         "cache_payload": "robot_ready_raw_pcm_s16le",
+        "default_edge_direct_pcm": _use_default_edge_direct_pcm(),
     }
 
 
@@ -371,6 +380,69 @@ def _run_external_tts_command(text_path: Path, wav_path: Path) -> None:
         raise RuntimeError(f"External TTS command failed: {result.stderr.strip() or result.stdout.strip()}")
 
 
+def _use_default_edge_direct_pcm() -> bool:
+    if os.name == "nt":
+        return False
+    return tts_command_template_from_env() == default_edge_tts_command_template()
+
+
+async def _collect_edge_tts_audio_bytes(text: str) -> bytes:
+    import edge_tts
+
+    voice = os.environ.get(EDGE_TTS_VOICE_ENV, DEFAULT_EDGE_TTS_VOICE)
+    rate = os.environ.get(EDGE_TTS_RATE_ENV, DEFAULT_EDGE_TTS_RATE)
+    volume = os.environ.get(EDGE_TTS_VOLUME_ENV, DEFAULT_EDGE_TTS_VOLUME)
+    chunks: list[bytes] = []
+    communicate = edge_tts.Communicate(text, voice=voice, rate=rate, volume=volume)
+    async for message in communicate.stream():
+        if not isinstance(message, dict) or message.get("type") != "audio":
+            continue
+        data = message.get("data")
+        if isinstance(data, bytes):
+            chunks.append(data)
+    return b"".join(chunks)
+
+
+def _decode_edge_audio_to_pcm(edge_audio: bytes) -> bytes:
+    if not edge_audio:
+        raise RuntimeError("Edge TTS produced no audio bytes")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for direct Edge TTS PCM decode")
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-ar",
+            str(TTS_SAMPLE_RATE),
+            "-ac",
+            str(TTS_CHANNELS),
+            "-f",
+            "s16le",
+            "pipe:1",
+        ],
+        input=edge_audio,
+        check=False,
+        capture_output=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"ffmpeg failed to decode Edge TTS audio: {stderr}")
+    if not result.stdout:
+        raise RuntimeError("ffmpeg produced an empty PCM stream")
+    return result.stdout
+
+
+def _run_default_edge_tts_direct_pcm(text: str) -> bytes:
+    edge_audio = asyncio.run(_collect_edge_tts_audio_bytes(text))
+    return _decode_edge_audio_to_pcm(edge_audio)
+
+
 def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime")) -> TtsPcmStream:
     text = (text or "").strip()
     if not text:
@@ -399,7 +471,19 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
         )
 
     source_wav_path = wav_path
-    if cache_path.exists() and cache_path.stat().st_size > 0:
+    direct_edge_pcm = _use_default_edge_direct_pcm()
+    if direct_edge_pcm:
+        try:
+            pcm = _run_default_edge_tts_direct_pcm(text)
+            sample_rate = TTS_SAMPLE_RATE
+            channels = TTS_CHANNELS
+        except RuntimeError:
+            legacy_wav = _latest_legacy_tts_wav_for_text(runtime_path, text)
+            if legacy_wav is None:
+                raise
+            source_wav_path = legacy_wav
+            direct_edge_pcm = False
+    elif cache_path.exists() and cache_path.stat().st_size > 0:
         source_wav_path = cache_path
     else:
         try:
@@ -415,7 +499,8 @@ def synthesize_tts_pcm_stream(text: str, runtime_dir: Path | str = Path("runtime
             _copy_wav_to_cache(legacy_wav, cache_path)
             source_wav_path = legacy_wav
 
-    pcm, sample_rate, channels = _read_pcm_s16le_wav(source_wav_path)
+    if not direct_edge_pcm:
+        pcm, sample_rate, channels = _read_pcm_s16le_wav(source_wav_path)
     pcm = normalize_pcm_peak_s16le(pcm, target_peak=target_peak)
     if not pcm:
         raise RuntimeError("TTS backend produced an empty PCM stream")

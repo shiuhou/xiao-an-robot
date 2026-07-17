@@ -108,6 +108,36 @@ class TtsStreamTest(unittest.TestCase):
             self.assertEqual(tts_command_template_from_env(), "custom_tts {text_file} {wav_file}")
             self.assertTrue(external_tts_backend_configured())
 
+    def test_default_edge_backend_synthesizes_direct_robot_pcm_without_mp3_or_wav(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            source_pcm = struct.pack("<hhhh", -2000, 0, 1000, 4000)
+
+            with (
+                mock.patch.dict("os.environ", {}, clear=True),
+                mock.patch(
+                    "base_station.ws_server.tts_stream._run_default_edge_tts_direct_pcm",
+                    return_value=source_pcm,
+                ) as direct_pcm,
+                mock.patch(
+                    "base_station.ws_server.tts_stream._run_external_tts_command",
+                    side_effect=AssertionError("default Edge path should not write wav"),
+                ),
+            ):
+                stream = synthesize_tts_pcm_stream("直出 PCM", runtime_dir=runtime)
+
+            tts_files = list((runtime / "tts").glob("*"))
+            cached_wav_files = list((runtime / "tts_cache").glob("*.wav"))
+            cached_pcm_files = list((runtime / "tts_cache").glob("*.pcm"))
+
+        direct_pcm.assert_called_once_with("直出 PCM")
+        self.assertEqual(stream.sample_rate, 16000)
+        self.assertEqual(stream.channels, 1)
+        self.assertGreater(len(stream.pcm), 0)
+        self.assertEqual(len(cached_pcm_files), 1)
+        self.assertEqual(cached_wav_files, [])
+        self.assertFalse(any(path.suffix in {".mp3", ".wav"} for path in tts_files))
+
     def test_synthesize_tts_reuses_cache_without_external_command(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             calls: list[Path] = []

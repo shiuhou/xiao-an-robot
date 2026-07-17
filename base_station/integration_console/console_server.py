@@ -669,6 +669,7 @@ class IntegrationConsoleApp:
                 "--latest-output",
                 str(self.link_voice_output_path(link)),
                 "--once",
+                *(["--local-demo-reminders-path", str(self.fast_demo_reminders_path)] if link == "link1" else []),
                 *(["--disable-companion-fast-path"] if link == "link1" else []),
                 "--verbose",
             ]

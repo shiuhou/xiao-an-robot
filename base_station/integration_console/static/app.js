@@ -5,12 +5,18 @@ let lastPayload = null;
 let hiddenLogs = false;
 let visualSnapshotId = null;
 let visualRequestId = null;
+let workVisualSnapshotId = null;
 let fastVisualSnapshotId = null;
 let fastVisualRequestId = null;
 let cameraMtime = null;
 let fast2VisualMtime = null;
 
 const $ = (id) => document.getElementById(id);
+
+function setText(id, value) {
+  const node = $(id);
+  if (node) node.textContent = value;
+}
 
 function toast(message) {
   const node = $("toast");
@@ -209,9 +215,188 @@ function renderState() {
     robot.online ? "ROBOT ONLINE" : "ROBOT OFFLINE",
   );
   renderCameraConnection();
+  renderWorkMode();
   renderLinks();
   renderFastDemo();
   renderLogs();
+}
+
+function renderWorkMode() {
+  const work = state?.work_mode || {};
+  const mode = work.state || {};
+  const cards = work.cards || {};
+  const systemOn = !!mode.system_enabled;
+  const micRecognition = !!mode.mic_recognition_enabled;
+  const cameraEnabled = !!mode.camera_capture_enabled;
+  const episodeState = mode.episode_state || "idle";
+
+  $("workModeSystemSwitch").checked = systemOn;
+  $("workModeMicRecognitionSwitch").checked = micRecognition;
+  $("workModeMicRecognitionSwitch").disabled = !systemOn || pending;
+  $("workModeCameraSwitch").checked = cameraEnabled;
+  statusPill(
+    $("workModeStatus"),
+    systemOn ? (episodeState === "running" ? "running" : "live") : "unavailable",
+    systemOn ? (episodeState === "running" ? "RUNNING" : "WORK ON") : "OFF",
+  );
+
+  statusPill($("workSystemPill"), systemOn ? "live" : "unavailable", systemOn ? "ON" : "OFF");
+  kv("workSystemKv", [
+    ["状态文件", mode.persisted ? "yes" : "default"],
+    ["路径", mode.path],
+    ["更新时间", mode.updated_at],
+    ["system_enabled", mode.system_enabled],
+  ]);
+
+  const micCard = cards.mic || {};
+  statusPill(
+    $("workMicPill"),
+    micRecognition ? "live" : (mode.mic_device_open ? "idle" : "unavailable"),
+    micRecognition ? "RECOGNIZING" : (mode.mic_device_open ? "MUTED" : "OFF"),
+  );
+  kv("workMicKv", [
+    ["设备", mode.mic_device_open ? "open" : "closed"],
+    ["送入识别", micRecognition ? "yes" : "no"],
+    ["latest audio", msAge(micCard.latest_audio_age_ms)],
+    ["说明", micCard.detail],
+  ]);
+
+  const cameraCard = cards.camera || {};
+  statusPill(
+    $("workCameraPill"),
+    cameraEnabled ? (cameraCard.ok ? "live" : "stale") : "unavailable",
+    cameraEnabled ? (cameraCard.ok ? "LIVE" : "WAIT") : "OFF",
+  );
+  kv("workCameraKv", [
+    ["参与触发", cameraEnabled ? "yes" : "no"],
+    ["latest image", msAge(cameraCard.latest_image_age_ms)],
+    ["说明", cameraCard.detail],
+  ]);
+
+  const arbiter = cards.arbiter || {};
+  statusPill(
+    $("workArbiterPill"),
+    episodeState === "running" ? "running" : (episodeState === "cooldown" ? "queued" : "idle"),
+    String(episodeState || "IDLE").toUpperCase(),
+  );
+  kv("workArbiterKv", [
+    ["active_chain", arbiter.active_chain || "-"],
+    ["active_run_id", arbiter.active_run_id || "-"],
+    ["cooldown_until", mode.cooldown_until || "-"],
+    ["last", arbiter.last_episode?.status || "-"],
+  ]);
+
+  renderWorkLink("workLink1", cards.link1 || {}, cards.link1?.process || state?.processes?.work_voice || {});
+  renderWorkLink("workLink2", cards.link2 || {}, cards.link2?.process || state?.processes?.link2 || {});
+  renderWorkLink("workLink3", cards.link3 || {}, cards.link3?.process || state?.processes?.work_voice || {});
+
+  renderRouteList("workLocalFastPaths", work.local_fast_paths || []);
+  renderRouteList("workOpenclawPaths", work.openclaw_paths || []);
+  kv("workWorkspaceKv", [
+    ["workspace", work.workspace?.path],
+    ["TASKS.md", work.workspace?.tasks],
+    ["SCHEDULE.md", work.workspace?.schedule],
+    ["NOTES.md", work.workspace?.notes],
+    ["dashboard.json", work.workspace?.dashboard],
+    ["local_reminders", work.workspace?.local_reminders],
+  ]);
+  kv("workRoutingKv", [
+    ["mode", work.routing_policy?.mode],
+    ["local", work.routing_policy?.local_owner],
+    ["openclaw", work.routing_policy?.openclaw_owner],
+    ["说明", work.routing_policy?.description],
+  ]);
+  $("workEpisodeJson").textContent = pretty({
+    state: mode.episode_state,
+    active_chain: mode.active_chain,
+    active_run_id: mode.active_run_id,
+    cooldown_until: mode.cooldown_until,
+    last_episode: mode.last_episode,
+  });
+  const diagnostics = work.diagnostics || {};
+  setText("workAsrText", diagnostics.asr_text || "-");
+  renderWorkBrainReply();
+  renderVisualDiagnostics(state?.visual || {}, {
+    freshness: "workVisualFreshness",
+    cvMetrics: "workVisualCvMetrics",
+    gateStatus: "workVisualGateStatus",
+    gateRules: "workVisualGateRules",
+    vlmStatus: "workVisualVlmStatus",
+    vlmDetails: "workVisualVlmDetails",
+    fusion: "workVisualFusion",
+  });
+  renderWorkVisualFrame(state?.visual || {});
+  setText("workLocalReminderJson", pretty(state?.local_fast_path_reminders || {}));
+}
+
+function renderWorkBrainReply() {
+  const output = latestVoiceOutput();
+  const dashboard = state?.openclaw_dashboard?.dashboard || {};
+  const latestReply = dashboard.latest_reply || {};
+  const route = output.route || latestReply.route || dashboard.local_fast_path?.last_route || "-";
+  const reason = output.reason || latestReply.reason || dashboard.local_fast_path?.last_intent || "-";
+  const source = String(route).startsWith("local_fast_path")
+    ? "快速路径"
+    : (route !== "-" ? "完整路径 / OpenClaw" : "-");
+  const reply = (
+    output.reply_text
+    || output.display_text
+    || output.spoken_text
+    || latestReply.reply_text
+    || latestReply.display_text
+    || latestReply.spoken_text
+    || dashboard.status_text
+    || ""
+  );
+  kv("workBrainReplyKv", [
+    ["source", source],
+    ["route", route],
+    ["reason", reason],
+    ["updated", output.updated_at || latestReply.updated_at || dashboard.updated_at || "-"],
+  ]);
+  setText("workBrainReplyText", reply || "-");
+}
+
+function latestVoiceOutput() {
+  const candidates = [
+    state?.link_voice?.work_voice?.output,
+    state?.link_voice?.link1?.output,
+    state?.link_voice?.link3?.output,
+    state?.fast_demo?.fast1?.voice?.output,
+    state?.fast_demo?.fast3?.voice?.output,
+  ];
+  return candidates.find((item) => item && (item.reply_text || item.display_text || item.spoken_text || item.route)) || {};
+}
+
+function renderWorkLink(prefix, card, process) {
+  const ready = !!card.ok;
+  statusPill(
+    $(`${prefix}Pill`),
+    process.running ? "running" : (ready ? "live" : "idle"),
+    process.running ? "RUNNING" : (ready ? "READY" : "WAIT"),
+  );
+  kv(`${prefix}Kv`, [
+    ["说明", card.detail || "-"],
+    ["process", process.running ? `pid ${process.pid}` : process.status || "-"],
+    ["returncode", process.returncode],
+    ["log", process.log_path],
+  ]);
+}
+
+function renderRouteList(targetId, items) {
+  const node = $(targetId);
+  if (!items.length) {
+    node.innerHTML = '<div class="empty-state">暂无路由</div>';
+    return;
+  }
+  node.innerHTML = items.map((item) => `
+    <div class="route-item">
+      <strong>${escapeHtml(item.name || "-")}</strong>
+      <span>${escapeHtml(item.owner || "-")}</span>
+      <p>${escapeHtml(item.examples || item.reason || "-")}</p>
+      ${item.storage ? `<code>${escapeHtml(item.storage)}</code>` : ""}
+    </div>
+  `).join("");
 }
 
 function renderCameraConnection() {
@@ -359,6 +544,7 @@ function renderLinks() {
     latest_reply: dashboard.latest_reply,
   });
   $("link1RobotJson").textContent = pretty(link1.robot_execution);
+  renderLink2Diagnostics();
 
   kv("link3MicKv", [
     ["mic", link3Phase.label || "-"],
@@ -374,6 +560,159 @@ function renderLinks() {
   $("link3AsrText").textContent = link3.asr_text || "-";
   $("link3FastJson").textContent = pretty(link3.fast_response);
   $("link3FollowUpText").textContent = link3.follow_up_text || "-";
+}
+
+function renderVisualDiagnostics(payload, ids) {
+  const trace = payload?.state || {};
+  const observation = trace.observation || {};
+  const cv = trace.cv_sample || {};
+  const gate = trace.gate || {};
+  const result = gate.result || {};
+  const vlm = trace.vlm || {};
+  const freshnessNode = ids.freshness ? $(ids.freshness) : null;
+  if (!payload?.ok) {
+    if (freshnessNode) statusPill(freshnessNode, "unavailable", "UNAVAILABLE");
+    if (ids.cvMetrics) $(ids.cvMetrics).innerHTML = metricMarkup("状态", payload?.reason || "not_found");
+    if (ids.gateRules) $(ids.gateRules).innerHTML = '<div class="empty-state">等待 Gate 数据</div>';
+    if (ids.gateStatus) statusPill($(ids.gateStatus), "unavailable", "NO DATA");
+    if (ids.vlmStatus) statusPill($(ids.vlmStatus), "idle", "IDLE");
+    if (ids.vlmDetails) $(ids.vlmDetails).innerHTML = "";
+    if (ids.fusion) $(ids.fusion).textContent = "Fusion: -";
+    return { trace, observation, cv, gate, vlm };
+  }
+
+  if (freshnessNode) {
+    statusPill(
+      freshnessNode,
+      payload.freshness === "live" ? "live" : "stale",
+      `${String(payload.freshness || "stale").toUpperCase()} · ${msAge(payload.age_ms)}`,
+    );
+  }
+  if (ids.cvMetrics) {
+    $(ids.cvMetrics).innerHTML = [
+      metricMarkup("Frame", trace.frame_id),
+      metricMarkup("Face", observation.face_detected ? "detected" : "none"),
+      metricMarkup("EAR", observation.ear == null ? "-" : Number(observation.ear).toFixed(3)),
+      metricMarkup("MAR", observation.mar == null ? "-" : Number(observation.mar).toFixed(3)),
+      metricMarkup("Emotion", cv.emotion_tag),
+      metricMarkup("Confidence", cv.confidence),
+      metricMarkup("Fatigue", cv.fatigue_score),
+      metricMarkup("Quality", cv.observation_quality),
+    ].join("");
+  }
+
+  const force = gate.force || {};
+  const fatigue = gate.fatigue || {};
+  const negative = gate.single_negative || {};
+  const windowRule = gate.negative_window || {};
+  if (ids.gateRules) {
+    $(ids.gateRules).innerHTML = [
+      ruleMarkup("Force", force.fired ? "ON" : "OFF", "manual", !!force.fired),
+      ruleMarkup("High fatigue", fatigue.value ?? "-", `>= ${fatigue.threshold ?? "-"}`, !!fatigue.fired),
+      ruleMarkup("Negative", `${negative.emotion || "-"} · ${negative.confidence ?? "-"}`, `>= ${negative.confidence_threshold ?? "-"}`, !!negative.fired),
+      ruleMarkup("Negative window", `${windowRule.count ?? 0}/${windowRule.count_threshold ?? "-"}`, `${windowRule.confidence_sum ?? 0}/${windowRule.confidence_sum_threshold ?? "-"}`, !!windowRule.fired),
+    ].join("");
+  }
+  if (ids.gateStatus) {
+    statusPill(
+      $(ids.gateStatus),
+      result.should_trigger ? "triggered" : "normal",
+      result.should_trigger ? `TRIGGER · ${result.reason || "unknown"}` : "NORMAL",
+    );
+  }
+
+  const vlmStatus = String(vlm.status || "idle").toLowerCase();
+  if (ids.vlmStatus) statusPill($(ids.vlmStatus), vlmStatus, vlmStatus.toUpperCase());
+  if (ids.vlmDetails) {
+    $(ids.vlmDetails).innerHTML = [
+      metricMarkup("Request", vlm.request_id),
+      metricMarkup("Trigger frame", vlm.trigger_frame_id),
+      metricMarkup("Reason", vlm.reason),
+      metricMarkup("Latency", vlm.latency_ms == null ? "-" : `${vlm.latency_ms} ms`),
+      metricMarkup("Result", vlm.result?.expression_label || vlm.result?.emotion_tag),
+      metricMarkup("Confidence", vlm.result?.confidence),
+    ].join("");
+  }
+  const fusion = vlm.fusion || {};
+  if (ids.fusion) {
+    $(ids.fusion).textContent = fusion.decision
+      ? `Fusion · ${fusion.decision} — ${fusion.reason || ""}`
+      : "Fusion: -";
+  }
+  return { trace, observation, cv, gate, vlm };
+}
+
+function renderWorkVisualFrame(payload) {
+  const latestImage = $("workVisualLatestImage");
+  const imageEmpty = $("workVisualImageEmpty");
+  if (!latestImage || !imageEmpty) return;
+  const trace = payload?.state || {};
+  if (!payload?.ok || !trace.snapshot_id) {
+    latestImage.style.display = "none";
+    imageEmpty.style.display = "grid";
+    return;
+  }
+  if (trace.snapshot_id !== workVisualSnapshotId) {
+    workVisualSnapshotId = trace.snapshot_id;
+    latestImage.src = `/api/visual/latest-image?snapshot=${encodeURIComponent(workVisualSnapshotId)}`;
+  }
+  latestImage.style.display = "block";
+  imageEmpty.style.display = "none";
+}
+
+function renderLink2Diagnostics() {
+  const visual = state?.visual || {};
+  const trace = visual.state || {};
+  const observation = trace.observation || {};
+  const cv = trace.cv_sample || {};
+  const gate = trace.gate || {};
+  const vlm = trace.vlm || {};
+  const voiceCandidates = [
+    state?.link_voice?.work_voice?.output,
+    state?.link_voice?.link1?.output,
+    state?.link_voice?.link3?.output,
+    state?.fast_demo?.fast1?.voice?.output,
+    state?.fast_demo?.fast3?.voice?.output,
+  ];
+  const latestText = voiceCandidates
+    .map((item) => item?.text || item?.event?.payload?.text || "")
+    .find((text) => String(text || "").trim());
+  const openfacePayload = {
+    freshness: visual.freshness,
+    age_ms: visual.age_ms,
+    frame_id: trace.frame_id,
+    observation,
+    cv_sample: cv,
+  };
+  const gatePayload = {
+    gate,
+    should_trigger: gate.result?.should_trigger,
+    reason: gate.result?.reason,
+  };
+  const vlmPayload = {
+    status: vlm.status,
+    request_id: vlm.request_id,
+    trigger_frame_id: vlm.trigger_frame_id,
+    reason: vlm.reason,
+    latency_ms: vlm.latency_ms,
+    result: vlm.result,
+    fusion: vlm.fusion,
+  };
+  setText("link2AsrText", latestText || "-");
+  setText("link2OpenFaceJson", pretty(openfacePayload));
+  setText("link2VlmTriggerJson", pretty(gatePayload));
+  setText("link2VlmRuntimeJson", pretty(vlmPayload));
+  setText("workAsrText", latestText || "-");
+  renderVisualDiagnostics(visual, {
+    freshness: "workVisualFreshness",
+    cvMetrics: "workVisualCvMetrics",
+    gateStatus: "workVisualGateStatus",
+    gateRules: "workVisualGateRules",
+    vlmStatus: "workVisualVlmStatus",
+    vlmDetails: "workVisualVlmDetails",
+    fusion: "workVisualFusion",
+  });
+  renderWorkVisualFrame(visual);
 }
 
 function renderLink2CareVoice(careVoice) {
@@ -656,78 +995,33 @@ function ruleMarkup(label, value, threshold, fired) {
 }
 
 function renderVisualTrace(payload) {
-  const freshness = $("visualFreshness");
   const latestImage = $("visualLatestImage");
   const imageEmpty = $("visualImageEmpty");
+  const rendered = renderVisualDiagnostics(payload, {
+    freshness: "visualFreshness",
+    cvMetrics: "visualCvMetrics",
+    gateStatus: "visualGateStatus",
+    gateRules: "visualGateRules",
+    vlmStatus: "visualVlmStatus",
+    vlmDetails: "visualVlmDetails",
+    fusion: "visualFusion",
+  });
   if (!payload?.ok) {
-    statusPill(freshness, "unavailable", "UNAVAILABLE");
     latestImage.style.display = "none";
     imageEmpty.style.display = "grid";
-    $("visualCvMetrics").innerHTML = metricMarkup("状态", payload?.reason || "not_found");
-    $("visualGateRules").innerHTML = '<div class="empty-state">等待 Gate 数据</div>';
-    statusPill($("visualGateStatus"), "unavailable", "NO DATA");
-    statusPill($("visualVlmStatus"), "idle", "IDLE");
     $("visualTriggerImage").style.display = "none";
     $("visualTriggerEmpty").style.display = "grid";
-    $("visualVlmDetails").innerHTML = "";
-    $("visualFusion").textContent = "Fusion: -";
     return;
   }
 
-  const trace = payload.state || {};
-  const observation = trace.observation || {};
-  const cv = trace.cv_sample || {};
-  const gate = trace.gate || {};
-  const result = gate.result || {};
-  const vlm = trace.vlm || {};
-  statusPill(
-    freshness,
-    payload.freshness === "live" ? "live" : "stale",
-    `${String(payload.freshness || "stale").toUpperCase()} · ${msAge(payload.age_ms)}`,
-  );
+  const trace = rendered.trace || {};
+  const vlm = rendered.vlm || {};
   if (trace.snapshot_id && trace.snapshot_id !== visualSnapshotId) {
     visualSnapshotId = trace.snapshot_id;
     latestImage.src = `/api/visual/latest-image?snapshot=${encodeURIComponent(visualSnapshotId)}`;
   }
   latestImage.style.display = "block";
   imageEmpty.style.display = "none";
-  $("visualCvMetrics").innerHTML = [
-    metricMarkup("Frame", trace.frame_id),
-    metricMarkup("Face", observation.face_detected ? "detected" : "none"),
-    metricMarkup("EAR", observation.ear == null ? "-" : Number(observation.ear).toFixed(3)),
-    metricMarkup("MAR", observation.mar == null ? "-" : Number(observation.mar).toFixed(3)),
-    metricMarkup("Emotion", cv.emotion_tag),
-    metricMarkup("Confidence", cv.confidence),
-    metricMarkup("Fatigue", cv.fatigue_score),
-    metricMarkup("Quality", cv.observation_quality),
-  ].join("");
-
-  const force = gate.force || {};
-  const fatigue = gate.fatigue || {};
-  const negative = gate.single_negative || {};
-  const windowRule = gate.negative_window || {};
-  $("visualGateRules").innerHTML = [
-    ruleMarkup("Force", force.fired ? "ON" : "OFF", "manual", !!force.fired),
-    ruleMarkup("High fatigue", fatigue.value ?? "-", `>= ${fatigue.threshold ?? "-"}`, !!fatigue.fired),
-    ruleMarkup("Negative", `${negative.emotion || "-"} · ${negative.confidence ?? "-"}`, `>= ${negative.confidence_threshold ?? "-"}`, !!negative.fired),
-    ruleMarkup("Negative window", `${windowRule.count ?? 0}/${windowRule.count_threshold ?? "-"}`, `${windowRule.confidence_sum ?? 0}/${windowRule.confidence_sum_threshold ?? "-"}`, !!windowRule.fired),
-  ].join("");
-  statusPill(
-    $("visualGateStatus"),
-    result.should_trigger ? "triggered" : "normal",
-    result.should_trigger ? `TRIGGER · ${result.reason || "unknown"}` : "NORMAL",
-  );
-
-  const vlmStatus = String(vlm.status || "idle").toLowerCase();
-  statusPill($("visualVlmStatus"), vlmStatus, vlmStatus.toUpperCase());
-  $("visualVlmDetails").innerHTML = [
-    metricMarkup("Request", vlm.request_id),
-    metricMarkup("Trigger frame", vlm.trigger_frame_id),
-    metricMarkup("Reason", vlm.reason),
-    metricMarkup("Latency", vlm.latency_ms == null ? "-" : `${vlm.latency_ms} ms`),
-    metricMarkup("Result", vlm.result?.expression_label || vlm.result?.emotion_tag),
-    metricMarkup("Confidence", vlm.result?.confidence),
-  ].join("");
   const triggerImage = $("visualTriggerImage");
   const triggerEmpty = $("visualTriggerEmpty");
   if (vlm.request_id) {
@@ -741,10 +1035,6 @@ function renderVisualTrace(payload) {
     triggerImage.style.display = "none";
     triggerEmpty.style.display = "grid";
   }
-  const fusion = vlm.fusion || {};
-  $("visualFusion").textContent = fusion.decision
-    ? `Fusion · ${fusion.decision} — ${fusion.reason || ""}`
-    : "Fusion: -";
 }
 
 async function refreshVisualTrace() {
@@ -855,6 +1145,30 @@ function bindEvents() {
     const action = $("motionAction").value;
     sendMotion(action);
   });
+  ["workModeSystemSwitch", "workModeMicRecognitionSwitch", "workModeCameraSwitch"].forEach((id) => {
+    $(id).addEventListener("change", async () => {
+      const body = {
+        system_enabled: $("workModeSystemSwitch").checked,
+        mic_recognition_enabled: $("workModeMicRecognitionSwitch").checked,
+        camera_capture_enabled: $("workModeCameraSwitch").checked,
+      };
+      if (!body.system_enabled) body.mic_recognition_enabled = false;
+      const result = await post("/api/work-mode/update", body);
+      if (!result.ok) toast(`失败: ${result.error || "unknown"}`);
+      await refreshState();
+    });
+  });
+  $("workModeStartBtn").addEventListener("click", async () => {
+    const result = await post("/api/work-mode/start", {
+      mic_recognition_enabled: true,
+      camera_capture_enabled: $("workModeCameraSwitch").checked,
+    });
+    $("workEpisodeJson").textContent = pretty(result);
+  });
+  $("workModeStopBtn").addEventListener("click", async () => {
+    const result = await post("/api/work-mode/stop", {});
+    $("workEpisodeJson").textContent = pretty(result);
+  });
   $("agentPayloadBtn").addEventListener("click", () => {
     lastPayload = {
       transcript: $("agentText").value,
@@ -923,8 +1237,7 @@ function bindEvents() {
         node.checked = !start;
         toast(`失败: ${result.error || "unknown"}`);
       } else {
-        const oneShot = key === "link1" || key === "link3";
-        toast(start ? `${key} ${oneShot ? "单次采集" : "runtime"}已启动` : `${key} runtime 已停止`);
+        toast(start ? `${key} 常驻语音 runtime 已启动` : `${key} runtime 已停止`);
       }
       await refreshState();
     });

@@ -64,6 +64,29 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
 
         for element_id in (
             "cameraLatestImage",
+            "workModeSystemSwitch",
+            "workModeMicRecognitionSwitch",
+            "workModeCameraSwitch",
+            "workModeStartBtn",
+            "workModeStopBtn",
+            "workModeStatus",
+            "workLocalFastPaths",
+            "workOpenclawPaths",
+            "workWorkspaceKv",
+            "workVisualLatestImage",
+            "workVisualImageEmpty",
+            "workAsrText",
+            "workBrainReplyKv",
+            "workBrainReplyText",
+            "workVisualFreshness",
+            "workVisualCvMetrics",
+            "workVisualGateStatus",
+            "workVisualGateRules",
+            "workVisualVlmStatus",
+            "workVisualVlmDetails",
+            "workVisualFusion",
+            "workRoutingKv",
+            "workLocalReminderJson",
             "manualRobotStatus",
             "expressionButtons",
             "motionAction",
@@ -92,6 +115,10 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
             "link2OpenclawCareStatus",
             "link2OpenclawCareVoice",
             "link2OpenclawCareMeta",
+            "link2AsrText",
+            "link2OpenFaceJson",
+            "link2VlmTriggerJson",
+            "link2VlmRuntimeJson",
             "fastDemoSendRobotSwitch",
             "fastDemoAllowMotionSwitch",
             "fastReminderKv",
@@ -148,6 +175,7 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
                     health = json.loads(response.read().decode("utf-8"))
                 with urllib.request.urlopen(f"{base_url}/api/state", timeout=5) as response:
                     state = json.loads(response.read().decode("utf-8"))
+                state_file_exists = (Path(temp_dir) / "work_mode_state.json").exists()
             finally:
                 server.shutdown()
                 server.server_close()
@@ -165,11 +193,54 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertIn("link1", state["links"])
         self.assertIn("link2", state["links"])
         self.assertIn("link3", state["links"])
+        self.assertIn("work_voice", state["processes"])
         self.assertIn("fast_demo", state)
+        self.assertIn("work_mode", state)
+        self.assertFalse(state["work_mode"]["state"]["system_enabled"])
+        self.assertIn("local_fast_paths", state["work_mode"])
         self.assertIn("fast1", state["fast_demo"])
         self.assertIn("fast2", state["fast_demo"])
         self.assertIn("fast3", state["fast_demo"])
         self.assertFalse(state["processes"]["link2"]["running"])
+
+    def test_work_mode_update_persists_to_state_api(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server = create_server(
+                "127.0.0.1",
+                0,
+                runtime_dir=temp_dir,
+                ws_url="ws://127.0.0.1:8765/agent",
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address[:2]
+            base_url = f"http://{host}:{port}"
+            try:
+                body = json.dumps({
+                    "system_enabled": True,
+                    "mic_recognition_enabled": True,
+                    "camera_capture_enabled": True,
+                }).encode("utf-8")
+                request = urllib.request.Request(
+                    f"{base_url}/api/work-mode/update",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    update = json.loads(response.read().decode("utf-8"))
+                with urllib.request.urlopen(f"{base_url}/api/state", timeout=5) as response:
+                    state = json.loads(response.read().decode("utf-8"))
+                state_file_exists = (Path(temp_dir) / "work_mode_state.json").exists()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertTrue(update["ok"])
+        self.assertTrue(state["work_mode"]["state"]["system_enabled"])
+        self.assertTrue(state["work_mode"]["state"]["mic_recognition_enabled"])
+        self.assertTrue(state_file_exists)
 
     def test_state_ignores_stale_demo_files_for_link_completion(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, tempfile.TemporaryDirectory() as workspace_dir:
@@ -461,8 +532,8 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("--enable-vlm-gate", link2)
         self.assertIn("--latest-output", link1)
         self.assertIn("--asr-language", link1)
-        self.assertIn("--once", link1)
-        self.assertIn("--once", link3)
+        self.assertNotIn("--once", link1)
+        self.assertNotIn("--once", link3)
         self.assertEqual(link1[link1.index("--duration") + 1], "6.0")
         self.assertEqual(link3[link3.index("--duration") + 1], "6.0")
         self.assertNotIn("--once", link2)
@@ -486,6 +557,82 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         )
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
+
+    def test_work_voice_command_is_real_resident_openclaw_voice_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            command = app.link_command("work_voice")
+            env = app.link_environment("work_voice")
+
+        self.assertIn("base_station.monitor.voice_runtime", command)
+        self.assertIn("local_mic", command)
+        self.assertNotIn("--once", command)
+        self.assertNotIn("--decision-mode", command)
+        self.assertIn("--latest-output", command)
+        self.assertIn("work_voice", command[command.index("--latest-output") + 1])
+        self.assertEqual(env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
+        self.assertEqual(env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
+        self.assertIn("XIAOAN_WORK_MODE_STATE_PATH", env)
+
+    def test_start_work_mode_starts_voice_and_visual_processes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "base_station.integration_console.console_server.subprocess.Popen",
+            side_effect=lambda *args, **kwargs: FakePopen(*args, **kwargs),
+        ), patch("base_station.integration_console.console_server.time.sleep", return_value=None):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            result = app.start_work_mode({
+                "mic_recognition_enabled": True,
+                "camera_capture_enabled": True,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["work_mode"]["system_enabled"])
+        self.assertIn("work_voice", app.link_processes)
+        self.assertIn("link2", app.link_processes)
+
+    def test_work_mode_state_exposes_routing_policy_and_link2_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            workspace = runtime / "workspace-xiaoan-runtime"
+            visual_dir = runtime / "integration_console" / "visual"
+            visual_dir.mkdir(parents=True)
+            (visual_dir / "latest_state.json").write_text(
+                json.dumps(
+                    {
+                        "frame_id": 7,
+                        "observation": {"face_detected": True, "ear": 0.21},
+                        "cv_sample": {"emotion_tag": "tired", "confidence": 0.91, "fatigue_score": 0.8},
+                        "gate": {"result": {"should_trigger": True, "reason": "high_fatigue"}},
+                        "vlm": {
+                            "status": "done",
+                            "request_id": "vlm-1",
+                            "trigger_frame_id": 7,
+                            "result": {"expression_label": "tired"},
+                            "fusion": {"decision": "cv_vlm_agree_negative"},
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            work_voice_dir = runtime / "integration_console" / "work_voice"
+            work_voice_dir.mkdir(parents=True)
+            (work_voice_dir / "latest_voice.json").write_text(
+                json.dumps({"text": "小安在吗", "event_type": "asr.transcript"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime, openclaw_workspace=workspace)
+
+            state = app.state()
+            work = state["work_mode"]
+
+        self.assertEqual(work["routing_policy"]["mode"], "local_fast_path_first_then_openclaw")
+        self.assertEqual(work["diagnostics"]["asr_text"], "小安在吗")
+        self.assertEqual(work["diagnostics"]["openface"]["frame_id"], 7)
+        self.assertTrue(work["diagnostics"]["vlm_gate"]["should_trigger"])
+        self.assertEqual(work["diagnostics"]["vlm_runtime"]["request_id"], "vlm-1")
+        self.assertEqual(work["workspace"]["dashboard"], str(workspace / "state" / "dashboard.json"))
+        self.assertEqual(work["workspace"]["local_reminders"], str(workspace / "state" / "local_reminders.json"))
 
     def test_voice_link_commands_accept_mic_device_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
@@ -881,6 +1028,55 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         )
         self.assertEqual(sent[1]["action"], "move_out_of_dock")
         self.assertEqual(sent[1]["params"]["distance_cm"], 8.0)
+
+    def test_process_due_local_fast_path_reminder_uses_workspace_queue(self) -> None:
+        sent: list[dict] = []
+
+        def sender(payload: dict) -> dict:
+            sent.append(payload)
+            return {"ok": True, "ack": {"type": "agent.ack", "payload": {"ok": True}}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            workspace = runtime / "workspace-xiaoan-runtime"
+            reminder_path = workspace / "state" / "local_reminders.json"
+            reminder_path.parent.mkdir(parents=True)
+            reminder_path.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "xiaoan.local_reminders.v1",
+                        "items": [
+                            {
+                                "id": "local-reminder-unit",
+                                "status": "pending",
+                                "captured_at": datetime.now(timezone.utc).isoformat(),
+                                "due_at": datetime.now(timezone.utc).isoformat(),
+                                "title": "喝水",
+                                "transcript": "小安，10秒后提醒我喝水",
+                                "send_to_robot": True,
+                                "allow_motion": False,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime, openclaw_workspace=workspace, command_sender=sender)
+            app._wait_motion_completed = lambda steps, action_id, timeout_ms: steps.append({
+                "name": "wait:motion.completed",
+                "ok": True,
+                "result": {"action_id": action_id},
+            })
+
+            first = app.process_due_local_fast_path_reminders()
+            second = app.process_due_local_fast_path_reminders()
+            saved = json.loads(reminder_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(first["processed"], 1)
+        self.assertEqual(second["processed"], 0)
+        self.assertEqual(saved["items"][0]["status"], "fired")
+        self.assertEqual([payload["command"] for payload in sent], ["display.expression", "audio.play_tts"])
 
     def test_fast_demo_story_start_and_choice_update_state_without_fast3_process(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

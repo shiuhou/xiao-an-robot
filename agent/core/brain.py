@@ -13,11 +13,13 @@ from typing import Any
 from agent.core.action_executor import ActionExecutor
 from agent.core.context_builder import ContextBuilder
 from agent.core.gateway import RobotGateway
+from agent.core.local_fast_path import LocalFastPathRouter
 from agent.core.memory import XiaoAnMemoryStore
 from agent.core.memory_recorder import MemoryRecorder
 from agent.core.event_router import openclaw_base_context_for_asr
 from agent.core.openclaw_adapter import OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
+from agent.core.work_mode import EpisodeLease, WorkModeStore
 from agent.skills.companion_request import CompanionRequestSkill
 from agent.skills.emotion_monitor import EmotionMonitorSkill
 from agent.skills.robot_motion import RobotMotionSkill
@@ -45,6 +47,8 @@ class XiaoAnBrain:
         context_builder: Any | None = None,
         context_memory: Any | None = None,
         memory_recorder: Any | None = None,
+        local_fast_path: Any | None = None,
+        work_mode_store: Any | None = None,
     ):
         self.gateway = gateway or RobotGateway(url=gateway_url)
         self.memory = memory or EmotionDB(db_path=db_path)
@@ -84,11 +88,83 @@ class XiaoAnBrain:
             self.memory_recorder = MemoryRecorder(memory_store=self.context_memory)
         else:
             self.memory_recorder = None
+        self.local_fast_path = (
+            local_fast_path
+            if local_fast_path is not None
+            else LocalFastPathRouter()
+        )
+        self.work_mode_store = (
+            work_mode_store
+            if work_mode_store is not None
+            else WorkModeStore.from_env()
+        )
 
     async def handle_event(self, event: dict) -> dict:
         event_type = event.get("type")
         if event_type in SUPPORTED_EMOTION_EVENTS:
             trigger = event.get("payload") or event
+            lease = self._acquire_episode(
+                chain="link2",
+                source="emotion",
+                text=str(trigger.get("emotion_tag") or trigger.get("reason") or ""),
+                requires_mic_recognition=False,
+            )
+            if not lease.acquired:
+                return self._blocked_by_work_mode(lease)
+            final_result: dict | None = None
+            final_status = "completed"
+            try:
+                final_result = await self._handle_emotion_event(event, trigger)
+                return final_result
+            except Exception:
+                final_status = "failed"
+                raise
+            finally:
+                self._release_episode(lease, status=final_status, result=final_result)
+
+        if event_type == ASR_TRANSCRIPT_EVENT:
+            return await self._handle_asr_event(event)
+
+        if event_type == FRONTEND_MESSAGE_EVENT:
+            payload = event.get("payload") or {}
+            companion_result = await self.companion_request.handle_text(payload.get("text"))
+            if companion_result.get("handled", False):
+                return await self._handle_companion_fast_path(
+                    payload=payload,
+                    companion_result=companion_result,
+                    source="frontend",
+                )
+
+            base_context = {
+                "payload": payload,
+            }
+            openclaw_context = self._build_openclaw_context(
+                text=payload.get("text", ""),
+                base_context=base_context,
+                event_type=FRONTEND_MESSAGE_EVENT,
+                source="frontend",
+            )
+            openclaw_event = OpenClawEvent(
+                type=FRONTEND_MESSAGE_EVENT,
+                text=payload.get("text", ""),
+                source="frontend",
+                session_id=payload.get("session_id", "default"),
+                context=openclaw_context,
+            )
+            decision = self.openclaw_adapter.handle_event(openclaw_event)
+            decision = self._rewrite_failed_reminder_for_local_fallback(decision, payload.get("text", ""))
+            execution_result = await self.action_executor.execute(decision)
+            execution_result["route"] = "frontend_openclaw"
+            execution_result["reason"] = "openclaw_decision"
+            return execution_result
+
+        return {
+            "handled": False,
+            "reason": "unsupported_event",
+            "message": f"Unsupported event type: {event_type}",
+        }
+
+    async def _handle_emotion_event(self, event: dict, trigger: dict) -> dict:
             emotion_result = await self.emotion_monitor.run(trigger)
             if not emotion_result.get("handled", False):
                 return emotion_result
@@ -142,25 +218,92 @@ class XiaoAnBrain:
                 emotion_result["openclaw_error"] = str(exc)
             return emotion_result
 
-        if event_type == ASR_TRANSCRIPT_EVENT:
-            payload = event.get("payload") or {}
-            text = payload.get("text")
-            companion_disabled = bool(payload.get("disable_companion_fast_path"))
-            companion_result = (
-                {
-                    "handled": False,
-                    "reason": "companion_fast_path_disabled",
-                    "trigger_result": None,
-                }
-                if companion_disabled
-                else await self.companion_request.handle_text(text)
+    async def _handle_asr_event(self, event: dict) -> dict:
+        payload = event.get("payload") or {}
+        text = payload.get("text")
+        chain_hint = self.local_fast_path.classify_chain(text)
+        if chain_hint == "link3":
+            lease = self._acquire_episode(
+                chain="link3",
+                source="asr",
+                text=text,
+                requires_mic_recognition=True,
             )
-            if companion_result.get("handled", False):
-                return await self._handle_companion_fast_path(
+            if not lease.acquired:
+                return self._blocked_by_work_mode(lease)
+            final_result: dict | None = None
+            final_status = "completed"
+            try:
+                local_result = await self.local_fast_path.try_handle_asr(
+                    text=text,
+                    payload=payload,
+                    run_id=lease.run_id or "local-fast-path",
+                    robot_motion=self.robot_motion,
+                )
+                if local_result.get("handled"):
+                    final_result = local_result
+                    return local_result
+                final_status = "skipped"
+            except Exception:
+                final_status = "failed"
+                raise
+            finally:
+                self._release_episode(lease, status=final_status, result=final_result)
+
+        companion_disabled = bool(payload.get("disable_companion_fast_path"))
+        companion_result = (
+            {
+                "handled": False,
+                "reason": "companion_fast_path_disabled",
+                "trigger_result": None,
+            }
+            if companion_disabled
+            else await self.companion_request.handle_text(text)
+        )
+        if companion_result.get("handled", False):
+            lease = self._acquire_episode(
+                chain="link3",
+                source="asr",
+                text=text,
+                requires_mic_recognition=True,
+            )
+            if not lease.acquired:
+                return self._blocked_by_work_mode(lease)
+            final_result = None
+            final_status = "completed"
+            try:
+                final_result = await self._handle_companion_fast_path(
                     payload=payload,
                     companion_result=companion_result,
                     source="asr",
                 )
+                return final_result
+            except Exception:
+                final_status = "failed"
+                raise
+            finally:
+                self._release_episode(lease, status=final_status, result=final_result)
+
+        lease = self._acquire_episode(
+            chain="link1",
+            source="asr",
+            text=text,
+            requires_mic_recognition=True,
+        )
+        if not lease.acquired:
+            return self._blocked_by_work_mode(lease)
+        final_result = None
+        final_status = "completed"
+        try:
+            local_result = await self.local_fast_path.try_handle_asr(
+                text=text,
+                payload=payload,
+                run_id=lease.run_id or "local-fast-path",
+                robot_motion=self.robot_motion,
+            )
+            if local_result.get("handled"):
+                final_result = local_result
+                return local_result
 
             base_context = openclaw_base_context_for_asr(
                 payload=payload,
@@ -172,6 +315,7 @@ class XiaoAnBrain:
                 event_type=ASR_TRANSCRIPT_EVENT,
                 source="asr",
             )
+            openclaw_context["local_fast_path"] = local_result
             openclaw_event = OpenClawEvent(
                 type=ASR_TRANSCRIPT_EVENT,
                 text=text,
@@ -185,45 +329,60 @@ class XiaoAnBrain:
             execution_result["route"] = "link_1_openclaw"
             execution_result["reason"] = "openclaw_decision"
             execution_result["companion_result"] = companion_result
+            final_result = execution_result
             return execution_result
+        except Exception:
+            final_status = "failed"
+            raise
+        finally:
+            self._release_episode(lease, status=final_status, result=final_result)
 
-        if event_type == FRONTEND_MESSAGE_EVENT:
-            payload = event.get("payload") or {}
-            companion_result = await self.companion_request.handle_text(payload.get("text"))
-            if companion_result.get("handled", False):
-                return await self._handle_companion_fast_path(
-                    payload=payload,
-                    companion_result=companion_result,
-                    source="frontend",
-                )
-
-            base_context = {
-                "payload": payload,
-            }
-            openclaw_context = self._build_openclaw_context(
-                text=payload.get("text", ""),
-                base_context=base_context,
-                event_type=FRONTEND_MESSAGE_EVENT,
-                source="frontend",
+    def _acquire_episode(
+        self,
+        *,
+        chain: str,
+        source: str,
+        text: str | None,
+        requires_mic_recognition: bool,
+    ) -> EpisodeLease:
+        acquire = getattr(self.work_mode_store, "acquire_episode", None)
+        if not callable(acquire):
+            return EpisodeLease(True, None, chain, "no_work_mode_store")
+        try:
+            return acquire(
+                chain=chain,
+                source=source,
+                text=text,
+                requires_mic_recognition=requires_mic_recognition,
             )
-            openclaw_event = OpenClawEvent(
-                type=FRONTEND_MESSAGE_EVENT,
-                text=payload.get("text", ""),
-                source="frontend",
-                session_id=payload.get("session_id", "default"),
-                context=openclaw_context,
-            )
-            decision = self.openclaw_adapter.handle_event(openclaw_event)
-            decision = self._rewrite_failed_reminder_for_local_fallback(decision, payload.get("text", ""))
-            execution_result = await self.action_executor.execute(decision)
-            execution_result["route"] = "frontend_openclaw"
-            execution_result["reason"] = "openclaw_decision"
-            return execution_result
+        except Exception:
+            return EpisodeLease(True, None, chain, "work_mode_unavailable")
 
+    def _release_episode(
+        self,
+        lease: EpisodeLease,
+        *,
+        status: str,
+        result: dict | None,
+    ) -> None:
+        if not lease.acquired or not lease.run_id:
+            return
+        release = getattr(self.work_mode_store, "release_episode", None)
+        if not callable(release):
+            return
+        try:
+            release(lease.run_id, status=status, result=result)
+        except Exception:
+            return
+
+    @staticmethod
+    def _blocked_by_work_mode(lease: EpisodeLease) -> dict:
         return {
             "handled": False,
-            "reason": "unsupported_event",
-            "message": f"Unsupported event type: {event_type}",
+            "route": "work_mode.blocked",
+            "reason": lease.reason,
+            "chain": lease.chain,
+            "work_mode": lease.state or {},
         }
 
     def _rewrite_failed_reminder_for_local_fallback(

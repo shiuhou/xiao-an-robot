@@ -18,6 +18,7 @@ import wave
 from pathlib import Path
 from typing import Any, TextIO
 
+from agent.core.work_mode import WorkModeStore
 from base_station.api.runtime import ApiRuntime
 from base_station.integration_console.fast_demo_brain import (
     build_fast_demo_voice_output,
@@ -28,7 +29,12 @@ from base_station.integration_console.fast_demo_brain import (
 )
 from base_station.monitor.asr_runtime import build_asr_event, build_audio_file_event, build_output, create_asr_backend
 from base_station.perception.asr import SenseVoiceASRBackend
-from base_station.perception.mic_capture import choose_input_device, list_input_devices, record_wav, recording_sample_rate
+from base_station.perception.mic_capture import (
+    PersistentWavRecorder,
+    choose_input_device,
+    list_input_devices,
+    recording_sample_rate,
+)
 
 
 SUPPORTED_SOURCES = {"text_loop", "local_mic"}
@@ -94,6 +100,26 @@ def _recording_status(
     if previous_output:
         status["previous_output"] = previous_output
     return status
+
+
+def _muted_status(session_id: str, previous_output: dict | None) -> dict:
+    status = {
+        "event_type": "voice.muted",
+        "handled": False,
+        "reason": "mic_recognition_disabled",
+        "text": "",
+        "session_id": session_id,
+    }
+    if previous_output:
+        status["previous_output"] = previous_output
+    return status
+
+
+def _mic_recognition_allowed() -> bool:
+    snapshot = WorkModeStore.from_env().snapshot()
+    if not snapshot.get("persisted"):
+        return True
+    return bool(snapshot.get("system_enabled") and snapshot.get("mic_recognition_enabled"))
 
 
 def _openclaw_pending_output(text: str, event: dict) -> dict:
@@ -431,7 +457,29 @@ async def run_local_mic_loop(
     )
 
     try:
+        recorder = PersistentWavRecorder(
+            device=selected_device,
+            sample_rate=active_sample_rate,
+            channels=1,
+        )
+        recorder_context = recorder.__enter__()
+        del recorder_context
+    except Exception:
+        close = getattr(runtime, "close", None) if runtime is not None else None
+        if callable(close):
+            close()
+        raise
+
+    try:
         while True:
+            if not _mic_recognition_allowed():
+                muted = _muted_status(session_id, last_output)
+                _write_latest_output(latest_output_path, muted)
+                recorder.discard_window(max(0.25, min(duration_seconds, 2.0)))
+                last_output = muted
+                if once:
+                    return handled_count
+                continue
             stamp = time.strftime("%Y%m%d_%H%M%S")
             wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.wav"
             asr_wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.asr.wav"
@@ -446,13 +494,7 @@ async def run_local_mic_loop(
                     previous_output=last_output,
                 ),
             )
-            record_wav(
-                device=selected_device,
-                output_path=wav_path,
-                duration_seconds=duration_seconds,
-                sample_rate=active_sample_rate,
-                channels=1,
-            )
+            recorder.record_window(wav_path, duration_seconds)
             _finish_asr_backend_preload(preload_thread, preload_state)
             preload_thread = None
             prepared_wav_path = _ensure_asr_wav_format(
@@ -503,6 +545,10 @@ async def run_local_mic_loop(
         print("\nvoice_runtime local_mic stopped.", file=error_stream, flush=True)
         return handled_count
     finally:
+        try:
+            recorder.close()
+        except Exception:
+            pass
         close = getattr(runtime, "close", None) if runtime is not None else None
         if callable(close):
             close()

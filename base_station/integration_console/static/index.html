@@ -26,6 +26,7 @@
   <main class="shell">
     <nav class="tabs" aria-label="联调面板">
       <button class="tab active" data-tab="health">连接</button>
+      <button class="tab" data-tab="work-mode">总工作模式</button>
       <button class="tab" data-tab="camera">相机</button>
       <button class="tab" data-tab="robot">机器人</button>
       <button class="tab" data-tab="link1">链路一</button>
@@ -49,6 +50,193 @@
         <article class="card">
           <h2>WebSocket / Robot</h2>
           <pre class="jsonbox" id="wsSummary">{}</pre>
+        </article>
+      </div>
+      <div class="grid four chain-detail-row">
+        <article class="card">
+          <h2>ASR 文本输出</h2>
+          <pre class="textbox compact-textbox" id="link2AsrText">-</pre>
+        </article>
+        <article class="card">
+          <h2>OpenFace 指标</h2>
+          <pre class="jsonbox compact-json" id="link2OpenFaceJson">{}</pre>
+        </article>
+        <article class="card">
+          <h2>VLM Trigger 状态</h2>
+          <pre class="jsonbox compact-json" id="link2VlmTriggerJson">{}</pre>
+        </article>
+        <article class="card">
+          <h2>VLM 运行 / 输出</h2>
+          <pre class="jsonbox compact-json" id="link2VlmRuntimeJson">{}</pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" id="tab-work-mode">
+      <div class="chain-header work-mode-header">
+        <div>
+          <div class="section-label">WORK MODE</div>
+          <h2>总工作模式</h2>
+        </div>
+        <label class="run-switch"><input id="workModeSystemSwitch" type="checkbox"> 工作状态</label>
+        <label class="run-switch"><input id="workModeMicRecognitionSwitch" type="checkbox"> 麦克风送入识别</label>
+        <label class="run-switch"><input id="workModeCameraSwitch" type="checkbox"> 摄像头参与触发</label>
+        <button id="workModeStartBtn">启动真实总工作模式</button>
+        <button id="workModeStopBtn">停止总工作模式</button>
+        <span class="status-pill unavailable" id="workModeStatus">OFF</span>
+      </div>
+
+      <div class="grid four work-mode-cards">
+        <article class="card work-card">
+          <div class="section-label">SYSTEM</div>
+          <h2>总开关</h2>
+          <span class="status-pill unavailable" id="workSystemPill">OFF</span>
+          <div class="kv compact-kv" id="workSystemKv"></div>
+        </article>
+        <article class="card work-card">
+          <div class="section-label">MIC</div>
+          <h2>麦克风</h2>
+          <span class="status-pill unavailable" id="workMicPill">OFF</span>
+          <div class="kv compact-kv" id="workMicKv"></div>
+        </article>
+        <article class="card work-card">
+          <div class="section-label">CAMERA</div>
+          <h2>摄像头</h2>
+          <span class="status-pill unavailable" id="workCameraPill">OFF</span>
+          <div class="kv compact-kv" id="workCameraKv"></div>
+        </article>
+        <article class="card work-card">
+          <div class="section-label">ARBITER</div>
+          <h2>触发仲裁器</h2>
+          <span class="status-pill unavailable" id="workArbiterPill">IDLE</span>
+          <div class="kv compact-kv" id="workArbiterKv"></div>
+        </article>
+      </div>
+
+      <div class="grid three chain-detail-row">
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">LINK 1</div>
+              <h2>任务 / 日程 / 提醒</h2>
+            </div>
+            <span class="status-pill unavailable" id="workLink1Pill">WAIT</span>
+          </div>
+          <div class="kv compact-kv" id="workLink1Kv"></div>
+        </article>
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">LINK 2</div>
+              <h2>视觉状态</h2>
+            </div>
+            <span class="status-pill unavailable" id="workLink2Pill">WAIT</span>
+          </div>
+          <div class="kv compact-kv" id="workLink2Kv"></div>
+        </article>
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">LINK 3</div>
+              <h2>机器人动作</h2>
+            </div>
+            <span class="status-pill unavailable" id="workLink3Pill">WAIT</span>
+          </div>
+          <div class="kv compact-kv" id="workLink3Kv"></div>
+        </article>
+      </div>
+
+      <div class="work-main-layout chain-detail-row">
+        <article class="card work-visual-preview-card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">EMOTION RUNTIME / WS_VIDEO</div>
+              <h2>摄像头画面</h2>
+            </div>
+          </div>
+          <div class="image-wrap visual-image-wrap work-visual-image-wrap">
+            <img id="workVisualLatestImage" alt="OpenFace annotated video frame">
+            <div class="empty" id="workVisualImageEmpty">等待 Route A 分析快照</div>
+          </div>
+        </article>
+
+        <div class="work-side-stack">
+          <article class="card">
+            <h2>ASR 文本输出</h2>
+            <pre class="textbox compact-textbox" id="workAsrText">-</pre>
+          </article>
+          <article class="card">
+            <h2>agent brain回复</h2>
+            <div class="kv compact-kv" id="workBrainReplyKv"></div>
+            <pre class="textbox compact-textbox" id="workBrainReplyText">-</pre>
+          </article>
+        </div>
+      </div>
+
+      <div class="grid three chain-detail-row">
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">OPENFACE</div>
+              <h2>OpenFace 指标</h2>
+            </div>
+            <span class="status-pill unavailable" id="workVisualFreshness">UNAVAILABLE</span>
+          </div>
+          <div class="visual-meta work-visual-meta" id="workVisualCvMetrics"></div>
+        </article>
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">DECISION</div>
+              <h2>VLM Trigger Gate</h2>
+            </div>
+            <span class="status-pill unavailable" id="workVisualGateStatus">NO DATA</span>
+          </div>
+          <div class="gate-rules" id="workVisualGateRules"></div>
+        </article>
+        <article class="card">
+          <div class="visual-heading compact">
+            <div>
+              <div class="section-label">ASYNC EXPLANATION</div>
+              <h2>VLM 运行 / 输出</h2>
+            </div>
+            <span class="status-pill idle" id="workVisualVlmStatus">IDLE</span>
+          </div>
+          <div class="vlm-details work-vlm-details" id="workVisualVlmDetails"></div>
+          <div class="fusion-box" id="workVisualFusion">Fusion: -</div>
+        </article>
+      </div>
+
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>快速路径</h2>
+          <div class="route-list" id="workLocalFastPaths"></div>
+        </article>
+        <article class="card">
+          <h2>完整路径</h2>
+          <div class="route-list" id="workOpenclawPaths"></div>
+        </article>
+      </div>
+
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>Runtime 文档库</h2>
+          <div class="kv" id="workWorkspaceKv"></div>
+        </article>
+        <article class="card">
+          <h2>最近 Episode</h2>
+          <pre class="jsonbox compact-json" id="workEpisodeJson">{}</pre>
+        </article>
+      </div>
+
+      <div class="grid two chain-detail-row">
+        <article class="card">
+          <h2>分流策略</h2>
+          <div class="kv" id="workRoutingKv"></div>
+        </article>
+        <article class="card">
+          <h2>本地提醒触发器</h2>
+          <pre class="jsonbox compact-json" id="workLocalReminderJson">{}</pre>
         </article>
       </div>
     </section>
@@ -170,7 +358,7 @@
           <div class="section-label">LINK 1</div>
           <h2>麦克风 → ASR → OpenClaw → 屏幕/机器人</h2>
         </div>
-        <label class="run-switch"><input id="link1RunSwitch" type="checkbox"> 运行一次</label>
+        <label class="run-switch"><input id="link1RunSwitch" type="checkbox"> 常驻收音</label>
         <span class="status-pill unavailable" id="link1Status">IDLE</span>
       </div>
       <div class="chain-flow" id="link1Steps"></div>
@@ -281,7 +469,7 @@
           <div class="section-label">LINK 3</div>
           <h2>麦克风 → ASR → 秒级机器人响应 → OpenClaw 后续关怀</h2>
         </div>
-        <label class="run-switch"><input id="link3RunSwitch" type="checkbox"> 运行一次</label>
+        <label class="run-switch"><input id="link3RunSwitch" type="checkbox"> 常驻收音</label>
         <span class="status-pill unavailable" id="link3Status">IDLE</span>
       </div>
       <div class="chain-flow" id="link3Steps"></div>

@@ -201,6 +201,136 @@ def record_wav(
     return target
 
 
+class PersistentWavRecorder:
+    """Keep the microphone device open and write fixed windows to WAV files."""
+
+    def __init__(
+        self,
+        *,
+        device: dict[str, Any],
+        sample_rate: int = 16000,
+        channels: int = 1,
+        frames_per_buffer: int = 1024,
+    ):
+        self.device = device
+        self.sample_rate = int(sample_rate)
+        self.channels = int(channels)
+        self.frames_per_buffer = int(frames_per_buffer)
+        self._pyaudio = None
+        self._audio = None
+        self._stream = None
+        self._process: subprocess.Popen[bytes] | None = None
+
+    def __enter__(self) -> "PersistentWavRecorder":
+        if self.device.get("backend") == "arecord":
+            self._open_arecord()
+            return self
+        self._open_pyaudio()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def record_window(self, output_path: str | Path, duration_seconds: float) -> Path:
+        pcm = self.read_window(duration_seconds)
+        target = Path(output_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(target), "wb") as wav:
+            wav.setnchannels(self.channels)
+            wav.setsampwidth(2)
+            wav.setframerate(self.sample_rate)
+            wav.writeframes(pcm)
+        return target
+
+    def discard_window(self, duration_seconds: float) -> int:
+        return len(self.read_window(duration_seconds))
+
+    def read_window(self, duration_seconds: float) -> bytes:
+        frame_count = max(1, int(round(self.sample_rate * float(duration_seconds))))
+        if self.device.get("backend") == "arecord":
+            return self._read_arecord_bytes(frame_count * self.channels * 2)
+        if self._stream is None:
+            raise RuntimeError("PersistentWavRecorder is not open.")
+        chunks = []
+        remaining = frame_count
+        while remaining > 0:
+            chunk_frames = min(self.frames_per_buffer, remaining)
+            chunks.append(self._stream.read(chunk_frames, exception_on_overflow=False))
+            remaining -= chunk_frames
+        return b"".join(chunks)
+
+    def close(self) -> None:
+        if self._stream is not None:
+            try:
+                self._stream.stop_stream()
+            finally:
+                self._stream.close()
+                self._stream = None
+        if self._audio is not None:
+            self._audio.terminate()
+            self._audio = None
+        if self._process is not None:
+            process = self._process
+            self._process = None
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+
+    def _open_pyaudio(self) -> None:
+        self._pyaudio = import_pyaudio()
+        self._audio = self._pyaudio.PyAudio()
+        self._stream = self._audio.open(
+            format=self._pyaudio.paInt16,
+            channels=self.channels,
+            rate=self.sample_rate,
+            input=True,
+            input_device_index=int(self.device["index"]),
+            frames_per_buffer=self.frames_per_buffer,
+        )
+
+    def _open_arecord(self) -> None:
+        if shutil.which("arecord") is None:
+            raise RuntimeError("arecord is not installed; cannot record without PyAudio.")
+        command = [
+            "arecord",
+            "-D",
+            str(self.device["device_id"]),
+            "-f",
+            "S16_LE",
+            "-r",
+            str(self.sample_rate),
+            "-c",
+            str(self.channels),
+            "-t",
+            "raw",
+            "-q",
+        ]
+        self._process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    def _read_arecord_bytes(self, byte_count: int) -> bytes:
+        if self._process is None or self._process.stdout is None:
+            raise RuntimeError("Persistent arecord recorder is not open.")
+        chunks = []
+        remaining = int(byte_count)
+        while remaining > 0:
+            chunk = self._process.stdout.read(remaining)
+            if not chunk:
+                stderr = b""
+                if self._process.stderr is not None:
+                    stderr = self._process.stderr.read(4096)
+                raise RuntimeError(f"arecord stream ended: {stderr.decode('utf-8', errors='ignore').strip()}")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
+
+
 def record_wav_arecord(
     *,
     device_id: str,

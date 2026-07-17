@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse, urlsplit
 
+from agent.core.work_mode import WorkModeStore
 from base_station.integration_console.fast_demo_brain import (
     DANCE_INTRO_TEXT,
     POST_MOTION_TTS_SETTLE_SECONDS,
@@ -72,7 +73,7 @@ EXPRESSIONS = {
     "sleeping",
 }
 LOCAL_SOUNDS = {"care_01", "success_ding"}
-STANDARD_LINKS = ("link1", "link2", "link3")
+STANDARD_LINKS = ("link1", "link2", "link3", "work_voice")
 FAST_DEMO_LINKS = ("fast1", "fast2", "fast3")
 DANCE_KEYWORDS = ("跳舞", "唱歌跳舞", "跳个舞")
 
@@ -317,6 +318,14 @@ class IntegrationConsoleApp:
         return self.event_dir / "fast_demo" / "dance_voice.json"
 
     @property
+    def work_mode_state_path(self) -> Path:
+        return self.runtime_dir / "work_mode_state.json"
+
+    @property
+    def work_mode_store(self) -> WorkModeStore:
+        return WorkModeStore(self.work_mode_state_path, default_system_enabled=False)
+
+    @property
     def process_log_dir(self) -> Path:
         return self.event_dir / "process_logs"
 
@@ -329,6 +338,10 @@ class IntegrationConsoleApp:
     @property
     def openclaw_dashboard_path(self) -> Path:
         return self.openclaw_workspace / "state" / "dashboard.json"
+
+    @property
+    def local_reminders_path(self) -> Path:
+        return self.openclaw_workspace / "state" / "local_reminders.json"
 
     def health(self) -> dict[str, Any]:
         return {
@@ -650,7 +663,9 @@ class IntegrationConsoleApp:
         return ""
 
     def link_command(self, link: str) -> list[str]:
-        if link in {"link1", "link3"}:
+        if link in {"link1", "link3", "work_voice"}:
+            is_work_voice = link == "work_voice"
+            normal_link = "link1" if is_work_voice else link
             duration = self._env_text(f"XIAOAN_{link.upper()}_MIC_WINDOW", "6.0")
             command = [
                 sys.executable,
@@ -661,15 +676,16 @@ class IntegrationConsoleApp:
                 "--gateway-url",
                 self.ws_url,
                 "--session-id",
-                f"integration-console-{link}",
+                "integration-console-work-voice" if is_work_voice else f"integration-console-{link}",
                 "--duration",
                 duration,
                 "--asr-language",
-                self._env_text(f"XIAOAN_{link.upper()}_ASR_LANGUAGE", "zh"),
+                self._env_text(f"XIAOAN_{normal_link.upper()}_ASR_LANGUAGE", "zh"),
+                "--audio-output-dir",
+                str(self.link_runtime_dir(link) / "audio"),
                 "--latest-output",
                 str(self.link_voice_output_path(link)),
-                "--once",
-                *(["--local-demo-reminders-path", str(self.fast_demo_reminders_path)] if link == "link1" else []),
+                *(["--local-demo-reminders-path", str(self.fast_demo_reminders_path)] if link in {"link1", "work_voice"} else []),
                 *(["--disable-companion-fast-path"] if link == "link1" else []),
                 "--verbose",
             ]
@@ -878,7 +894,9 @@ class IntegrationConsoleApp:
 
     def link_environment(self, link: str) -> dict[str, str]:
         env = dict(os.environ)
-        if link in {"link1", "link2", "link3"}:
+        env["XIAOAN_WORK_MODE_STATE_PATH"] = str(self.work_mode_state_path)
+        env.setdefault("XIAOAN_RUNTIME_WORKSPACE", str(self.openclaw_workspace))
+        if link in {"link1", "link2", "link3", "work_voice"}:
             env.setdefault("XIAO_AN_OPENCLAW_BACKEND", "gateway")
             env.setdefault("XIAO_AN_OPENCLAW_GATEWAY_URL", self.openclaw_url)
             env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
@@ -886,6 +904,8 @@ class IntegrationConsoleApp:
 
     def fast_demo_environment(self) -> dict[str, str]:
         env = dict(os.environ)
+        env["XIAOAN_WORK_MODE_STATE_PATH"] = str(self.work_mode_state_path)
+        env.setdefault("XIAOAN_RUNTIME_WORKSPACE", str(self.openclaw_workspace))
         for key in (
             "XIAO_AN_OPENCLAW_BACKEND",
             "XIAO_AN_OPENCLAW_GATEWAY_URL",
@@ -939,7 +959,7 @@ class IntegrationConsoleApp:
 
     def stop_link(self, body: dict[str, Any]) -> dict[str, Any]:
         link = str(body.get("link") or "").strip()
-        if link not in {"link1", "link2", "link3"}:
+        if link not in STANDARD_LINKS:
             return {"ok": False, "error": f"unsupported_link:{link}"}
         process = self.link_processes.get(link)
         if process is None:
@@ -1051,6 +1071,37 @@ class IntegrationConsoleApp:
             "link": link,
             "request_id": request_id,
             "state": self.link_process_state(link),
+        }
+
+    def start_work_mode(self, body: dict[str, Any]) -> dict[str, Any]:
+        state = self.work_mode_store.update_controls(
+            system_enabled=True,
+            mic_recognition_enabled=bool(body.get("mic_recognition_enabled", True)),
+            camera_capture_enabled=bool(body.get("camera_capture_enabled", True)),
+        )
+        voice = self.start_link({"link": "work_voice"})
+        visual = self.start_link({"link": "link2"}) if state.get("camera_capture_enabled") else {"ok": True, "skipped": True}
+        return {
+            "ok": bool(voice.get("ok") and visual.get("ok")),
+            "work_mode": state,
+            "voice": voice,
+            "visual": visual,
+        }
+
+    def stop_work_mode(self, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        del body
+        state = self.work_mode_store.update_controls(
+            system_enabled=False,
+            mic_recognition_enabled=False,
+            camera_capture_enabled=True,
+        )
+        voice = self.stop_link({"link": "work_voice"})
+        visual = self.stop_link({"link": "link2"})
+        return {
+            "ok": bool(voice.get("ok") and visual.get("ok")),
+            "work_mode": state,
+            "voice": voice,
+            "visual": visual,
         }
 
     def execute_fast_demo_plan(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -1175,7 +1226,7 @@ class IntegrationConsoleApp:
         assistant, _ = _load_json_file(self.runtime_dir / "assistant_capture_result.json")
         link_voice = {
             link: self.link_voice_state(link)
-            for link in ("link1", "link3")
+            for link in ("link1", "link3", "work_voice")
         }
         status_payload = {}
         if isinstance(selected_device.get("last_status"), dict):
@@ -1207,6 +1258,7 @@ class IntegrationConsoleApp:
         }
         tts_runtime = raw_state.get("tts_runtime") if isinstance(raw_state.get("tts_runtime"), dict) else {}
         reminder_result = self.process_due_fast_demo_reminders()
+        local_reminder_result = self.process_due_local_fast_path_reminders()
         media = {
             "latest_image": latest_image,
             "latest_audio": latest_audio,
@@ -1227,6 +1279,14 @@ class IntegrationConsoleApp:
             link_voice=link_voice,
         )
         fast_demo = self.fast_demo_state(robot=robot, processes=process_states)
+        work_mode = self.work_mode_state(
+            media=media,
+            robot=robot,
+            visual=visual_state,
+            processes=process_states,
+            fast_demo=fast_demo,
+            link_voice=link_voice,
+        )
 
         return {
             "ok": True,
@@ -1243,12 +1303,220 @@ class IntegrationConsoleApp:
             "visual": visual_state,
             "links": links,
             "fast_demo": fast_demo,
+            "work_mode": work_mode,
             "fast_demo_reminders": self.fast_demo_reminders_state(last_result=reminder_result),
+            "local_fast_path_reminders": self.local_fast_path_reminders_state(last_result=local_reminder_result),
             "fast_demo_story": self.fast_demo_story_state(),
             "processes": process_states,
             "tools": self.tool_catalog(),
             "recent_events": self.recent_events(limit=STATE_EVENT_LIMIT),
         }
+
+    def update_work_mode(self, body: dict[str, Any]) -> dict[str, Any]:
+        state = self.work_mode_store.update_controls(
+            system_enabled=body.get("system_enabled") if "system_enabled" in body else None,
+            mic_recognition_enabled=body.get("mic_recognition_enabled") if "mic_recognition_enabled" in body else None,
+            camera_capture_enabled=body.get("camera_capture_enabled") if "camera_capture_enabled" in body else None,
+        )
+        self.log_event(
+            event_type="work_mode.update",
+            request_id=uuid.uuid4().hex[:12],
+            action="work_mode",
+            payload_summary={
+                "system_enabled": state.get("system_enabled"),
+                "mic_recognition_enabled": state.get("mic_recognition_enabled"),
+                "camera_capture_enabled": state.get("camera_capture_enabled"),
+            },
+            result="ok",
+            raw_response_summary=state,
+        )
+        return {"ok": True, "work_mode": state}
+
+    def work_mode_state(
+        self,
+        *,
+        media: dict[str, Any],
+        robot: dict[str, Any],
+        visual: dict[str, Any],
+        processes: dict[str, Any],
+        fast_demo: dict[str, Any],
+        link_voice: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        state = self.work_mode_store.snapshot()
+        latest_image = media.get("latest_image") if isinstance(media.get("latest_image"), dict) else {}
+        latest_audio = media.get("latest_audio") if isinstance(media.get("latest_audio"), dict) else {}
+        work_voice = processes.get("work_voice") if isinstance(processes.get("work_voice"), dict) else {}
+        work_voice_output = self.link_voice_state("work_voice")
+        link1 = processes.get("link1") if isinstance(processes.get("link1"), dict) else {}
+        link2 = processes.get("link2") if isinstance(processes.get("link2"), dict) else {}
+        link3 = processes.get("link3") if isinstance(processes.get("link3"), dict) else {}
+        fast2 = processes.get("fast2") if isinstance(processes.get("fast2"), dict) else {}
+        diagnostics = self.work_mode_diagnostics(visual=visual, link_voice=link_voice or {})
+        local_fast_paths = [
+            {
+                "name": "链路三机器人动作",
+                "owner": "local",
+                "examples": "停止、出 Dock、回 Dock、左右转、换表情、查本地状态、固定呼吸、简单招呼",
+            },
+            {
+                "name": "链路一待办",
+                "owner": "local",
+                "examples": "新增、查询、完成、取消待办",
+                "storage": str(self.openclaw_workspace / "TASKS.md"),
+            },
+            {
+                "name": "链路一日程/提醒",
+                "owner": "local",
+                "examples": "明确时间的日程/提醒、今日日程、查询/取消提醒",
+                "storage": str(self.openclaw_workspace / "SCHEDULE.md"),
+            },
+        ]
+        openclaw_paths = [
+            {"name": "天气联网查询", "owner": "openclaw", "reason": "需要联网和自然回复"},
+            {"name": "笔记/记忆查询", "owner": "openclaw", "reason": "需要读取 NOTES.md、notes/ 或长期记忆"},
+            {"name": "复杂规划/上下文对话", "owner": "openclaw", "reason": "需要上下文、偏好或多步判断"},
+        ]
+        cards = {
+            "system": {
+                "ok": bool(state.get("system_enabled")),
+                "label": "系统总开关",
+                "detail": "工作中" if state.get("system_enabled") else "关闭",
+            },
+            "mic": {
+                "ok": bool(state.get("system_enabled") and state.get("mic_device_open")),
+                "recognition": bool(state.get("mic_recognition_enabled")),
+                "label": "麦克风设备 / 识别开关",
+                "detail": "设备打开，送入识别" if state.get("mic_recognition_enabled") else ("设备打开，识别静音" if state.get("mic_device_open") else "设备关闭"),
+                "latest_audio_age_ms": latest_audio.get("age_ms"),
+            },
+            "camera": {
+                "ok": bool(state.get("camera_capture_enabled") and latest_image.get("exists")),
+                "capture_enabled": bool(state.get("camera_capture_enabled")),
+                "label": "摄像头采集",
+                "detail": "持续采集" if state.get("camera_capture_enabled") else "采集关闭",
+                "latest_image_age_ms": latest_image.get("age_ms"),
+            },
+            "arbiter": {
+                "ok": state.get("episode_state") in {"idle", "cooldown"},
+                "label": "触发仲裁器",
+                "detail": state.get("episode_state"),
+                "active_chain": state.get("active_chain"),
+                "active_run_id": state.get("active_run_id"),
+                "last_episode": state.get("last_episode"),
+            },
+            "link1": {
+                "ok": bool(work_voice.get("running") or link1.get("running") or work_voice_output.get("ok")),
+                "label": "链路一",
+                "detail": "待触发：任务 / 日程 / 提醒 / OpenClaw",
+                "process": work_voice or link1,
+                "voice": work_voice_output,
+            },
+            "link2": {
+                "ok": bool(link2.get("running") or fast2.get("running") or visual.get("ok")),
+                "label": "链路二",
+                "detail": "待触发：视觉状态 / 情绪关怀",
+                "process": link2,
+                "visual": {
+                    "ok": visual.get("ok"),
+                    "freshness": visual.get("freshness"),
+                    "age_ms": visual.get("age_ms"),
+                },
+            },
+            "asr_text": {
+                "ok": bool(diagnostics.get("asr_text")),
+                "label": "ASR 文本输出",
+                "detail": diagnostics.get("asr_text") or "等待语音识别输出",
+            },
+            "openface": {
+                "ok": bool((diagnostics.get("openface") or {}).get("cv_sample")),
+                "label": "OpenFace 指标",
+                "detail": visual.get("freshness") or "unavailable",
+            },
+            "vlm_gate": {
+                "ok": bool((diagnostics.get("vlm_gate") or {}).get("result") is not None),
+                "label": "VLM Gate 状态",
+                "detail": (diagnostics.get("vlm_gate") or {}).get("result", {}).get("reason") if isinstance((diagnostics.get("vlm_gate") or {}).get("result"), dict) else "等待 gate",
+            },
+            "vlm_runtime": {
+                "ok": bool((diagnostics.get("vlm_runtime") or {}).get("status")),
+                "label": "VLM 运行 / 输出",
+                "detail": (diagnostics.get("vlm_runtime") or {}).get("status") or "idle",
+            },
+            "link3": {
+                "ok": bool(work_voice.get("running") or link3.get("running") or work_voice_output.get("ok")),
+                "label": "链路三",
+                "detail": "待触发：机器人动作 / 表情 / 关怀",
+                "process": work_voice or link3,
+                "voice": work_voice_output,
+            },
+        }
+        return {
+            "ok": True,
+            "state": state,
+            "cards": cards,
+            "local_fast_paths": local_fast_paths,
+            "openclaw_paths": openclaw_paths,
+            "routing_policy": {
+                "mode": "local_fast_path_first_then_openclaw",
+                "description": "总工作模式下，ASR 事件先抢 episode lock；确定性本地快路径命中就本地执行并写 runtime workspace，未命中才交给 xiaoan-runtime OpenClaw。",
+                "local_owner": "base_station/agent local_fast_path",
+                "openclaw_owner": "xiaoan-runtime",
+            },
+            "diagnostics": diagnostics,
+            "workspace": {
+                "path": str(self.openclaw_workspace),
+                "tasks": str(self.openclaw_workspace / "TASKS.md"),
+                "schedule": str(self.openclaw_workspace / "SCHEDULE.md"),
+                "notes": str(self.openclaw_workspace / "NOTES.md"),
+                "dashboard": str(self.openclaw_workspace / "state" / "dashboard.json"),
+                "local_reminders": str(self.local_reminders_path),
+            },
+        }
+
+    def work_mode_diagnostics(self, *, visual: dict[str, Any], link_voice: dict[str, Any]) -> dict[str, Any]:
+        trace = visual.get("state") if isinstance(visual.get("state"), dict) else {}
+        observation = trace.get("observation") if isinstance(trace.get("observation"), dict) else {}
+        cv = trace.get("cv_sample") if isinstance(trace.get("cv_sample"), dict) else {}
+        gate = trace.get("gate") if isinstance(trace.get("gate"), dict) else {}
+        vlm = trace.get("vlm") if isinstance(trace.get("vlm"), dict) else {}
+        asr_text = self._latest_asr_text_from_voice(link_voice)
+        return {
+            "asr_text": asr_text,
+            "openface": {
+                "freshness": visual.get("freshness"),
+                "age_ms": visual.get("age_ms"),
+                "frame_id": trace.get("frame_id"),
+                "observation": observation,
+                "cv_sample": cv,
+            },
+            "vlm_gate": {
+                "gate": gate,
+                "result": gate.get("result") if isinstance(gate.get("result"), dict) else None,
+                "should_trigger": (gate.get("result") or {}).get("should_trigger") if isinstance(gate.get("result"), dict) else None,
+                "reason": (gate.get("result") or {}).get("reason") if isinstance(gate.get("result"), dict) else None,
+            },
+            "vlm_runtime": {
+                "status": vlm.get("status"),
+                "request_id": vlm.get("request_id"),
+                "trigger_frame_id": vlm.get("trigger_frame_id"),
+                "reason": vlm.get("reason"),
+                "latency_ms": vlm.get("latency_ms"),
+                "result": vlm.get("result") if isinstance(vlm.get("result"), dict) else {},
+                "fusion": vlm.get("fusion") if isinstance(vlm.get("fusion"), dict) else {},
+            },
+        }
+
+    def _latest_asr_text_from_voice(self, link_voice: dict[str, Any]) -> str:
+        candidates = []
+        for link in ("work_voice", "link1", "link3"):
+            item = link_voice.get(link) if isinstance(link_voice.get(link), dict) else {}
+            output = item.get("output") if isinstance(item.get("output"), dict) else {}
+            candidates.append(output)
+        for output in candidates:
+            text = self._voice_text(self._display_voice_output(output))
+            if text:
+                return text
+        return ""
 
     def link_state(
         self,
@@ -1990,6 +2258,93 @@ class IntegrationConsoleApp:
             "items": items[-10:],
             "last_result": last_result or {},
         }
+
+    def local_fast_path_reminders_state(self, *, last_result: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = self._load_local_fast_path_reminders()
+        items = payload.get("items") if isinstance(payload.get("items"), list) else []
+        pending = [item for item in items if isinstance(item, dict) and item.get("status") == "pending"]
+        fired = [item for item in items if isinstance(item, dict) and item.get("status") == "fired"]
+        cancelled = [item for item in items if isinstance(item, dict) and item.get("status") == "cancelled"]
+        return {
+            "ok": True,
+            "path": str(self.local_reminders_path),
+            "count": len(items),
+            "pending_count": len(pending),
+            "fired_count": len(fired),
+            "cancelled_count": len(cancelled),
+            "next_due_at": min((str(item.get("due_at")) for item in pending if item.get("due_at")), default=None),
+            "items": items[-10:],
+            "last_result": last_result or {},
+        }
+
+    def process_due_local_fast_path_reminders(self) -> dict[str, Any]:
+        with self.fast_demo_reminder_lock:
+            payload = self._load_local_fast_path_reminders()
+            items = payload.get("items") if isinstance(payload.get("items"), list) else []
+            if not items:
+                return {"ok": True, "processed": 0, "due": 0}
+            now_ts = time.time()
+            due_indexes: list[int] = []
+            for index, item in enumerate(items):
+                if not isinstance(item, dict) or item.get("status") != "pending":
+                    continue
+                due_ts = _iso_timestamp(item.get("due_at"))
+                if due_ts is None or due_ts > now_ts:
+                    continue
+                due_indexes.append(index)
+                item["status"] = "firing"
+                item["firing_at"] = _now_iso()
+            if not due_indexes:
+                return {"ok": True, "processed": 0, "due": 0}
+            payload["updated_at"] = _now_iso()
+            payload["items"] = items
+            _atomic_write_json(self.local_reminders_path, payload)
+
+        processed = 0
+        results: list[dict[str, Any]] = []
+        for index in due_indexes:
+            item = items[index]
+            decision = build_reminder_due_decision(item)
+            execution = self._execute_fast_demo_decision_plan(
+                decision,
+                send_to_robot=bool(item.get("send_to_robot", True)),
+                allow_motion=bool(item.get("allow_motion", False)),
+            )
+            item["status"] = "fired" if execution.get("ok") else "failed"
+            item["fired_at"] = _now_iso()
+            item["fire_decision"] = self._public_fast_demo_decision(decision)
+            item["fire_execution"] = execution
+            results.append({"id": item.get("id"), "ok": execution.get("ok"), "execution": execution})
+            processed += 1
+
+        with self.fast_demo_reminder_lock:
+            latest_payload = self._load_local_fast_path_reminders()
+            latest_items = latest_payload.get("items") if isinstance(latest_payload.get("items"), list) else []
+            by_id = {
+                str(item.get("id")): item
+                for item in latest_items
+                if isinstance(item, dict) and item.get("id") is not None
+            }
+            for item in items:
+                item_id = str(item.get("id") or "")
+                if item_id and item_id in by_id:
+                    by_id[item_id].update(item)
+            latest_payload["updated_at"] = _now_iso()
+            latest_payload["items"] = latest_items
+            _atomic_write_json(self.local_reminders_path, latest_payload)
+        return {"ok": True, "processed": processed, "due": len(due_indexes), "results": results}
+
+    def _load_local_fast_path_reminders(self) -> dict[str, Any]:
+        data, _ = _load_json_file(self.local_reminders_path)
+        if data is None:
+            return {
+                "schema_version": "xiaoan.local_reminders.v1",
+                "updated_at": None,
+                "items": [],
+            }
+        if not isinstance(data.get("items"), list):
+            data["items"] = []
+        return data
 
     def process_due_fast_demo_reminders(self) -> dict[str, Any]:
         with self.fast_demo_reminder_lock:
@@ -3253,6 +3608,12 @@ def make_handler(app: IntegrationConsoleApp, verbose: bool = False):
                     self._write_json(app.choose_fast_demo_story(body))
                 elif path == "/api/fast-demo/story/stop":
                     self._write_json(app.stop_fast_demo_story(body))
+                elif path == "/api/work-mode/update":
+                    self._write_json(app.update_work_mode(body))
+                elif path == "/api/work-mode/start":
+                    self._write_json(app.start_work_mode(body))
+                elif path == "/api/work-mode/stop":
+                    self._write_json(app.stop_work_mode(body))
                 elif path == "/api/tools/run":
                     self._write_json(app.run_tool(body))
                 elif path == "/api/logs/export":

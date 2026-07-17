@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -837,16 +838,23 @@ class ApiRuntime:
             if kind in {"note", "idea"} and not due_text:
                 item["due_text"] = "语音笔记"
         elif list_name == "schedules":
+            fallback_due_at = self._datetime_from_capture_text(
+                content,
+                transcript,
+                self._text_or_empty(latest.get("display_text", "")),
+            )
             item["type"] = "schedule"
             item["date"] = (
                 self._text_or_empty(capture.get("date", ""))
                 or self._text_or_empty(capture.get("due_date", ""))
                 or self._date_from_iso(self._text_or_empty(capture.get("due_at", "")))
+                or self._date_from_iso(fallback_due_at)
             )
             item["time"] = (
                 self._text_or_empty(capture.get("time", ""))
                 or self._text_or_empty(capture.get("time_text", ""))
                 or self._time_from_iso(self._text_or_empty(capture.get("due_at", "")))
+                or self._time_from_iso(fallback_due_at)
             )
         else:
             due_at = (
@@ -946,6 +954,31 @@ class ApiRuntime:
             return datetime.fromisoformat(value).strftime("%H:%M")
         except ValueError:
             return ""
+
+    @staticmethod
+    def _datetime_from_capture_text(*values: str) -> str:
+        for value in values:
+            if not value:
+                continue
+            match = re.search(
+                r"(?P<date>\d{4}-\d{1,2}-\d{1,2})[ T]"
+                r"(?P<hour>\d{1,2}):(?P<minute>\d{2})",
+                value,
+            )
+            if not match:
+                continue
+            try:
+                parsed = datetime(
+                    int(match.group("date").split("-")[0]),
+                    int(match.group("date").split("-")[1]),
+                    int(match.group("date").split("-")[2]),
+                    int(match.group("hour")),
+                    int(match.group("minute")),
+                )
+            except ValueError:
+                continue
+            return parsed.isoformat()
+        return ""
 
     def _load_dashboard_snapshot(self) -> dict[str, Any]:
         try:

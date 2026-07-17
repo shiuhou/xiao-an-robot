@@ -118,6 +118,7 @@ class ContextBuilder:
                     "window_title": self._preview(row.get("window_title")),
                     "activity_type": row.get("activity_type"),
                     "project_hint": row.get("project_hint"),
+                    "note": self._preview(row.get("note")),
                     "duration_seconds": row.get("duration_seconds"),
                 }
                 for row in query_activities(limit=5)

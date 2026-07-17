@@ -140,6 +140,7 @@ class ProjectMemoryService:
                 "window_title": row.get("window_title"),
                 "activity_type": row.get("activity_type"),
                 "project_hint": row.get("project_hint"),
+                "note": row.get("note"),
                 "confidence": row.get("confidence"),
                 "duration_seconds": row.get("duration_seconds"),
             }
@@ -492,6 +493,7 @@ class ProjectMemoryService:
                     "window_title": self._preview(row.get("window_title")),
                     "activity_type": row.get("activity_type"),
                     "project_hint": row.get("project_hint"),
+                    "note": self._preview(row.get("note")),
                     "duration_seconds": row.get("duration_seconds"),
                 }
                 for row in activities

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS work_activities (
     window_title TEXT NOT NULL DEFAULT '',
     activity_type TEXT NOT NULL DEFAULT 'unknown',
     project_hint TEXT,
+    note TEXT,
     project_id INTEGER,
     confidence REAL NOT NULL DEFAULT 0.0,
     duration_seconds REAL,

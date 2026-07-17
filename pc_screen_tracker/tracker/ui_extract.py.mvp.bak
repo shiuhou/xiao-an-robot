@@ -1,0 +1,340 @@
+"""Layer-2 visible-text extraction via UI Automation.
+
+Two extraction paths, chosen by `mode`:
+
+* browser path (default for Chromium browsers): wake Chromium's lazily-built
+  accessibility tree via a WM_GETOBJECT poke, locate the richest DocumentControl
+  (the real web content, not the window shell) and read body text from within it.
+  This is what makes signal ② (page body text) actually land — verified by
+  probe_chrome_body.py.
+* legacy path (default for every other app, and available via mode="legacy"):
+  the original whole-window BFS walk. Kept verbatim so behavior can be rolled
+  back by flipping `mode` without restoring the file.
+
+Everything is best-effort and defensive: any failure yields an empty/partial
+snapshot rather than raising, so the collector never stalls.
+"""
+from __future__ import annotations
+
+import ctypes
+import time
+from dataclasses import dataclass, field
+
+import uiautomation as auto
+
+try:  # win32 is optional; browser activation degrades gracefully without it
+    import win32con
+    import win32gui
+except Exception:  # noqa: BLE001  # pragma: no cover
+    win32con = None
+    win32gui = None
+
+# Control types that typically carry meaningful visible text.
+_TEXT_TYPES = {
+    "TextControl", "DocumentControl", "EditControl", "HyperlinkControl",
+    "ButtonControl", "ListItemControl", "TreeItemControl", "TabItemControl",
+    "MenuItemControl", "HeaderItemControl", "DataItemControl",
+}
+# Types worth reading a ValuePattern from (address bar, editors, inputs).
+_VALUE_TYPES = {"EditControl", "DocumentControl", "ComboBoxControl"}
+
+# Chromium browsers we run the document-targeted path for.
+BROWSER_PROCS = {"chrome.exe", "msedge.exe", "brave.exe", "vivaldi.exe"}
+
+# window-chrome / nav labels that are NOT page body text
+_NOISE = {
+    "最小化", "最大化", "还原", "恢复", "关闭", "系统", "新标签页", "返回",
+    "前进", "重新加载", "翻译此页？", "Minimize", "Maximize", "Restore", "Close",
+    "New Tab", "Back", "Forward", "Reload",
+}
+
+WM_GETOBJECT = 0x003D
+# top-level hwnds already poked for accessibility (poke persists per process)
+_ACTIVATED: set[int] = set()
+
+
+@dataclass
+class Snapshot:
+    hwnd: int
+    app: str
+    title: str = ""
+    url: str = ""
+    texts: list[str] = field(default_factory=list)   # ordered, deduplicated
+    node_count: int = 0
+    truncated: bool = False
+    elapsed_ms: int = 0
+    mode: str = ""          # "browser" | "legacy"
+    doc_count: int = 0      # DocumentControls seen (browser path)
+
+    def as_text(self, max_chars: int = 4000) -> str:
+        body = "\n".join(self.texts)
+        if len(body) > max_chars:
+            body = body[:max_chars] + " …"
+        return body
+
+    def to_dict(self) -> dict:
+        return {
+            "app": self.app,
+            "title": self.title,
+            "url": self.url,
+            "text": self.as_text(),
+            "node_count": self.node_count,
+            "truncated": self.truncated,
+            "elapsed_ms": self.elapsed_ms,
+            "mode": self.mode,
+            "doc_count": self.doc_count,
+        }
+
+
+def _clean(s: str | None) -> str:
+    if not s:
+        return ""
+    return " ".join(s.split()).strip()
+
+
+def _body_chars(texts: list[str]) -> int:
+    return sum(len(t) for t in texts if t and t not in _NOISE)
+
+
+# --------------------------------------------------------------------------- #
+# public entry point
+# --------------------------------------------------------------------------- #
+def extract(hwnd: int, app: str = "", *, mode: str = "auto", max_nodes: int = 800,
+            max_depth: int = 40, time_budget_sec: float = 2.5,
+            min_len: int = 2, max_texts: int = 600) -> Snapshot:
+    """Extract a text snapshot from a window.
+
+    mode: "auto"    browser path for Chromium browsers, legacy path otherwise
+          "browser" force the document-targeted browser path
+          "legacy"  force the original whole-window walk
+    """
+    is_browser = app.lower() in BROWSER_PROCS
+    use_browser = mode == "browser" or (mode == "auto" and is_browser)
+    if not use_browser:
+        return _extract_legacy(
+            hwnd, app, max_nodes=max_nodes, max_depth=max_depth,
+            time_budget_sec=time_budget_sec, min_len=min_len, max_texts=max_texts,
+        )
+    return _extract_browser(
+        hwnd, app, max_depth=max_depth, time_budget_sec=time_budget_sec,
+        min_len=min_len, max_texts=max_texts,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# browser path (new)
+# --------------------------------------------------------------------------- #
+def _find_render_widgets(top_hwnd: int) -> list[int]:
+    if win32gui is None:
+        return []
+    found: list[int] = []
+
+    def _walk(parent: int) -> None:
+        child = win32gui.FindWindowEx(parent, 0, None, None)
+        while child:
+            try:
+                if win32gui.GetClassName(child) == "Chrome_RenderWidgetHostHWND":
+                    found.append(child)
+            except Exception:  # noqa: BLE001
+                pass
+            _walk(child)
+            child = win32gui.FindWindowEx(parent, child, None, None)
+
+    try:
+        _walk(top_hwnd)
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
+def _activate_accessibility(top_hwnd: int) -> bool:
+    """Poke Chromium's render widgets so it builds its a11y tree. Returns True
+    only the first time a given window is poked (caller may then wait briefly)."""
+    if top_hwnd in _ACTIVATED or win32gui is None:
+        return False
+    widgets = _find_render_widgets(top_hwnd)
+    for hwnd in widgets:
+        try:
+            win32gui.SendMessageTimeout(
+                hwnd, WM_GETOBJECT, 0, 1, win32con.SMTO_ABORTIFHUNG, 400
+            )
+        except Exception:  # noqa: BLE001
+            try:
+                ctypes.windll.user32.SendMessageW(hwnd, WM_GETOBJECT, 0, 1)
+            except Exception:  # noqa: BLE001
+                pass
+    _ACTIVATED.add(top_hwnd)
+    return bool(widgets)
+
+
+def _find_documents(root: "auto.Control", budget_s: float) -> list:
+    start = time.monotonic()
+    docs = []
+    queue = [(root, 0)]
+    while queue and (time.monotonic() - start) < budget_s:
+        ctrl, depth = queue.pop(0)
+        try:
+            if ctrl.ControlTypeName == "DocumentControl":
+                docs.append(ctrl)
+        except Exception:  # noqa: BLE001
+            pass
+        if depth < 30:
+            try:
+                for ch in ctrl.GetChildren():
+                    queue.append((ch, depth + 1))
+            except Exception:  # noqa: BLE001
+                pass
+    return docs
+
+
+def _walk_doc(doc, *, max_depth: int, budget_s: float, min_len: int,
+              max_texts: int) -> tuple[list[str], int, bool]:
+    start = time.monotonic()
+    texts: list[str] = []
+    seen: set[str] = set()
+    n = 0
+    truncated = False
+    queue = [(doc, 0)]
+    while queue:
+        if len(texts) >= max_texts or (time.monotonic() - start) > budget_s:
+            truncated = True
+            break
+        ctrl, depth = queue.pop(0)
+        n += 1
+        try:
+            ctype = ctrl.ControlTypeName
+        except Exception:  # noqa: BLE001
+            ctype = ""
+        if ctype in _TEXT_TYPES:
+            name = _clean(getattr(ctrl, "Name", ""))
+            if len(name) >= min_len and name not in seen and name not in _NOISE:
+                seen.add(name)
+                texts.append(name)
+        if ctype in _VALUE_TYPES:
+            try:
+                val = _clean(ctrl.GetValuePattern().Value)
+            except Exception:  # noqa: BLE001
+                val = ""
+            if val and val not in seen and val not in _NOISE:
+                seen.add(val)
+                texts.append(val)
+        if depth < max_depth:
+            try:
+                for ch in ctrl.GetChildren():
+                    queue.append((ch, depth + 1))
+            except Exception:  # noqa: BLE001
+                pass
+    return texts, n, truncated
+
+
+def _extract_browser(hwnd: int, app: str, *, max_depth: int, time_budget_sec: float,
+                     min_len: int, max_texts: int) -> Snapshot:
+    start = time.monotonic()
+    snap = Snapshot(hwnd=hwnd, app=app, mode="browser")
+    old_timeout = auto.uiautomation.TIME_OUT_SECOND
+    auto.SetGlobalSearchTimeout(1.5)
+    try:
+        # wake the a11y tree (once per window); brief settle only on first poke
+        if _activate_accessibility(hwnd):
+            time.sleep(0.6)
+
+        root = auto.ControlFromHandle(hwnd)
+        if not root:
+            return snap
+        snap.title = _clean(root.Name)
+
+        # url from the address bar (window chrome, not inside the document)
+        try:
+            from tracker.content import browser_url
+            full, dom = browser_url(hwnd)
+            snap.url = full or dom or ""
+        except Exception:  # noqa: BLE001
+            pass
+
+        docs = _find_documents(root, budget_s=min(1.5, time_budget_sec))
+        snap.doc_count = len(docs)
+
+        best: list[str] = []
+        best_chars = -1
+        for doc in docs:
+            texts, n, truncated = _walk_doc(
+                doc, max_depth=max_depth,
+                budget_s=max(0.8, time_budget_sec / max(1, len(docs))),
+                min_len=min_len, max_texts=max_texts,
+            )
+            snap.node_count += n
+            c = _body_chars(texts)
+            if c > best_chars:
+                best, best_chars, snap.truncated = texts, c, truncated
+        snap.texts = best
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        auto.SetGlobalSearchTimeout(old_timeout)
+        snap.elapsed_ms = int((time.monotonic() - start) * 1000)
+    return snap
+
+
+# --------------------------------------------------------------------------- #
+# legacy path (original whole-window walk, unchanged behavior)
+# --------------------------------------------------------------------------- #
+def _extract_legacy(hwnd: int, app: str, *, max_nodes: int, max_depth: int,
+                    time_budget_sec: float, min_len: int, max_texts: int) -> Snapshot:
+    start = time.monotonic()
+    snap = Snapshot(hwnd=hwnd, app=app, mode="legacy")
+    old_timeout = auto.uiautomation.TIME_OUT_SECOND
+    auto.SetGlobalSearchTimeout(1.0)
+    try:
+        root = auto.ControlFromHandle(hwnd)
+        if not root:
+            return snap
+        snap.title = _clean(root.Name)
+        seen: set[str] = set()
+
+        queue: list[tuple[auto.Control, int]] = [(root, 0)]
+        while queue:
+            if snap.node_count >= max_nodes or \
+                    (time.monotonic() - start) > time_budget_sec or \
+                    len(snap.texts) >= max_texts:
+                snap.truncated = True
+                break
+            ctrl, depth = queue.pop(0)
+            snap.node_count += 1
+            ctype = ""
+            try:
+                ctype = ctrl.ControlTypeName
+            except Exception:  # noqa: BLE001
+                pass
+
+            if ctype in _TEXT_TYPES:
+                name = _clean(getattr(ctrl, "Name", ""))
+                if len(name) >= min_len and name not in seen:
+                    seen.add(name)
+                    snap.texts.append(name)
+
+            if ctype in _VALUE_TYPES:
+                try:
+                    val = _clean(ctrl.GetValuePattern().Value)
+                except Exception:  # noqa: BLE001
+                    val = ""
+                if val:
+                    low = (getattr(ctrl, "Name", "") or "").lower()
+                    if not snap.url and ("address" in low or "地址" in low or
+                                         val.startswith(("http://", "https://"))):
+                        snap.url = val
+                    elif val not in seen:
+                        seen.add(val)
+                        snap.texts.append(val)
+
+            if depth < max_depth:
+                try:
+                    for child in ctrl.GetChildren():
+                        queue.append((child, depth + 1))
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        auto.SetGlobalSearchTimeout(old_timeout)
+        snap.elapsed_ms = int((time.monotonic() - start) * 1000)
+    return snap

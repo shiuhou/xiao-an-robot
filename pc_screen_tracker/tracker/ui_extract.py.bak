@@ -1,0 +1,125 @@
+"""Layer-2 visible-text extraction via UI Automation.
+
+Given a window handle, walk its UIA tree (bounded by node/depth/time budget)
+and collect human-visible text from text-bearing controls. Returns a compact,
+deduplicated snapshot suitable for feeding a summarization model.
+
+Everything is best-effort and defensive: any failure yields an empty snapshot
+rather than raising, so the collector never stalls.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+
+import uiautomation as auto
+
+# Control types that typically carry meaningful visible text.
+_TEXT_TYPES = {
+    "TextControl", "DocumentControl", "EditControl", "HyperlinkControl",
+    "ButtonControl", "ListItemControl", "TreeItemControl", "TabItemControl",
+    "MenuItemControl", "HeaderItemControl", "DataItemControl",
+}
+# Types worth reading a ValuePattern from (address bar, editors, inputs).
+_VALUE_TYPES = {"EditControl", "DocumentControl", "ComboBoxControl"}
+
+
+@dataclass
+class Snapshot:
+    hwnd: int
+    app: str
+    title: str = ""
+    url: str = ""
+    texts: list[str] = field(default_factory=list)   # ordered, deduplicated
+    node_count: int = 0
+    truncated: bool = False
+    elapsed_ms: int = 0
+
+    def as_text(self, max_chars: int = 4000) -> str:
+        body = "\n".join(self.texts)
+        if len(body) > max_chars:
+            body = body[:max_chars] + " …"
+        return body
+
+    def to_dict(self) -> dict:
+        return {
+            "app": self.app,
+            "title": self.title,
+            "url": self.url,
+            "text": self.as_text(),
+            "node_count": self.node_count,
+            "truncated": self.truncated,
+            "elapsed_ms": self.elapsed_ms,
+        }
+
+
+def _clean(s: str | None) -> str:
+    if not s:
+        return ""
+    return " ".join(s.split()).strip()
+
+
+def extract(hwnd: int, app: str = "", *, max_nodes: int = 600,
+            max_depth: int = 28, time_budget_sec: float = 2.5,
+            min_len: int = 2, max_texts: int = 400) -> Snapshot:
+    start = time.monotonic()
+    snap = Snapshot(hwnd=hwnd, app=app)
+    old_timeout = auto.uiautomation.TIME_OUT_SECOND
+    auto.SetGlobalSearchTimeout(1.0)
+    try:
+        root = auto.ControlFromHandle(hwnd)
+        if not root:
+            return snap
+        snap.title = _clean(root.Name)
+        seen: set[str] = set()
+
+        # BFS so we cover breadth (visible surface) before deep leaves.
+        queue: list[tuple[auto.Control, int]] = [(root, 0)]
+        while queue:
+            if snap.node_count >= max_nodes or \
+                    (time.monotonic() - start) > time_budget_sec or \
+                    len(snap.texts) >= max_texts:
+                snap.truncated = True
+                break
+            ctrl, depth = queue.pop(0)
+            snap.node_count += 1
+            ctype = ""
+            try:
+                ctype = ctrl.ControlTypeName
+            except Exception:  # noqa: BLE001
+                pass
+
+            # collect Name text
+            if ctype in _TEXT_TYPES:
+                name = _clean(getattr(ctrl, "Name", ""))
+                if len(name) >= min_len and name not in seen:
+                    seen.add(name)
+                    snap.texts.append(name)
+
+            # collect Value (address bar url, editor content, inputs)
+            if ctype in _VALUE_TYPES:
+                try:
+                    val = _clean(ctrl.GetValuePattern().Value)
+                except Exception:  # noqa: BLE001
+                    val = ""
+                if val:
+                    low = (getattr(ctrl, "Name", "") or "").lower()
+                    if not snap.url and ("address" in low or "地址" in low or
+                                         val.startswith(("http://", "https://"))):
+                        snap.url = val
+                    elif val not in seen:
+                        seen.add(val)
+                        snap.texts.append(val)
+
+            if depth < max_depth:
+                try:
+                    for child in ctrl.GetChildren():
+                        queue.append((child, depth + 1))
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        auto.SetGlobalSearchTimeout(old_timeout)
+        snap.elapsed_ms = int((time.monotonic() - start) * 1000)
+    return snap

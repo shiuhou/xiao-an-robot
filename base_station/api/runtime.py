@@ -511,6 +511,60 @@ class ApiRuntime:
             "count": len(activities),
         }
 
+    def ingest_work_activity(
+        self,
+        arguments: dict[str, Any],
+        session_id: str = "default",
+    ) -> dict[str, Any]:
+        """Persist one screen-derived work activity (PC client -> Local Event Store).
+
+        A pure Local-Event-Store write: it records the row and returns, with NO
+        dispatch into the response pipeline, so ingesting activity never makes the
+        robot speak or act. The one-line gist rides in `note` and reaches OpenClaw
+        only when the user later asks for help (via ContextBuilder at ask-time)."""
+        args = dict(arguments or {})
+
+        raw_conf = args.get("confidence")
+        try:
+            confidence = float(raw_conf) if raw_conf is not None else 0.0
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        raw_dur = args.get("duration_seconds")
+        try:
+            duration_seconds = float(raw_dur) if raw_dur is not None else None
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+        raw_ts = args.get("timestamp_ms")
+        try:
+            timestamp_ms = int(raw_ts) if raw_ts is not None else None
+        except (TypeError, ValueError):
+            timestamp_ms = None
+
+        raw_pid = args.get("project_id")
+        project_id = raw_pid if isinstance(raw_pid, int) and not isinstance(raw_pid, bool) else None
+
+        with self._operation_lock:
+            result = self.memory_store.insert_work_activity(
+                source=str(args.get("source") or "screen"),
+                app_name=str(args.get("app_name") or ""),
+                window_title=str(args.get("window_title") or ""),
+                activity_type=str(args.get("activity_type") or "unknown"),
+                project_hint=args.get("project_hint"),
+                note=args.get("note"),
+                confidence=confidence,
+                duration_seconds=duration_seconds,
+                timestamp_ms=timestamp_ms,
+                project_id=project_id,
+                session_id=session_id,
+            )
+        return {
+            "work_activity": result,
+            "event_id": result.get("event_id"),
+            "work_activity_id": result.get("work_activity_id"),
+        }
+
     def query_summaries(
         self,
         summary_type: str | None = None,

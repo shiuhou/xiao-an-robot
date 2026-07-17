@@ -1,0 +1,14 @@
+{
+  "privacy_level": "L1",
+  "sample_interval_sec": 5.0,
+  "idle_threshold_sec": 60.0,
+
+  "understander_backend": "rule",
+  "qwen_api_key": "",
+  "qwen_model": "qwen-plus",
+  "qwen_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+
+  "board_base_url": "",
+
+  "_note": "复制此文件为 config.json 再填 qwen_api_key。config.json 含密钥,勿提交 git(git init 后加入 .gitignore)。backend 设为 'qwen' 才走云端;'rule' 为离线免费。"
+}

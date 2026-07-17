@@ -56,6 +56,20 @@ class XiaoAnMemoryStore:
 
         with self.conn:
             self.conn.executescript(schema_sql)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Idempotent column additions for DBs created before a column existed.
+        schema.sql uses CREATE TABLE IF NOT EXISTS, so a new column in the schema
+        never reaches an already-existing table without an explicit ALTER."""
+        work_cols = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(work_activities)")
+        }
+        if "note" not in work_cols:
+            with self.conn:
+                self.conn.execute(
+                    "ALTER TABLE work_activities ADD COLUMN note TEXT"
+                )
 
     def insert_event(
         self,
@@ -143,6 +157,7 @@ class XiaoAnMemoryStore:
         window_title: str = "",
         activity_type: str = "unknown",
         project_hint: str | None = None,
+        note: str | None = None,
         confidence: float = 0.0,
         duration_seconds: float | None = None,
         timestamp_ms: int | None = None,
@@ -164,6 +179,7 @@ class XiaoAnMemoryStore:
             "window_title": window_title,
             "activity_type": activity_type,
             "project_hint": project_hint,
+            "note": note,
             "confidence": confidence,
             "duration_seconds": duration_seconds,
         })
@@ -189,10 +205,10 @@ class XiaoAnMemoryStore:
                 """
                 INSERT INTO work_activities (
                     event_id, timestamp_ms, source, app_name, window_title,
-                    activity_type, project_hint, project_id, confidence,
+                    activity_type, project_hint, note, project_id, confidence,
                     duration_seconds, created_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -202,6 +218,7 @@ class XiaoAnMemoryStore:
                     window_title,
                     activity_type,
                     project_hint,
+                    note,
                     project_id,
                     confidence,
                     duration_seconds,
@@ -241,7 +258,7 @@ class XiaoAnMemoryStore:
         cursor = self.conn.execute(
             f"""
             SELECT id, event_id, timestamp_ms, source, app_name, window_title,
-                   activity_type, project_hint, project_id, confidence,
+                   activity_type, project_hint, note, project_id, confidence,
                    duration_seconds, created_at_ms
             FROM work_activities
             {where_sql}

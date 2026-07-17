@@ -97,3 +97,10 @@ worktrees/
 **/.cache/
 
 runtime/
+
+# --- pc_screen_tracker (PC client): never commit secrets or captured screen content ---
+pc_screen_tracker/config.json
+pc_screen_tracker/*.jsonl
+pc_screen_tracker/data/
+pc_screen_tracker/out.html
+pc_screen_tracker/report.html

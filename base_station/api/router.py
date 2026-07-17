@@ -309,6 +309,52 @@ class ApiRouter:
                 )
             return success(result)
 
+        if active_method == "POST" and active_path == "/api/work-activities":
+            active_body = body_json if isinstance(body_json, dict) else {}
+            app_name = active_body.get("app_name")
+            if not isinstance(app_name, str) or not app_name.strip():
+                return error(
+                    code="missing_app_name",
+                    message="app_name must be a non-empty string",
+                    status=400,
+                )
+            for num_field in ("confidence", "duration_seconds", "timestamp_ms"):
+                value = active_body.get(num_field)
+                if (
+                    value is not None
+                    and (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                    )
+                ):
+                    return error(
+                        code=f"invalid_{num_field}",
+                        message=f"{num_field} must be a number",
+                        status=400,
+                    )
+            arguments = {
+                key: active_body[key]
+                for key in (
+                    "source",
+                    "app_name",
+                    "window_title",
+                    "activity_type",
+                    "project_hint",
+                    "note",
+                    "confidence",
+                    "duration_seconds",
+                    "timestamp_ms",
+                    "project_id",
+                )
+                if key in active_body
+            }
+            arguments["app_name"] = app_name.strip()
+            session_id = self._session_id(active_body)
+            return success(self.runtime.ingest_work_activity(
+                arguments=arguments,
+                session_id=session_id,
+            ))
+
         task_action = self._resource_action(
             active_method,
             active_path,

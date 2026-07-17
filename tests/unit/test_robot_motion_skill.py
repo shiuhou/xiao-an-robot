@@ -123,6 +123,18 @@ class RobotMotionSkillTest(unittest.IsolatedAsyncioTestCase):
             ("motion", "move_back_to_dock", {"speed": 1.0}, 2600),
         ])
 
+    async def test_turn_parameters_are_clamped_for_hardware_safety(self) -> None:
+        gateway = FakeGateway()
+        skill = RobotMotionSkill(gateway=gateway)
+
+        await skill.turn(direction="right", speed=5, angle_deg=180, duration_ms=5000, timeout_ms=5000)
+        await skill.turn(direction="left", speed=0.1, angle_deg=30, duration_ms=450, timeout_ms=900)
+
+        self.assertEqual(gateway.calls, [
+            ("motion", "turn", {"speed": 1.0, "angle_deg": 45.0, "duration_ms": 900}, 900),
+            ("motion", "turn", {"speed": 0.52, "angle_deg": -30.0, "duration_ms": 450}, 900),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

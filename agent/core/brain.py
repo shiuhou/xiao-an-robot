@@ -244,6 +244,12 @@ class XiaoAnBrain:
         companion_context = {
             "payload": payload,
             "companion_result": dict(companion_result),
+            "tool_profile": "companion",
+            "route_hint": {
+                "kind": "companion",
+                "tool_profile": "companion",
+                "intent_hint": "companion_care",
+            },
         }
         if "trigger_result" in companion_result:
             companion_context["trigger_result"] = companion_result["trigger_result"]

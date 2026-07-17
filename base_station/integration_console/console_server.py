@@ -881,8 +881,6 @@ class IntegrationConsoleApp:
             env.setdefault("XIAO_AN_OPENCLAW_BACKEND", "gateway")
             env.setdefault("XIAO_AN_OPENCLAW_GATEWAY_URL", self.openclaw_url)
             env.setdefault("XIAO_AN_OPENCLAW_AGENT", "xiaoan-runtime")
-        if link == "link1":
-            env.setdefault("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", "1")
         return env
 
     def fast_demo_environment(self) -> dict[str, str]:

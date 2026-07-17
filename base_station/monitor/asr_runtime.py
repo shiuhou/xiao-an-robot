@@ -93,6 +93,7 @@ def build_output(text: str, event: dict, result: dict) -> dict:
         "skipped_actions",
         "companion_result",
         "openclaw_result",
+        "openclaw_raw",
         "openclaw_error",
         "openclaw_event_type",
     ):

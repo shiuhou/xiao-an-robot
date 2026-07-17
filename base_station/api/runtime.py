@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import threading
@@ -746,6 +747,14 @@ class ApiRuntime:
         dashboard["todos"] = self._list_or_empty(dashboard.get("todos"))
         dashboard["schedules"] = self._list_or_empty(dashboard.get("schedules"))
         dashboard["reminders"] = self._list_or_empty(dashboard.get("reminders"))
+        capture_item = self._dashboard_item_for_latest_capture(latest, now_iso)
+        if capture_item is not None:
+            list_name, item = capture_item
+            dashboard[list_name] = self._upsert_dashboard_item(
+                dashboard[list_name],
+                item,
+            )
+            dashboard["next_item"] = item
         dashboard["latest_reply"] = {
             "display_text": self._text_or_empty(latest.get("display_text", "")),
             "spoken_text": self._text_or_empty(latest.get("spoken_text", "")),
@@ -762,6 +771,181 @@ class ApiRuntime:
             encoding="utf-8",
         )
         tmp_path.replace(self.openclaw_dashboard_path)
+
+    def _dashboard_item_for_latest_capture(
+        self,
+        latest: dict[str, Any],
+        timestamp: str,
+    ) -> tuple[str, dict[str, Any]] | None:
+        capture = self._extract_openclaw_capture(latest)
+        if capture is None:
+            return None
+        if self._text_or_empty(capture.get("status", "")).lower() != "captured":
+            return None
+
+        kind = self._text_or_empty(capture.get("kind", "")).lower()
+        list_name = {
+            "task": "todos",
+            "todo": "todos",
+            "note": "todos",
+            "idea": "todos",
+            "schedule": "schedules",
+            "meeting": "schedules",
+            "reminder": "reminders",
+            "alarm": "reminders",
+        }.get(kind)
+        if list_name is None:
+            return None
+
+        transcript = self._dashboard_capture_transcript(latest)
+        title = (
+            self._text_or_empty(capture.get("title", ""))
+            or self._text_or_empty(capture.get("content", ""))
+            or self._text_or_empty(latest.get("display_text", ""))
+            or transcript
+            or "语音事项"
+        )
+        content = self._text_or_empty(capture.get("content", ""))
+        fingerprint = "|".join([
+            kind,
+            title,
+            content,
+            transcript,
+            self._text_or_empty(latest.get("session_id", "")),
+        ])
+        item = {
+            "id": "openclaw-capture-"
+            + hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12],
+            "title": title,
+            "status": "pending",
+            "source": "openclaw_capture",
+            "runtime_source": self._text_or_empty(latest.get("source", "")),
+            "created_at": timestamp,
+            "transcript": transcript,
+        }
+
+        if list_name == "todos":
+            item["type"] = "todo"
+            item["priority"] = self._text_or_empty(capture.get("priority", "")) or "normal"
+            due_text = (
+                self._text_or_empty(capture.get("due_text", ""))
+                or self._text_or_empty(capture.get("due_date", ""))
+                or self._text_or_empty(capture.get("due_at", ""))
+            )
+            if due_text:
+                item["due_text"] = due_text
+            if kind in {"note", "idea"} and not due_text:
+                item["due_text"] = "语音笔记"
+        elif list_name == "schedules":
+            item["type"] = "schedule"
+            item["date"] = (
+                self._text_or_empty(capture.get("date", ""))
+                or self._text_or_empty(capture.get("due_date", ""))
+                or self._date_from_iso(self._text_or_empty(capture.get("due_at", "")))
+            )
+            item["time"] = (
+                self._text_or_empty(capture.get("time", ""))
+                or self._text_or_empty(capture.get("time_text", ""))
+                or self._time_from_iso(self._text_or_empty(capture.get("due_at", "")))
+            )
+        else:
+            due_at = (
+                self._text_or_empty(capture.get("due_at", ""))
+                or self._text_or_empty(capture.get("trigger_at", ""))
+            )
+            item["type"] = "alarm"
+            item["due_at"] = due_at
+            item["time"] = (
+                self._text_or_empty(capture.get("time", ""))
+                or self._text_or_empty(capture.get("time_text", ""))
+                or self._time_from_iso(due_at)
+            )
+
+        return list_name, item
+
+    @classmethod
+    def _extract_openclaw_capture(cls, latest: dict[str, Any]) -> dict[str, Any] | None:
+        execution_result = latest.get("execution_result")
+        if not isinstance(execution_result, dict):
+            return None
+        for candidate in cls._openclaw_capture_candidates(execution_result):
+            capture = cls._capture_from_candidate(candidate)
+            if capture is not None:
+                return capture
+        return None
+
+    @classmethod
+    def _openclaw_capture_candidates(cls, execution_result: dict[str, Any]) -> Iterable[Any]:
+        yield execution_result
+        openclaw_result = execution_result.get("openclaw_result")
+        if isinstance(openclaw_result, dict):
+            yield openclaw_result
+            yield openclaw_result.get("openclaw_raw")
+            decision = openclaw_result.get("decision")
+            if isinstance(decision, dict):
+                yield decision
+                yield decision.get("raw")
+        yield execution_result.get("openclaw_raw")
+        raw = execution_result.get("raw")
+        if isinstance(raw, dict):
+            yield raw
+
+    @classmethod
+    def _capture_from_candidate(cls, candidate: Any) -> dict[str, Any] | None:
+        if not isinstance(candidate, dict):
+            return None
+        capture = candidate.get("capture")
+        if isinstance(capture, dict):
+            return capture
+        raw = candidate.get("raw")
+        if isinstance(raw, dict) and isinstance(raw.get("capture"), dict):
+            return raw["capture"]
+        return None
+
+    @classmethod
+    def _dashboard_capture_transcript(cls, latest: dict[str, Any]) -> str:
+        metadata = latest.get("metadata")
+        if isinstance(metadata, dict):
+            transcript = cls._text_or_empty(metadata.get("transcript", ""))
+            if transcript:
+                return transcript
+
+        execution_result = latest.get("execution_result")
+        if not isinstance(execution_result, dict):
+            return ""
+        text = cls._text_or_empty(execution_result.get("text", ""))
+        if text:
+            return text
+        event = execution_result.get("event")
+        if isinstance(event, dict):
+            payload = event.get("payload")
+            if isinstance(payload, dict):
+                return cls._text_or_empty(payload.get("text", ""))
+        return ""
+
+    @staticmethod
+    def _upsert_dashboard_item(items: list[Any], item: dict[str, Any]) -> list[dict[str, Any]]:
+        item_id = item.get("id")
+        cleaned = [
+            existing
+            for existing in items
+            if isinstance(existing, dict) and existing.get("id") != item_id
+        ]
+        return [item, *cleaned][:20]
+
+    @staticmethod
+    def _date_from_iso(value: str) -> str:
+        try:
+            return datetime.fromisoformat(value).date().isoformat()
+        except ValueError:
+            return ""
+
+    @staticmethod
+    def _time_from_iso(value: str) -> str:
+        try:
+            return datetime.fromisoformat(value).strftime("%H:%M")
+        except ValueError:
+            return ""
 
     def _load_dashboard_snapshot(self) -> dict[str, Any]:
         try:

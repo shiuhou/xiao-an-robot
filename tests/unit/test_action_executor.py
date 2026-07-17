@@ -19,6 +19,8 @@ class FakeRobotMotionSkill:
         self.move_out_args = []
         self.return_to_dock_calls = 0
         self.return_to_dock_args = []
+        self.turn_calls = 0
+        self.turn_args = []
         self.care_calls = []
         self.care_args = []
 
@@ -43,6 +45,17 @@ class FakeRobotMotionSkill:
         self.return_to_dock_calls += 1
         self.return_to_dock_args.append({
             "speed": speed,
+            "timeout_ms": timeout_ms,
+        })
+        return {"ok": True}
+
+    def turn(self, direction="left", speed=None, angle_deg=None, duration_ms=None, timeout_ms=None) -> dict:
+        self.turn_calls += 1
+        self.turn_args.append({
+            "direction": direction,
+            "speed": speed,
+            "angle_deg": angle_deg,
+            "duration_ms": duration_ms,
             "timeout_ms": timeout_ms,
         })
         return {"ok": True}
@@ -81,6 +94,9 @@ class OfflineRobotMotionSkill(FakeRobotMotionSkill):
     def return_to_dock(self, speed=None, timeout_ms=None) -> dict:
         raise RuntimeError("No online robot connected on /control")
 
+    def turn(self, direction="left", speed=None, angle_deg=None, duration_ms=None, timeout_ms=None) -> dict:
+        raise RuntimeError("No online robot connected on /control")
+
     def care_for_user(
         self,
         text: str = "",
@@ -113,6 +129,17 @@ class AsyncFakeRobotMotionSkill(FakeRobotMotionSkill):
         self.return_to_dock_calls += 1
         self.return_to_dock_args.append({
             "speed": speed,
+            "timeout_ms": timeout_ms,
+        })
+        return {"ok": True}
+
+    async def turn(self, direction="left", speed=None, angle_deg=None, duration_ms=None, timeout_ms=None) -> dict:
+        self.turn_calls += 1
+        self.turn_args.append({
+            "direction": direction,
+            "speed": speed,
+            "angle_deg": angle_deg,
+            "duration_ms": duration_ms,
             "timeout_ms": timeout_ms,
         })
         return {"ok": True}
@@ -313,6 +340,29 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["display_text"], "show only")
         self.assertEqual(result["executed_actions"], [])
 
+    async def test_handled_result_preserves_openclaw_raw_payload(self) -> None:
+        raw = {
+            "handled": True,
+            "display_text": "已记录：测试内容。",
+            "spoken_text": "好，记好了。",
+            "capture": {
+                "status": "captured",
+                "kind": "note",
+                "title": "测试内容",
+            },
+        }
+        executor = ActionExecutor(FakeRobotMotionSkill())
+
+        result = await executor.execute(OpenClawDecision(
+            handled=True,
+            display_text="已记录：测试内容。",
+            spoken_text="好，记好了。",
+            raw=raw,
+        ))
+
+        self.assertEqual(result["openclaw_raw"], raw)
+        self.assertEqual(result["openclaw_raw"]["capture"]["kind"], "note")
+
     async def test_spoken_text_calls_say_and_takes_priority_over_reply_text(self) -> None:
         robot_motion = FakeRobotMotionSkill()
         executor = ActionExecutor(robot_motion)
@@ -466,6 +516,62 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
             "speed": 1.0,
             "timeout_ms": 9000,
         }])
+
+    async def test_xiaoan_robot_turn_tool_call_forwards_safety_args(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(
+                name="xiaoan.robot.turn",
+                arguments={
+                    "direction": "right",
+                    "speed": 1.0,
+                    "angle_deg": 30,
+                    "duration_ms": 450,
+                    "timeout_ms": 900,
+                },
+            )],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.turn_calls, 1)
+        self.assertEqual(robot_motion.turn_args, [{
+            "direction": "right",
+            "speed": 1.0,
+            "angle_deg": 30,
+            "duration_ms": 450,
+            "timeout_ms": 900,
+        }])
+        self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.turn")
+
+    async def test_xiaoan_robot_turn_tool_call_requires_direction(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="xiaoan.robot.turn", arguments={})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.turn_calls, 0)
+        self.assertEqual(result["skipped_actions"][0]["reason"], "missing_direction")
+
+    async def test_legacy_robot_turn_left_alias_sets_direction(self) -> None:
+        robot_motion = FakeRobotMotionSkill()
+        executor = ActionExecutor(robot_motion)
+        decision = OpenClawDecision(
+            handled=True,
+            tool_calls=[OpenClawToolCall(name="robot.turn_left", arguments={"angle_deg": 20})],
+        )
+
+        result = await executor.execute(decision)
+
+        self.assertEqual(robot_motion.turn_calls, 1)
+        self.assertEqual(robot_motion.turn_args[0]["direction"], "left")
+        self.assertEqual(result["executed_actions"][0]["name"], "robot.turn_left")
 
     async def test_xiaoan_robot_care_tool_call_runs_care_sequence(self) -> None:
         robot_motion = FakeRobotMotionSkill()

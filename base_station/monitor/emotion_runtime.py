@@ -674,6 +674,20 @@ def create_vlm_emotion_model(
     )
 
 
+def preload_vlm_model(vlm_model: Any, *, verbose: bool = False) -> None:
+    """Load a VLM backend early when it exposes a preload/load hook."""
+
+    preload = getattr(vlm_model, "preload", None)
+    if not callable(preload):
+        preload = getattr(vlm_model, "load", None)
+    if not callable(preload):
+        return
+    started = time.perf_counter()
+    preload()
+    if verbose:
+        print(f"[vlm.preload] seconds={time.perf_counter() - started:.3f}")
+
+
 def _load_openvino_face_emotion_model():     
     global OpenVINOFaceEmotionModel
     if OpenVINOFaceEmotionModel is None:
@@ -812,7 +826,9 @@ def create_emotion_source(
     enable_vlm_gate: bool = False,
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
+    vlm_device: str | None = None,
     vlm_max_new_tokens: int = 128,
+    preload_vlm: bool = False,
     force_vlm: bool = False,
     vlm_min_interval_seconds: float = 0.0,
     history_memory: Any | None = None,
@@ -824,6 +840,7 @@ def create_emotion_source(
     visual_observer: Any | None = None,
     video_queue_size: int = 2,
 ):
+    effective_vlm_device = vlm_device or device
     if source == "fake_face":
         return FakeFaceEmotionSource(
             pattern=pattern,
@@ -849,9 +866,11 @@ def create_emotion_source(
                 vlm_backend=vlm_backend,
                 pattern=pattern,
                 vlm_model_path=vlm_model_path,
-                device=device,
+                device=effective_vlm_device,
                 vlm_max_new_tokens=vlm_max_new_tokens,
             )
+            if preload_vlm:
+                preload_vlm_model(vlm_model, verbose=verbose)
             return VLMGatedCameraEmotionSource(
                 frame_source=frame_source,
                 cv_pipeline=pipeline,
@@ -888,9 +907,11 @@ def create_emotion_source(
                 vlm_backend=vlm_backend,
                 pattern=pattern,
                 vlm_model_path=vlm_model_path,
-                device=device,
+                device=effective_vlm_device,
                 vlm_max_new_tokens=vlm_max_new_tokens,
             )
+            if preload_vlm:
+                preload_vlm_model(vlm_model, verbose=verbose)
             return VLMGatedCameraEmotionSource(
                 frame_source=frame_source,
                 cv_pipeline=pipeline,
@@ -923,9 +944,11 @@ def create_emotion_source(
             vlm_backend=vlm_backend,
             pattern=pattern,
             vlm_model_path=vlm_model_path,
-            device=device,
+            device=effective_vlm_device,
             vlm_max_new_tokens=vlm_max_new_tokens,
         )
+        if preload_vlm:
+            preload_vlm_model(vlm_model, verbose=verbose)
         return VLMGatedCameraEmotionSource(
             frame_source=frame_source,
             cv_pipeline=pipeline,
@@ -957,9 +980,11 @@ def create_emotion_source(
             vlm_backend=vlm_backend,
             pattern=pattern,
             vlm_model_path=vlm_model_path,
-            device=device,
+            device=effective_vlm_device,
             vlm_max_new_tokens=vlm_max_new_tokens,
         )
+        if preload_vlm:
+            preload_vlm_model(vlm_model, verbose=verbose)
         return VLMGatedCameraEmotionSource(
             frame_source=frame_source,
             cv_pipeline=pipeline,
@@ -993,9 +1018,11 @@ def create_emotion_source(
                 vlm_backend=vlm_backend,
                 pattern=pattern,
                 vlm_model_path=vlm_model_path,
-                device=device,
+                device=effective_vlm_device,
                 vlm_max_new_tokens=vlm_max_new_tokens,
             )
+            if preload_vlm:
+                preload_vlm_model(vlm_model, verbose=verbose)
             camera_source = VLMGatedCameraEmotionSource(
                 frame_source=frame_source,
                 cv_pipeline=pipeline,
@@ -1039,7 +1066,9 @@ def create_runtime(
     enable_vlm_gate: bool = False,
     vlm_backend: str = "qwen_vl",
     vlm_model_path: str | None = None,
+    vlm_device: str | None = None,
     vlm_max_new_tokens: int = 128,
+    preload_vlm: bool = False,
     force_vlm: bool = False,
     vlm_min_interval_seconds: float = 0.0,
     openface_repo: str | None = None,
@@ -1083,7 +1112,9 @@ def create_runtime(
         enable_vlm_gate=enable_vlm_gate,
         vlm_backend=vlm_backend,
         vlm_model_path=vlm_model_path,
+        vlm_device=vlm_device,
         vlm_max_new_tokens=vlm_max_new_tokens,
+        preload_vlm=preload_vlm,
         force_vlm=force_vlm,
         vlm_min_interval_seconds=vlm_min_interval_seconds,
         history_memory=history_memory,
@@ -1193,10 +1224,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:   #解析�
     parser.add_argument("--vlm-model-path", default=None, help="OpenVINO Qwen VL model directory.")
     parser.add_argument("--vlm-model-root", dest="vlm_model_path", help=argparse.SUPPRESS)
     parser.add_argument(
+        "--vlm-device",
+        default=None,
+        help="OpenVINO device for the VLM backend. Defaults to --device.",
+    )
+    parser.add_argument(
         "--vlm-max-new-tokens",
         type=int,
         default=128,
         help="Maximum new tokens generated by the OpenVINO Qwen VL backend.",
+    )
+    parser.add_argument(
+        "--preload-vlm",
+        action="store_true",
+        help="Load the VLM backend during runtime startup instead of on the first trigger.",
     )
     parser.add_argument("--force-vlm", action="store_true", help="Force VLM analysis for every camera sample.")
     parser.add_argument("--fresh-db", action="store_true", help="Use a fresh temporary SQLite database for this run.")
@@ -1263,7 +1304,9 @@ async def main(args: argparse.Namespace | None = None) -> None:
             enable_vlm_gate=args.enable_vlm_gate,
             vlm_backend=args.vlm_backend,
             vlm_model_path=args.vlm_model_path,
+            vlm_device=args.vlm_device,
             vlm_max_new_tokens=args.vlm_max_new_tokens,
+            preload_vlm=args.preload_vlm,
             force_vlm=args.force_vlm,
             vlm_min_interval_seconds=args.vlm_min_interval_seconds,
             openface_repo=args.openface_repo,

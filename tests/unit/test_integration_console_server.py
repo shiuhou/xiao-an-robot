@@ -509,7 +509,7 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
         self.assertEqual(link1_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")
-        self.assertEqual(link1_env["XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION"], "1")
+        self.assertNotIn("XIAO_AN_OPENCLAW_FRESH_WORK_CAPTURE_SESSION", link1_env)
         self.assertEqual(link2_env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
         self.assertEqual(link2_env["XIAO_AN_OPENCLAW_GATEWAY_URL"], "ws://127.0.0.1:18789")
         self.assertEqual(link2_env["XIAO_AN_OPENCLAW_AGENT"], "xiaoan-runtime")

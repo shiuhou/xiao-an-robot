@@ -22,6 +22,9 @@ class ActionExecutor:
         "robot.move_out": "xiaoan.robot.move_out",
         "robot.move_out_of_dock": "xiaoan.robot.move_out",
         "robot.return_to_dock": "xiaoan.robot.return_to_dock",
+        "robot.turn": "xiaoan.robot.turn",
+        "robot.turn_left": "xiaoan.robot.turn",
+        "robot.turn_right": "xiaoan.robot.turn",
         "robot.care": "xiaoan.robot.care",
         "robot.care_for_user": "xiaoan.robot.care",
     }
@@ -148,7 +151,7 @@ class ActionExecutor:
                 source_event_type=source_event_type,
             )
 
-        return {
+        result = {
             "handled": True,
             "display_text": decision.display_text,
             "spoken_text": decision.spoken_text,
@@ -157,6 +160,9 @@ class ActionExecutor:
             "executed_actions": executed_actions,
             "skipped_actions": skipped_actions,
         }
+        if decision.raw is not None:
+            result["openclaw_raw"] = decision.raw
+        return result
 
     def _tool_calls_handle_reply(self, tool_calls: list[OpenClawToolCall]) -> bool:
         for tool_call in tool_calls:
@@ -301,6 +307,58 @@ class ActionExecutor:
                 result = await self._call_with_supported_kwargs(
                     self.robot_motion_skill.return_to_dock,
                     speed=arguments.get("speed"),
+                    timeout_ms=arguments.get("timeout_ms"),
+                )
+            except Exception as exc:
+                self._record_robot_tool_failure(
+                    tool_call=tool_call,
+                    canonical_name=canonical_name,
+                    arguments=arguments,
+                    error=str(exc),
+                    skipped_actions=skipped_actions,
+                    source_event_type=source_event_type,
+                )
+                return
+            executed_actions.append(self._executed(
+                tool_call,
+                result=self._xiaoan_success(canonical_name, result=result)
+                if name == canonical_name
+                else None,
+            ))
+            self._record_tool_run(
+                tool_name=name,
+                arguments=arguments,
+                result=self._xiaoan_success(canonical_name, result=result),
+                status="success",
+                source_event_type=source_event_type,
+            )
+            return
+
+        if canonical_name == "xiaoan.robot.turn":
+            direction = str(arguments.get("direction") or "").strip().lower()
+            if name == "robot.turn_left":
+                direction = "left"
+            elif name == "robot.turn_right":
+                direction = "right"
+            if direction not in {"left", "right"}:
+                skipped_action = self._skipped(tool_call, "missing_direction")
+                skipped_actions.append(skipped_action)
+                self._record_tool_run(
+                    tool_name=name,
+                    arguments=arguments,
+                    result=skipped_action,
+                    status="skipped",
+                    error="missing_direction",
+                    source_event_type=source_event_type,
+                )
+                return
+            try:
+                result = await self._call_with_supported_kwargs(
+                    self.robot_motion_skill.turn,
+                    direction=direction,
+                    speed=arguments.get("speed"),
+                    angle_deg=arguments.get("angle_deg"),
+                    duration_ms=arguments.get("duration_ms"),
                     timeout_ms=arguments.get("timeout_ms"),
                 )
             except Exception as exc:

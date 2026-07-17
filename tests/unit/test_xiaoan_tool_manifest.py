@@ -14,6 +14,7 @@ class XiaoAnToolManifestTest(unittest.TestCase):
             "xiaoan.robot.expression",
             "xiaoan.robot.move_out",
             "xiaoan.robot.return_to_dock",
+            "xiaoan.robot.turn",
             "xiaoan.robot.care",
             "xiaoan.breathing.start",
             "xiaoan.emotion.snapshot",

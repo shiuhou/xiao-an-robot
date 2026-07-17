@@ -126,6 +126,13 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 "executed_actions": [{"name": "robot.say"}],
                 "skipped_actions": [],
             },
+            "openclaw_raw": {
+                "capture": {
+                    "status": "captured",
+                    "kind": "task",
+                    "title": "测试 Dashboard",
+                },
+            },
             "openclaw_error": "temporary error",
         }
 
@@ -134,6 +141,7 @@ class ASRRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(output["route"], "link_3_companion_fast_path")
         self.assertEqual(output["openclaw_event_type"], "companion.request")
         self.assertEqual(output["openclaw_result"]["reply_text"], "收到，我会交给 OpenClaw 处理。")
+        self.assertEqual(output["openclaw_raw"]["capture"]["kind"], "task")
         self.assertEqual(output["openclaw_error"], "temporary error")
 
     async def test_run_once_uses_fake_brain_without_websocket(self) -> None:

@@ -141,6 +141,66 @@ class ApiRuntimeDashboardSyncTest(unittest.TestCase):
         self.assertEqual(dashboard["schedules"], [{"title": "日程"}])
         self.assertEqual(dashboard["reminders"], [{"title": "提醒"}])
 
+    def test_openclaw_task_capture_is_mirrored_to_dashboard_todos(self) -> None:
+        self.runtime._set_latest_reply(
+            notification_type="asr.transcript.final",
+            display_text="已加入待办：晚上1点做事事。",
+            spoken_text="好呀，已经放进待办啦。",
+            reply_text="好呀，已经帮你记下：晚上1点做事事。",
+            tool_calls=[],
+            metadata={"transcript": "小安把晚上1点做事事加入待办。"},
+            session_id="voice-runtime",
+            source="voice_runtime.text_loop",
+            execution_result={
+                "openclaw_result": {
+                    "openclaw_raw": {
+                        "capture": {
+                            "status": "captured",
+                            "kind": "task",
+                            "title": "晚上1点做事事",
+                            "content": "晚上1点做事事。",
+                            "due_text": "晚上1点",
+                        }
+                    }
+                }
+            },
+        )
+
+        dashboard = self.read_dashboard()
+        self.assertEqual(dashboard["todos"][0]["title"], "晚上1点做事事")
+        self.assertEqual(dashboard["todos"][0]["due_text"], "晚上1点")
+        self.assertEqual(dashboard["todos"][0]["source"], "openclaw_capture")
+        self.assertEqual(
+            dashboard["todos"][0]["transcript"],
+            "小安把晚上1点做事事加入待办。",
+        )
+        self.assertEqual(dashboard["next_item"], dashboard["todos"][0])
+
+    def test_openclaw_capture_needing_clarification_is_not_mirrored(self) -> None:
+        self.runtime._set_latest_reply(
+            notification_type="asr.transcript.final",
+            display_text="这个提醒还缺时间。",
+            spoken_text="还差一个时间，我再帮你定。",
+            reply_text="这个提醒还缺时间。",
+            tool_calls=[],
+            metadata={"transcript": "提醒我喝水"},
+            session_id="voice-runtime",
+            source="voice_runtime.text_loop",
+            execution_result={
+                "openclaw_raw": {
+                    "capture": {
+                        "status": "needs_clarification",
+                        "kind": "reminder",
+                        "title": "喝水",
+                    }
+                }
+            },
+        )
+
+        dashboard = self.read_dashboard()
+        self.assertEqual(dashboard["reminders"], [])
+        self.assertIsNone(dashboard["next_item"])
+
     def test_invalid_dashboard_json_recovers_to_minimal_valid_structure(self) -> None:
         dashboard_path = self.runtime.openclaw_dashboard_path
         dashboard_path.parent.mkdir(parents=True, exist_ok=True)

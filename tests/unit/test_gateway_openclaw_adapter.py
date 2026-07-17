@@ -314,6 +314,7 @@ class GatewayOpenClawAdapterTest(unittest.TestCase):
 
         tool_names = {item["name"] for item in request["tools"]}
         self.assertIn("xiaoan.robot.expression", tool_names)
+        self.assertIn("xiaoan.robot.turn", tool_names)
         self.assertIn("xiaoan.robot.say", tool_names)
         self.assertNotIn("xiaoan.emotion.snapshot", tool_names)
 

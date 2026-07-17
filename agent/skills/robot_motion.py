@@ -15,6 +15,7 @@ MIN_SAFE_SPEED = 0.52
 MAX_SAFE_SPEED = 1.0
 MAX_SAFE_DISTANCE_CM = 10.0
 MAX_SAFE_TIMEOUT_MS = 2600
+MAX_SAFE_TURN_ANGLE_DEG = 45.0
 DEFAULT_SAFE_SPEED = 1.0
 DEFAULT_SAFE_DISTANCE_CM = 10.0
 DEFAULT_SAFE_TIMEOUT_MS = 1200
@@ -170,6 +171,36 @@ class RobotMotionSkill:
             timeout_ms=_clamp_int(timeout_ms, DEFAULT_TURN_TIMEOUT_MS, 1, 10000),
         )
 
+    async def turn(
+        self,
+        direction: str = "left",
+        speed=None,
+        angle_deg=None,
+        duration_ms=None,
+        timeout_ms=None,
+    ) -> dict:
+        direction_text = str(direction or "left").strip().lower()
+        if direction_text not in {"left", "right"}:
+            direction_text = "left"
+        default_angle = abs(DEFAULT_TURN_ANGLE_DEG)
+        safe_angle = _clamp_number(
+            angle_deg,
+            default_angle,
+            0.0,
+            MAX_SAFE_TURN_ANGLE_DEG,
+        )
+        signed_angle = -safe_angle if direction_text == "left" else safe_angle
+        params = {
+            "speed": _clamp_motion_speed(speed, DEFAULT_SAFE_SPEED, MIN_SAFE_SPEED, MAX_SAFE_SPEED),
+            "angle_deg": signed_angle,
+            "duration_ms": _clamp_int(duration_ms, DEFAULT_TURN_DURATION_MS, 1, DEFAULT_TURN_TIMEOUT_MS),
+        }
+        return await self.gateway.send_motion(
+            "turn",
+            params=params,
+            timeout_ms=_clamp_int(timeout_ms, DEFAULT_TURN_TIMEOUT_MS, 1, DEFAULT_TURN_TIMEOUT_MS),
+        )
+
     async def say(self, text: str) -> dict:
         return await self.gateway.send_tts(text)
 
@@ -215,6 +246,8 @@ class RobotMotionSkill:
             )
         if action in {"turn_left", "left"}:
             return await self.turn_left(**params)
+        if action in {"turn", "turn_right", "right"}:
+            return await self.turn(**params)
         if action == "say":
             return await self.say(**params)
         if action in {"play_local_audio", "audio.play_local"}:

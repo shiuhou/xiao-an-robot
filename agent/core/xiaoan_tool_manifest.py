@@ -130,6 +130,42 @@ XIAOAN_TOOL_MANIFEST: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "xiaoan.robot.turn",
+        "purpose": "Turn Xiao An left or right by a small safe angle.",
+        "parameters": {
+            "type": "object",
+            "required": ["direction"],
+            "properties": {
+                "direction": {
+                    "type": "string",
+                    "enum": ["left", "right"],
+                    "description": "Turn direction.",
+                },
+                "angle_deg": {
+                    "type": "number",
+                    "description": "Optional turn angle in degrees, clamped to <= 45 degrees.",
+                },
+                "speed": {
+                    "type": "number",
+                    "description": "Optional motion speed, clamped to the calibrated 0.52-1.0 safe range.",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "Optional motion timeout, clamped to <= 1200 ms.",
+                },
+            },
+        },
+        "returns": {
+            "ok": "boolean",
+            "tool": "xiaoan.robot.turn",
+            "result": "Robot gateway acknowledgement.",
+        },
+        "failure": {
+            "ok": False,
+            "error": "missing_direction | robot_gateway_error",
+        },
+    },
+    {
         "name": "xiaoan.robot.care",
         "purpose": "Run Xiao An's local active-care sequence; speaks text when provided, otherwise uses the fixed care audio fallback.",
         "parameters": {

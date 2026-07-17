@@ -37,6 +37,13 @@ class FakeBrain:
                 ],
                 "skipped_actions": [],
             },
+            "openclaw_raw": {
+                "capture": {
+                    "status": "captured",
+                    "kind": "task",
+                    "title": text,
+                },
+            },
         }
 
 
@@ -128,9 +135,14 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(output["route"], "link_1_openclaw")
         self.assertEqual(output["display_text"], "display:帮我查一下天气")
         self.assertEqual(output["spoken_text"], "spoken:帮我查一下天气")
+        self.assertEqual(output["openclaw_raw"]["capture"]["title"], "帮我查一下天气")
         self.assertEqual(output["executed_actions"][0]["name"], "robot.say")
         self.assertEqual(runtime.latest_replies[0]["notification_type"], "asr.transcript")
         self.assertEqual(runtime.latest_replies[0]["display_text"], "display:帮我查一下天气")
+        self.assertEqual(
+            runtime.latest_replies[0]["execution_result"]["openclaw_raw"]["capture"]["kind"],
+            "task",
+        )
         self.assertEqual(runtime.latest_replies[0]["source"], "voice_runtime.text_loop")
 
     async def test_process_text_can_disable_companion_fast_path(self) -> None:

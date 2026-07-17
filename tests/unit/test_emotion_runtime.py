@@ -20,6 +20,7 @@ from base_station.monitor.emotion_runtime import (
     fuse_cv_vlm_sample,
     main,
     parse_args,
+    preload_vlm_model,
 )
 from base_station.perception.openvino_qwen_vl_emotion_model import OpenVINOQwenVLEmotionModel
 from base_station.perception.qwen_vl_emotion_model import FakeQwenVLEmotionModel
@@ -119,6 +120,14 @@ class FakeRuntime:
     async def run(self) -> list[dict]:
         self.ran = True
         return []
+
+
+class FakePreloadModel:
+    def __init__(self) -> None:
+        self.preload_calls = 0
+
+    def preload(self) -> None:
+        self.preload_calls += 1
 
 
 class FakeWebSocketServer:
@@ -306,16 +315,28 @@ class EmotionRuntimeBackendTest(unittest.IsolatedAsyncioTestCase):
             "openvino_qwen_vl",
             "--vlm-model-path",
             "models/qwen-vl-openvino",
+            "--vlm-device",
+            "GPU",
             "--vlm-max-new-tokens",
             "48",
+            "--preload-vlm",
             "--force-vlm",
         ])
 
         self.assertTrue(args.enable_vlm_gate)
         self.assertEqual(args.vlm_backend, "openvino_qwen_vl")
         self.assertEqual(args.vlm_model_path, "models/qwen-vl-openvino")
+        self.assertEqual(args.vlm_device, "GPU")
         self.assertEqual(args.vlm_max_new_tokens, 48)
+        self.assertTrue(args.preload_vlm)
         self.assertTrue(args.force_vlm)
+
+    async def test_preload_vlm_model_calls_backend_preload_hook(self) -> None:
+        model = FakePreloadModel()
+
+        preload_vlm_model(model)
+
+        self.assertEqual(model.preload_calls, 1)
 
     async def test_vlm_gate_disabled_keeps_default_camera_flow(self) -> None:
         source = create_emotion_source(

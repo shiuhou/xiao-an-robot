@@ -529,6 +529,8 @@ function renderFastVisualTrace(payload) {
     triggerImage.style.display = "none";
     triggerEmpty.style.display = "grid";
     $("fast2VisualFusion").textContent = "Fusion: -";
+    $("fast2VisualVlmJson").textContent = "{}";
+    $("fast2VisualFusionJson").textContent = "{}";
     return;
   }
 
@@ -596,6 +598,8 @@ function renderFastVisualTrace(payload) {
   $("fast2VisualFusion").textContent = fusion.decision
     ? `Fusion · ${fusion.decision} — ${fusion.reason || ""}`
     : "Fusion: -";
+  $("fast2VisualVlmJson").textContent = pretty(vlm.result || {});
+  $("fast2VisualFusionJson").textContent = pretty(fusion);
 }
 
 function renderFastVoiceLink(key, link) {

@@ -12,6 +12,7 @@ class FakeRunner:
     def __init__(self, response: str):
         self.response = response
         self.calls = []
+        self.load_calls = 0
 
     def generate(self, image, prompt: str, context: dict | None = None) -> str:
         self.calls.append({
@@ -20,6 +21,9 @@ class FakeRunner:
             "context": context,
         })
         return self.response
+
+    def load(self) -> None:
+        self.load_calls += 1
 
 
 def make_frame(payload: object = "image") -> dict:
@@ -177,6 +181,14 @@ class OpenVINOQwenVLEmotionModelTest(unittest.TestCase):
     def test_empty_runner_raises_value_error(self) -> None:
         with self.assertRaisesRegex(ValueError, "runner"):
             OpenVINOQwenVLEmotionModel(None)
+
+    def test_preload_calls_runner_load(self) -> None:
+        runner = FakeRunner(qwen_json())
+        model = OpenVINOQwenVLEmotionModel(runner)
+
+        model.preload()
+
+        self.assertEqual(runner.load_calls, 1)
 
     def test_context_is_passed_to_runner_and_prompt(self) -> None:
         runner = FakeRunner(qwen_json())

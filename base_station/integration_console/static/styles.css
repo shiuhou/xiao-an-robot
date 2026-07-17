@@ -552,6 +552,19 @@ textarea {
   max-height: 260px;
 }
 
+.jsonbox.mini-json {
+  min-height: 94px;
+  max-height: 150px;
+  margin: 6px 0 0;
+  font-size: 11px;
+}
+
+.json-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .textbox {
   min-height: 170px;
   margin: 0;

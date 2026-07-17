@@ -249,6 +249,7 @@ class IntegrationConsoleApp:
         command_sender: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
         prewarm_voice: bool = False,
         prewarm_fast_demo_tts: bool = False,
+        prewarm_fast2_visual: bool = False,
     ):
         self.host = host
         self.port = int(port)
@@ -280,6 +281,8 @@ class IntegrationConsoleApp:
             self.start_voice_prewarm()
         if prewarm_fast_demo_tts:
             self.start_fast_demo_tts_prewarm()
+        if prewarm_fast2_visual:
+            self.start_fast2_visual_prewarm()
 
     @property
     def event_dir(self) -> Path:
@@ -343,6 +346,7 @@ class IntegrationConsoleApp:
             "audio_stats_exists": (self.runtime_dir / "audio_stats.json").exists(),
             "voice_prewarm": self.voice_prewarm_state(),
             "fast_demo_tts_prewarm": self.fast_demo_tts_prewarm_state(),
+            "fast2_visual_prewarm": self.fast2_visual_prewarm_state(),
         }
 
     def audio_stats(self) -> dict[str, Any]:
@@ -596,6 +600,28 @@ class IntegrationConsoleApp:
             "log_path": str(log_path),
         }
 
+    def start_fast2_visual_prewarm(self) -> dict[str, Any]:
+        """Start Fast2 visual/VLM runtime without enabling robot output."""
+
+        return self.start_fast_demo({
+            "link": "fast2",
+            "send_to_robot": False,
+            "allow_motion": False,
+        })
+
+    def fast2_visual_prewarm_state(self) -> dict[str, Any]:
+        state = self.link_process_state("fast2")
+        return {
+            "managed": "fast2" in self.link_processes,
+            "running": bool(state.get("running")),
+            "status": state.get("status"),
+            "pid": state.get("pid"),
+            "returncode": state.get("returncode"),
+            "log_path": str(self.process_log_dir / "fast2.log"),
+            "send_to_robot": bool(self.fast_demo_options.get("fast2", {}).get("send_to_robot", False)),
+            "allow_motion": bool(self.fast_demo_options.get("fast2", {}).get("allow_motion", False)),
+        }
+
     def _ws_host_port(self) -> tuple[str, int]:
         parsed = urlparse(self.ws_url)
         host = parsed.hostname or "127.0.0.1"
@@ -680,6 +706,11 @@ class IntegrationConsoleApp:
                 self._env_text("XIAOAN_LINK2_VISUAL_TRACE_FPS", "1.0"),
                 "--vlm-max-new-tokens",
                 self._env_text("XIAOAN_LINK2_VLM_MAX_NEW_TOKENS", "128"),
+                "--device",
+                self._env_text("XIAOAN_LINK2_OPENFACE_DEVICE", self._env_text("XIAOAN_LINK2_DEVICE", "NPU")),
+                "--vlm-device",
+                self._env_text("XIAOAN_LINK2_VLM_DEVICE", "GPU"),
+                "--preload-vlm",
                 "--verbose",
             ]
             if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
@@ -762,7 +793,12 @@ class IntegrationConsoleApp:
                 "--vlm-min-interval-seconds",
                 self._env_text("XIAOAN_LINK2_VLM_MIN_INTERVAL_SECONDS", "8.0"),
                 "--vlm-max-new-tokens",
-                self._env_text("XIAOAN_LINK2_VLM_MAX_NEW_TOKENS", "64"),
+                self._env_text("XIAOAN_LINK2_VLM_MAX_NEW_TOKENS", "128"),
+                "--device",
+                self._env_text("XIAOAN_FAST2_OPENFACE_DEVICE", self._env_text("XIAOAN_LINK2_OPENFACE_DEVICE", self._env_text("XIAOAN_LINK2_DEVICE", "NPU"))),
+                "--vlm-device",
+                self._env_text("XIAOAN_FAST2_VLM_DEVICE", self._env_text("XIAOAN_LINK2_VLM_DEVICE", "GPU")),
+                "--preload-vlm",
                 "--no-agent",
                 "--verbose",
             ]
@@ -3283,6 +3319,7 @@ def create_server(
     openclaw_workspace: str | Path = DEFAULT_OPENCLAW_WORKSPACE,
     prewarm_voice: bool = False,
     prewarm_fast_demo_tts: bool = False,
+    prewarm_fast2_visual: bool = False,
     verbose: bool = False,
 ) -> ThreadingHTTPServer:
     app = IntegrationConsoleApp(
@@ -3295,6 +3332,7 @@ def create_server(
         openclaw_workspace=openclaw_workspace,
         prewarm_voice=prewarm_voice,
         prewarm_fast_demo_tts=prewarm_fast_demo_tts,
+        prewarm_fast2_visual=prewarm_fast2_visual,
     )
     handler = make_handler(app, verbose=verbose)
     return ThreadingHTTPServer((host, int(port)), handler)
@@ -3319,6 +3357,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Disable startup Fast Demo TTS cache preparation.",
     )
+    parser.add_argument(
+        "--no-prewarm-fast2-visual",
+        action="store_true",
+        help="Disable startup Fast2 visual/VLM runtime preload.",
+    )
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -3335,6 +3378,7 @@ def main(argv: list[str] | None = None) -> int:
         openclaw_workspace=args.openclaw_workspace,
         prewarm_voice=not args.no_prewarm_voice,
         prewarm_fast_demo_tts=not args.no_prewarm_fast_demo_tts,
+        prewarm_fast2_visual=not args.no_prewarm_fast2_visual,
         verbose=args.verbose,
     )
     try:

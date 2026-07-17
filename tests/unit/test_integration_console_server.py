@@ -41,6 +41,12 @@ class FakeExitedProcess:
         return self.returncode
 
 
+class FakePopen(FakeRunningProcess):
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+
+
 class IntegrationConsoleHttpTest(unittest.TestCase):
     def test_console_html_contains_visual_trace_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -465,6 +471,9 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("openface_ov", link2)
         self.assertIn("openvino_qwen_vl", link2)
         self.assertEqual(link2[link2.index("--vlm-max-new-tokens") + 1], "128")
+        self.assertEqual(link2[link2.index("--device") + 1], "NPU")
+        self.assertEqual(link2[link2.index("--vlm-device") + 1], "GPU")
+        self.assertIn("--preload-vlm", link2)
         self.assertEqual(
             link2[link2.index("--vlm-model-path") + 1],
             "base_station/models/Qwen2.5-VL-3B-OV-int4",
@@ -534,7 +543,10 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertNotIn("--force-vlm", fast2)
         self.assertEqual(fast2[fast2.index("--visual-trace-fps") + 1], "5.0")
         self.assertEqual(fast2[fast2.index("--vlm-min-interval-seconds") + 1], "8.0")
-        self.assertEqual(fast2[fast2.index("--vlm-max-new-tokens") + 1], "64")
+        self.assertEqual(fast2[fast2.index("--vlm-max-new-tokens") + 1], "128")
+        self.assertEqual(fast2[fast2.index("--device") + 1], "NPU")
+        self.assertEqual(fast2[fast2.index("--vlm-device") + 1], "GPU")
+        self.assertIn("--preload-vlm", fast2)
         self.assertTrue(fast2[fast2.index("--visual-trace-dir") + 1].endswith("integration_console/fast_demo/visual"))
 
         self.assertEqual(fast3[fast3.index("--local-demo-link") + 1], "fast3")
@@ -555,6 +567,34 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertTrue(command[command.index("--manifest-path") + 1].endswith("integration_console/fast_demo/tts_manifest.json"))
         self.assertFalse(state["managed"])
         self.assertEqual(state["status"], "disabled")
+
+    def test_fast2_visual_prewarm_starts_visual_runtime_without_robot_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "base_station.integration_console.console_server.subprocess.Popen",
+            side_effect=FakePopen,
+        ), patch("base_station.integration_console.console_server.time.sleep", return_value=None):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir, prewarm_fast2_visual=True)
+
+        state = app.fast2_visual_prewarm_state()
+        self.assertTrue(state["managed"])
+        self.assertTrue(state["running"])
+        self.assertFalse(state["send_to_robot"])
+        self.assertFalse(state["allow_motion"])
+        self.assertIn("fast2", app.link_processes)
+        command = app.link_processes["fast2"].args[0]
+        self.assertIn("base_station.monitor.emotion_runtime", command)
+        self.assertEqual(command[command.index("--device") + 1], "NPU")
+        self.assertEqual(command[command.index("--vlm-device") + 1], "GPU")
+        self.assertIn("--preload-vlm", command)
+
+    def test_health_exposes_fast2_visual_prewarm_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+
+        health = app.health()
+
+        self.assertIn("fast2_visual_prewarm", health)
+        self.assertFalse(health["fast2_visual_prewarm"]["managed"])
 
     def test_fast_demo_environment_removes_openclaw_runtime_settings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(

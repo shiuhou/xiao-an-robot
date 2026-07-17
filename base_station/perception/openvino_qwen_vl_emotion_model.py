@@ -40,6 +40,13 @@ class OpenVINOQwenVLEmotionModel:
             raise ValueError("runner must not be None.")
         self.runner = runner
 
+    def preload(self) -> None:
+        """Load the underlying runner before the first visual trigger."""
+
+        load = getattr(self.runner, "load", None)
+        if callable(load):
+            load()
+
     def predict(self, frame: dict, context: dict | None = None) -> dict:
         prompt = build_emotion_analysis_prompt(context)
         image = frame.get("payload", frame)

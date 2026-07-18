@@ -1,0 +1,218 @@
+{
+  "schema_version": "xiaoan.work_mode_desktop_acceptance.v1",
+  "description": "Acceptance matrix for total work mode as a real desktop assistant.",
+  "automated_scope": "Text-to-brain routing only. Hardware ASR, camera, TTS playback, and motion remain manual acceptance steps.",
+  "cases": [
+    {
+      "id": "WM-A01",
+      "category": "baseline",
+      "phrase": "小安小安你能听到我吗",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.greeting",
+      "expect_tts": true,
+      "pass_evidence": ["dashboard latest_reply.tts_text is non-empty", "robot receives audio.play_tts"]
+    },
+    {
+      "id": "WM-A02",
+      "category": "baseline",
+      "phrase": "查询机器人状态",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.robot_status",
+      "expect_tts": true,
+      "pass_evidence": ["route stays local_fast_path", "OpenClaw event count does not increase"]
+    },
+    {
+      "id": "WM-L1-01",
+      "category": "link1_local_tasks",
+      "phrase": "小安，帮我加个待办，测试桌面助手验收",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.task_add",
+      "expect_tts": true,
+      "workspace_evidence": ["TASKS.md contains 测试桌面助手验收"]
+    },
+    {
+      "id": "WM-L1-02",
+      "category": "link1_local_tasks",
+      "phrase": "看一下待办",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.task_query",
+      "expect_tts": true
+    },
+    {
+      "id": "WM-L1-03",
+      "category": "link1_local_tasks",
+      "phrase": "完成待办测试桌面助手验收",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.task_complete",
+      "expect_tts": true,
+      "workspace_evidence": ["TASKS.md contains - [x] 测试桌面助手验收"]
+    },
+    {
+      "id": "WM-L1-04",
+      "category": "link1_local_schedule",
+      "phrase": "今天晚上十一点新增日程，检查桌面助手验收",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.schedule_add",
+      "expect_tts": true,
+      "workspace_evidence": ["SCHEDULE.md contains 检查桌面助手验收"]
+    },
+    {
+      "id": "WM-L1-05",
+      "category": "link1_local_schedule",
+      "phrase": "查询今日日程",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.schedule_query",
+      "expect_tts": true
+    },
+    {
+      "id": "WM-L1-05B",
+      "category": "link1_local_schedule",
+      "phrase": "小安帮我查一下今天的日程",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.schedule_query",
+      "expect_tts": true
+    },
+    {
+      "id": "WM-L1-06",
+      "category": "link1_local_reminders",
+      "phrase": "十分钟后提醒我喝水",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.reminder_add",
+      "expect_tts": true,
+      "workspace_evidence": ["SCHEDULE.md contains 喝水", "state/local_reminders.json has pending item"]
+    },
+    {
+      "id": "WM-L1-07",
+      "category": "link1_local_reminders",
+      "phrase": "查询提醒",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.reminder_query",
+      "expect_tts": true
+    },
+    {
+      "id": "WM-L1-08",
+      "category": "link1_local_reminders",
+      "phrase": "取消喝水提醒",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link1.reminder_cancel",
+      "expect_tts": true,
+      "workspace_evidence": ["state/local_reminders.json item status becomes cancelled"]
+    },
+    {
+      "id": "WM-L3-01",
+      "category": "link3_robot",
+      "phrase": "停止",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.stop_motion",
+      "expect_tts": true,
+      "robot_evidence": ["motion.execute stop"]
+    },
+    {
+      "id": "WM-L3-02",
+      "category": "link3_robot",
+      "phrase": "出来",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.move_out",
+      "expect_tts": true,
+      "robot_evidence": ["motion.execute move_out_of_dock"]
+    },
+    {
+      "id": "WM-L3-03",
+      "category": "link3_robot",
+      "phrase": "回到充电座",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.return_to_dock",
+      "expect_tts": true,
+      "robot_evidence": ["motion.execute move_back_to_dock"]
+    },
+    {
+      "id": "WM-L3-04",
+      "category": "link3_robot",
+      "phrase": "转左边",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.turn_left",
+      "expect_tts": true,
+      "robot_evidence": ["motion.execute turn left"]
+    },
+    {
+      "id": "WM-L3-05",
+      "category": "link3_robot",
+      "phrase": "转右边",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.turn_right",
+      "expect_tts": true,
+      "robot_evidence": ["motion.execute turn right"]
+    },
+    {
+      "id": "WM-L3-06",
+      "category": "link3_robot",
+      "phrase": "开心一点",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.set_expression",
+      "expect_tts": true,
+      "robot_evidence": ["display.expression happy"]
+    },
+    {
+      "id": "WM-L3-07",
+      "category": "link3_robot",
+      "phrase": "带我呼吸",
+      "expected_owner": "local",
+      "expected_route": "local_fast_path.link3.breathing_guide",
+      "expect_tts": true
+    },
+    {
+      "id": "WM-O01",
+      "category": "openclaw",
+      "phrase": "帮我查一下北京天气",
+      "expected_owner": "openclaw",
+      "expected_route": "link_1_openclaw",
+      "expect_tts": true,
+      "pass_evidence": ["OpenClaw event count increases", "no local_fast_path storage write"]
+    },
+    {
+      "id": "WM-O02",
+      "category": "openclaw",
+      "phrase": "帮我记录一条笔记：桌面助手正在验收",
+      "expected_owner": "openclaw",
+      "expected_route": "link_1_openclaw",
+      "expect_tts": true,
+      "pass_evidence": ["OpenClaw owns note/memory flow"]
+    },
+    {
+      "id": "WM-O03",
+      "category": "openclaw",
+      "phrase": "帮我把今天的工作安排整理成三步计划",
+      "expected_owner": "openclaw",
+      "expected_route": "link_1_openclaw",
+      "expect_tts": true,
+      "pass_evidence": ["OpenClaw owns complex planning flow"]
+    },
+    {
+      "id": "WM-M01",
+      "category": "manual_mic",
+      "phrase": "打开麦克风，说完这一整句以后再关闭麦克风",
+      "expected_owner": "manual",
+      "expected_route": "local_mic_until_mic_off",
+      "manual_only": true,
+      "pass_evidence": ["latest_voice.json audio.duration_ms covers full mic-open window", "payload.completed_mic_segment is true"]
+    },
+    {
+      "id": "WM-V01",
+      "category": "manual_camera",
+      "phrase": "打开摄像头，对准人脸，保持正常表情十秒",
+      "expected_owner": "manual",
+      "expected_route": "link2_visual_idle",
+      "manual_only": true,
+      "pass_evidence": ["work_mode.cards.camera.ok is true", "OpenFace status fresh", "VLM gate may remain waiting"]
+    },
+    {
+      "id": "WM-V02",
+      "category": "manual_camera",
+      "phrase": "打开摄像头，做疲惫或难过表情，不要强制触发 VLM",
+      "expected_owner": "manual",
+      "expected_route": "link2_visual_gate_controlled",
+      "manual_only": true,
+      "pass_evidence": ["gate.result.should_trigger only changes when gate decides", "latest_image_source is link2_visual_trace"]
+    }
+  ]
+}

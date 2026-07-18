@@ -260,6 +260,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 ("十分钟后提醒我喝水", "local_fast_path.link1.reminder_add"),
                 ("查询提醒", "local_fast_path.link1.reminder_query"),
                 ("取消喝水提醒", "local_fast_path.link1.reminder_cancel"),
+                ("小安帮我查一下今天的日程", "local_fast_path.link1.schedule_query"),
             ]
             routes = []
             for text, _route in cases:
@@ -281,7 +282,10 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("检查总工作模式", schedule_text)
         self.assertIn("scheduler: local", schedule_text)
         self.assertEqual(reminders["items"][0]["status"], "cancelled")
-        self.assertEqual(dashboard["local_fast_path"]["last_route"], "local_fast_path.link1.reminder_cancel")
+        self.assertEqual(dashboard["local_fast_path"]["last_route"], "local_fast_path.link1.schedule_query")
+        self.assertTrue(any(item["title"] == "检查总工作模式" for item in dashboard["schedules"]))
+        self.assertTrue(any(item["title"] == "喝水" for item in dashboard["reminders"]))
+        self.assertTrue(any(item["title"] == "测试总工作模式" for item in dashboard["todos"]))
 
     async def test_asr_link1_natural_work_phrases_stay_on_local_fast_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -298,6 +302,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
             cases = [
                 ("看一下待办", "local_fast_path.link1.task_query"),
+                ("小安帮我查一下今天的日程", "local_fast_path.link1.schedule_query"),
                 ("小安小安十分钟之后提醒我喝水", "local_fast_path.link1.reminder_add"),
                 ("十分钟以后叫我喝水", "local_fast_path.link1.reminder_add"),
                 ("过十分钟叫我喝水", "local_fast_path.link1.reminder_add"),
@@ -582,6 +587,9 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_event.context["payload"]["text"], "我有点累")
         self.assertEqual(openclaw_event.context["companion_result"]["reason"], "asr_emotion_triggered")
         self.assertEqual(openclaw_event.context["trigger_result"]["reason"], "fatigue_keyword")
+        self.assertTrue(openclaw_event.context["followup_instruction"]["local_pre_response_completed"])
+        self.assertTrue(openclaw_event.context["followup_instruction"]["do_not_repeat_motion"])
+        self.assertIn("warmer", openclaw_event.context["followup_instruction"]["desired_followup"])
 
     async def test_companion_fast_path_openclaw_reply_text_is_executed_as_followup(self) -> None:
         gateway = FakeGateway()

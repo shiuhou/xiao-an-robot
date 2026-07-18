@@ -9,17 +9,17 @@ from base_station.perception.asr_emotion_trigger import ASREmotionTrigger
 from agent.skills.robot_motion import RobotMotionSkill
 
 
-PRE_RESPONSE_TEXT = "辛苦啦，先靠着我慢慢喘口气，我们休息一分钟就好。"
+PRE_RESPONSE_TEXT = "辛苦啦，小安靠近一点点，陪你慢慢喘口气。"
 # Sent before OpenClaw follow-up; base_station streams these as robot-ready raw PCM.
 PRE_RESPONSE_TEXTS = (
-    "辛苦啦，先靠着我慢慢喘口气。",
-    "我在呢，先把肩膀放松一下。",
-    "先停一下也可以，小安陪你缓一缓。",
+    "辛苦啦，小安靠近一点点，陪你慢慢喘口气。",
+    "我在呢，先把肩膀放松，小安在旁边接住你。",
+    "先停一下也可以，小安陪你缓一缓，不用硬撑。",
 )
 LOCAL_CARE_MOTION = {
     "speed": 0.56,
-    "distance_cm": 8,
-    "timeout_ms": 1200,
+    "distance_cm": 10,
+    "timeout_ms": 2600,
 }
 
 

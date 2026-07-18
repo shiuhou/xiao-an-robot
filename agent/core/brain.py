@@ -585,6 +585,12 @@ class XiaoAnBrain:
                 "tool_profile": "companion",
                 "intent_hint": "companion_care",
             },
+            "followup_instruction": {
+                "local_pre_response_completed": True,
+                "do_not_repeat_motion": True,
+                "desired_followup": "Give a warmer, more specific spoken care follow-up in 2-3 short Chinese sentences. Do not say merely that local care already completed.",
+                "allowed_robot_action": "speech_only",
+            },
         }
         if "trigger_result" in companion_result:
             companion_context["trigger_result"] = companion_result["trigger_result"]

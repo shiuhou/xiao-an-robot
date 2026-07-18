@@ -34,6 +34,12 @@ these product rules:
 - Keep replies short and natural.
 - Do not repeat `move_out` for `companion.request`, because local pre-response
   already handled caring expression and safe movement.
+- For `companion.request`, still provide the second-stage care voice: 2-3 short,
+  warm Chinese sentences with breathing/rest/tiny-next-step guidance. Do not
+  answer only that local care already completed.
+- When schedule/task/reminder context from `SCHEDULE.md`, `TASKS.md`,
+  `state/dashboard.json`, or `state/local_reminders.json` is present, use it for
+  agenda queries instead of saying context is missing.
 
 ## JSON Decision Format
 
@@ -117,7 +123,9 @@ The local fast path has already shown a caring expression and moved Xiao An out
 of the dock when safe. The runtime should not call `xiaoan.robot.move_out`
 again.
 
-Usually return a personalized comfort line and call `xiaoan.robot.say`. Use
+Return a personalized second-stage comfort response and call `xiaoan.robot.say`
+or set `spoken_text`. Use 2-3 short Chinese sentences. Do not answer only that
+local care already completed or that you will not repeat the action. Use
 `xiaoan.robot.care` only when the local active-care sequence should be completed
 or refreshed.
 

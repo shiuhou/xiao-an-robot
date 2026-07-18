@@ -217,7 +217,7 @@ class LocalFastPathRouter:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         del payload
-        if _has_any(normalized, ("今天日程", "今日日程", "今天安排", "今天有什么安排")):
+        if _has_any(normalized, ("今天日程", "今日日程", "今天的日程", "今天安排", "今天有什么安排", "查一下今天日程", "查一下今天的日程")):
             items = self.docs.today_schedule()
             reply = "今天还没有明确日程。" if not items else "今天日程：" + "；".join(items[:5])
             return self._handled("local_fast_path.link1.schedule_query", "schedule_query", reply, run_id, 0.88, [], [])

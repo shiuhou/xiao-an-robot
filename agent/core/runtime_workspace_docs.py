@@ -267,6 +267,9 @@ class RuntimeWorkspaceDocs:
             "mode": "work_mode",
             "status_text": reply,
             "latest_reply": latest_reply,
+            "todos": self._dashboard_todos(),
+            "schedules": self._dashboard_schedules(now=now),
+            "reminders": self._dashboard_reminders(),
             "local_fast_path": {
                 "last_run_id": run_id,
                 "last_route": route,
@@ -283,6 +286,62 @@ class RuntimeWorkspaceDocs:
         except OSError as exc:
             return WorkspaceWrite(False, str(self.dashboard_path), "dashboard", intent, str(exc))
         return WorkspaceWrite(True, str(self.dashboard_path), "dashboard", intent)
+
+    def _dashboard_todos(self, *, limit: int = 8) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for line in _read_text(self.tasks_path).splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- [ ] "):
+                status = "pending"
+                title = stripped[6:].strip()
+            elif stripped.startswith("- [x] "):
+                status = "completed"
+                title = stripped[6:].strip()
+            else:
+                continue
+            items.append({
+                "title": title,
+                "status": status,
+                "source": "local_fast_path",
+            })
+            if len(items) >= limit:
+                break
+        return items
+
+    def _dashboard_schedules(self, *, now: datetime | None = None, limit: int = 8) -> list[dict[str, Any]]:
+        today = _now(now).date().isoformat()
+        items: list[dict[str, Any]] = []
+        for line in _read_text(self.schedule_path).splitlines():
+            parsed = _parse_schedule_item_line(line)
+            if parsed is None or parsed["date"] != today:
+                continue
+            if parsed.get("type") == "reminder":
+                continue
+            items.append(parsed)
+            if len(items) >= limit:
+                break
+        return items
+
+    def _dashboard_reminders(self, *, limit: int = 8) -> list[dict[str, Any]]:
+        payload = self._load_local_reminders()
+        raw_items = payload.get("items") if isinstance(payload.get("items"), list) else []
+        items: list[dict[str, Any]] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            due_at = str(item.get("due_at") or "")
+            items.append({
+                "title": str(item.get("title") or item.get("message") or "这件事"),
+                "status": str(item.get("status") or "pending"),
+                "date": due_at[:10],
+                "time": due_at[11:16],
+                "due_at": due_at,
+                "source": "local_fast_path",
+                "id": item.get("id"),
+            })
+            if len(items) >= limit:
+                break
+        return items
 
     def _append_to_section(self, path: Path, section: str, entry: str, title: str) -> WorkspaceWrite:
         try:
@@ -408,6 +467,31 @@ def _date_time_from_iso(value: str) -> tuple[str, str]:
     except ValueError:
         return str(value)[:10] or "日期待补充", str(value)[11:16] or "时间待补充"
     return parsed.date().isoformat(), parsed.strftime("%H:%M")
+
+
+def _parse_schedule_item_line(line: str) -> dict[str, Any] | None:
+    stripped = line.strip()
+    if not stripped.startswith("- "):
+        return None
+    body = stripped[2:].strip()
+    match = re.match(
+        r"^(?P<date>\d{4}-\d{2}-\d{2}|日期待补充)\s+"
+        r"(?P<time>\d{2}:\d{2}|时间待补充)\s+"
+        r"(?P<title>.*?)(?:（(?P<meta>[^）]*)）)?$",
+        body,
+    )
+    if match is None:
+        return None
+    meta = match.group("meta") or ""
+    item_type = "reminder" if "reminder" in meta or "scheduler: local" in meta else "schedule"
+    return {
+        "title": match.group("title").strip() or "未命名事项",
+        "date": match.group("date"),
+        "time": match.group("time"),
+        "status": "pending",
+        "type": item_type,
+        "source": "local_fast_path",
+    }
 
 
 def _read_text(path: Path) -> str:

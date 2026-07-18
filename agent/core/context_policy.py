@@ -48,6 +48,24 @@ WORK_CONTEXT_KEYWORDS = [
     "当前工作",
     "写到哪",
     "做到哪",
+    # §14 L6: real usage found these common everyday phrasings were NOT
+    # covered ("帮我看看我最近在忙什么" matched nothing) — this hardcoded
+    # keyword gate is inherently incomplete for open-ended phrasing; see the
+    # note below the class for the longer-term fix (semantic routing).
+    "在忙什么",
+    "忙什么",
+    "在干什么",
+    "干什么",
+    "在干嘛",
+    "干嘛",
+    "在干啥",
+    "干啥",
+    "在弄什么",
+    "在搞什么",
+    "最近在干",
+    "最近在忙",
+    "我的屏幕",
+    "我在看什么",
 ]
 
 NOTES_CONTEXT_KEYWORDS = [
@@ -145,7 +163,16 @@ KEYWORDS_BY_SCOPE = {
 
 
 class ContextInjectionPolicy:
-    """Keyword-based compatibility scope router for ContextBuilder."""
+    """Keyword-based compatibility scope router for ContextBuilder.
+
+    Known limitation (§14 L6, pc_screen_tracker/ARCHITECTURE.md): a fixed
+    keyword list can never cover open-ended phrasing ("我最近在忙什么" was
+    found unmatched in real testing before its keywords were added below).
+    Longer-term fix belongs to OpenClaw: let it semantically decide whether a
+    turn needs work/notes/tasks/... context, rather than this local hard
+    match, which only exists as a cheap pre-filter before this repo had a
+    real intent classifier.
+    """
 
     def decide_for_text(self, text: str | None) -> ContextInjectionDecision:
         if text is None or not text.strip():

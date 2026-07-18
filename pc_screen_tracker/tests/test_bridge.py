@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import unittest
 
 # make `tracker` importable no matter the cwd
@@ -16,7 +17,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from tracker.bridge import note_to_kwargs, post_note, should_transport
+from tracker.bridge import (
+    DeliveryLedger, note_fingerprint, note_to_kwargs, post_note, should_transport,
+)
 from tracker.understander import ActivityNote
 
 
@@ -88,6 +91,56 @@ class TestTransportRedLine(unittest.TestCase):
         result = post_note(note, "http://127.0.0.1:9")
         self.assertFalse(result["posted"])
         self.assertEqual(result["reason"], "sensitive_not_transported")
+
+
+class TestIdempotentDelivery(unittest.TestCase):
+    """§14 L4: no unique constraint exists on work_activities, so dedup is
+    client-side — a note's fingerprint must be stable across re-runs and the
+    ledger must actually suppress a repeat post."""
+
+    def test_same_note_has_same_fingerprint_across_calls(self):
+        a, b = _sample_note(), _sample_note()
+        self.assertEqual(note_fingerprint(a), note_fingerprint(b))
+
+    def test_different_timestamp_changes_fingerprint(self):
+        a = _sample_note()
+        b = _sample_note()
+        b.timestamp_ms += 1
+        self.assertNotEqual(note_fingerprint(a), note_fingerprint(b))
+
+    def test_ledger_marks_and_recognizes_seen(self):
+        ledger = DeliveryLedger()
+        note = _sample_note()
+        self.assertFalse(ledger.seen(note))
+        ledger.mark(note)
+        self.assertTrue(ledger.seen(note))
+
+    def test_post_note_skips_already_delivered_without_network(self):
+        note = _sample_note()
+        note.capture_policy = "full"
+        ledger = DeliveryLedger()
+        ledger.mark(note)
+        # unreachable URL: if this actually tried to connect, it would hang/
+        # error differently — a clean "already_delivered" proves it never tried.
+        result = post_note(note, "http://127.0.0.1:9", ledger=ledger)
+        self.assertFalse(result["posted"])
+        self.assertEqual(result["reason"], "already_delivered")
+
+    def test_ledger_save_load_roundtrip(self):
+        note = _sample_note()
+        ledger = DeliveryLedger()
+        ledger.mark(note)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ledger.json")
+            ledger.save(path)
+
+            fresh = DeliveryLedger()
+            self.assertTrue(fresh.load(path))
+            self.assertTrue(fresh.seen(note))
+
+    def test_load_missing_ledger_returns_false(self):
+        ledger = DeliveryLedger()
+        self.assertFalse(ledger.load("/nonexistent/ledger.json"))
 
 
 if __name__ == "__main__":

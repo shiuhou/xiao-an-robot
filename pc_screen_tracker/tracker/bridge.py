@@ -21,7 +21,9 @@ Mapping decisions (locked with the user):
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -55,19 +57,66 @@ def should_transport(note: ActivityNote) -> bool:
     return getattr(note, "capture_policy", "full") in _TRANSPORTABLE
 
 
+# --- idempotent delivery (§14 L4) -------------------------------------- #
+# No unique constraint exists on work_activities (adding one means another
+# schema migration on the original repo); dedup is done client-side instead,
+# by fingerprinting each note and remembering what's already been delivered.
+# A note is uniquely identified by WHEN it happened + WHERE it came from —
+# re-running replay over the same frames.jsonl reproduces the exact same
+# (timestamp_ms, source, app_name, window_title) for a given segment, so
+# this fingerprint is stable across repeats without needing seg/task ids.
+def note_fingerprint(note: ActivityNote) -> str:
+    raw = f"{note.timestamp_ms}|{note.source}|{note.app_name}|{note.window_title}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+class DeliveryLedger:
+    """Remembers which notes have already been stored/posted, so re-running
+    replay (or retrying a delivery after a network blip) doesn't create
+    duplicate work_activities rows. Persisted the same way as the understander's
+    task state (§14 L3) — load-if-exists, mutate in memory, save explicitly."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    def seen(self, note: ActivityNote) -> bool:
+        return note_fingerprint(note) in self._seen
+
+    def mark(self, note: ActivityNote) -> None:
+        self._seen.add(note_fingerprint(note))
+
+    def to_dict(self) -> dict:
+        return {"seen": sorted(self._seen)}
+
+    def load(self, path: str) -> bool:
+        if not os.path.exists(path):
+            return False
+        with open(path, encoding="utf-8") as fh:
+            self._seen = set(json.load(fh).get("seen", []))
+        return True
+
+    def save(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(self.to_dict(), fh, ensure_ascii=False, indent=2)
+
+
 def post_note(
     note: ActivityNote,
     base_url: str,
     *,
     path: str = "/api/work-activities",
     timeout: float = 5.0,
+    ledger: DeliveryLedger | None = None,
 ) -> dict:
     """POST one note to the board's ingest endpoint. Enforces the transport red
-    line first (sensitive notes are dropped locally, never sent). Returns a small
-    status dict instead of raising, so a long-running sender never crashes on a
-    transient network/HTTP error."""
+    line first (sensitive notes are dropped locally, never sent), then the
+    idempotency ledger if given (already-delivered notes are skipped, not
+    re-sent). Returns a small status dict instead of raising, so a long-running
+    sender never crashes on a transient network/HTTP error."""
     if not should_transport(note):
         return {"posted": False, "reason": "sensitive_not_transported"}
+    if ledger is not None and ledger.seen(note):
+        return {"posted": False, "reason": "already_delivered"}
     payload = json.dumps(note_to_kwargs(note)).encode("utf-8")
     url = base_url.rstrip("/") + path
     req = urllib.request.Request(
@@ -77,6 +126,8 @@ def post_note(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
+            if ledger is not None:
+                ledger.mark(note)
             return {"posted": True, "status": resp.status, "response": body}
     except urllib.error.HTTPError as exc:
         return {"posted": False, "reason": "http_error", "status": exc.code}

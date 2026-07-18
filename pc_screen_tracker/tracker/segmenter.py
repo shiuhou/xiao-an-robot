@@ -54,6 +54,89 @@ def _is_away(f: FrameRecord, idle_break_s: float) -> bool:
     return f.mode == "idle" or f.idle_s >= idle_break_s
 
 
+# --- content-drift detection (L2 optimization, ARCHITECTURE §14) ---
+# Same (app, url|title) identity can still cover a genuinely different topic
+# (SPA / infinite-scroll page whose URL never changes). Catch that by comparing
+# each new full-content frame against the run's ANCHOR content (its first
+# non-empty capture) rather than just the identity key.
+_TOKEN_RE = re.compile(r"[一-鿿]{2,}|[A-Za-z0-9]{3,}")
+DRIFT_MIN_CHARS = 40        # too little text to judge drift reliably -> skip
+DRIFT_SIMILARITY_FLOOR = 0.12  # Jaccard below this = treat as a topic change
+
+
+def _tokens(content: list[str]) -> set[str]:
+    return set(_TOKEN_RE.findall(" ".join(content)))
+
+
+def _content_drifted(anchor: list[str], candidate: list[str]) -> bool:
+    if not anchor or not candidate:
+        return False
+    if sum(len(c) for c in anchor) < DRIFT_MIN_CHARS or sum(len(c) for c in candidate) < DRIFT_MIN_CHARS:
+        return False
+    a, b = _tokens(anchor), _tokens(candidate)
+    if not a or not b:
+        return False
+    jaccard = len(a & b) / len(a | b)
+    return jaccard < DRIFT_SIMILARITY_FLOOR
+
+
+ANCHOR_MIN_RICHNESS = 0.5   # anchor candidate must have >= this fraction of the
+                            # run's richest full-content frame's char count
+
+
+def _richest_full_content_index(frames: list[FrameRecord]) -> int | None:
+    candidates = [
+        i for i, f in enumerate(frames)
+        if f.capture_policy == "full" and f.content
+    ]
+    if not candidates:
+        return None
+    # FIRST candidate good enough to anchor on (chronological — scanning
+    # stays forward-only and correct), skipping a shallow/failed extraction
+    # (e.g. UIA only caught the tab-bar title + a notification toast, not
+    # the real editor body — a real case found on real data) that would
+    # otherwise anchor the topic judgment and spuriously "drift" once real
+    # content shows up. Picking the single richest frame instead (rather
+    # than "good enough") would break chronological ordering when two
+    # genuinely different topics happen to have similar lengths.
+    richest_chars = max(frames[i].content_chars() for i in candidates)
+    floor = richest_chars * ANCHOR_MIN_RICHNESS
+    return next(i for i in candidates if frames[i].content_chars() >= floor)
+
+
+def _split_one_run(frames: list[FrameRecord], hard: bool
+                    ) -> list[tuple[list[FrameRecord], bool]]:
+    anchor_idx = _richest_full_content_index(frames)
+    if anchor_idx is None:
+        return [(frames, hard)]
+    anchor = frames[anchor_idx].content
+
+    streak_start = None   # index of the first (unconfirmed) divergent frame
+    for i in range(anchor_idx + 1, len(frames)):
+        f = frames[i]
+        if f.capture_policy != "full" or not f.content:
+            continue
+        if _content_drifted(anchor, f.content):
+            if streak_start is None:
+                streak_start = i
+                continue
+            # second divergent full-content frame confirms a sustained topic
+            # change -> split here (recurse: the tail may drift again later)
+            head, tail = frames[:streak_start], frames[streak_start:]
+            return [(head, hard)] + _split_one_run(tail, True)
+        else:
+            streak_start = None   # back on-topic: the earlier blip wasn't real drift
+    return [(frames, hard)]
+
+
+def _split_drifted_runs(runs: list[tuple[list[FrameRecord], bool]]
+                         ) -> list[tuple[list[FrameRecord], bool]]:
+    out: list[tuple[list[FrameRecord], bool]] = []
+    for frames, hard in runs:
+        out.extend(_split_one_run(frames, hard))
+    return out
+
+
 def _mode_of(keys: int, scrolls: int, mouse_px: float) -> str:
     if keys >= 5:
         return "writing"
@@ -178,6 +261,15 @@ def segment_frames(frames: Iterable[FrameRecord], *,
             pending_hard = False
     if cur:
         runs.append((cur, cur_hard))
+
+    # --- pass 1b: content-drift split (L2 optimization, ARCHITECTURE §14).
+    #     Same identity can still cover a genuinely different topic (SPA /
+    #     infinite-scroll page whose URL never changes). Requires TWO
+    #     confirming divergent full-content frames (not just one) so a
+    #     single noisy/shallow extraction (L1 quality flicker — e.g. one
+    #     frame only caught tab-bar chrome text) can't spuriously fragment
+    #     a segment; a real topic change is sustained across samples. ---
+    runs = _split_drifted_runs(runs)
 
     segs = [_seg_from_run(i + 1, r, tail_ms, hard)
             for i, (r, hard) in enumerate(runs)]

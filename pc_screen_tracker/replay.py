@@ -27,6 +27,7 @@ if hasattr(sys.stdout, "reconfigure"):
 else:  # pragma: no cover
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
+from tracker.bridge import DeliveryLedger
 from tracker.config import Config
 from tracker.frames import read_frames
 from tracker.segmenter import segment_frames
@@ -38,10 +39,12 @@ def _fmt_dur(seconds: float) -> str:
     return f"{m}m{s:02d}s" if m else f"{s}s"
 
 
-def _store_notes(notes: list[ActivityNote], db_path: str) -> int:
-    """Minimal delivery: land every note into a local xiao_an.db via the bridge.
-    No board, no HTTP, no dedup, no transport filtering — see ARCHITECTURE §12 for
-    the delivery logic still to add (idempotency / incremental / transport red line)."""
+def _store_notes(notes: list[ActivityNote], db_path: str,
+                  ledger: DeliveryLedger | None = None) -> tuple[int, int]:
+    """Land every note into a local xiao_an.db via the bridge (no board, no
+    HTTP). If a ledger is given (§14 L4), already-delivered notes are skipped
+    instead of re-inserted — makes re-running replay over the same
+    frames.jsonl idempotent."""
     import os
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if repo_root not in sys.path:
@@ -50,29 +53,39 @@ def _store_notes(notes: list[ActivityNote], db_path: str) -> int:
     from tracker.bridge import note_to_kwargs
 
     store = XiaoAnMemoryStore(db_path)
+    written = skipped = 0
     for n in notes:
+        if ledger is not None and ledger.seen(n):
+            skipped += 1
+            continue
         store.insert_work_activity(**note_to_kwargs(n))
-    total = len(store.query_recent_work_activities(limit=100000))
+        if ledger is not None:
+            ledger.mark(n)
+        written += 1
     store.close()
-    return total
+    return written, skipped
 
 
-def _post_notes(notes: list[ActivityNote], url: str) -> tuple[int, int, int]:
-    """Minimal HTTP delivery: POST each note to a running board API via the bridge
-    (real HTTP; red line enforced — sensitive notes are dropped locally, never sent)."""
+def _post_notes(notes: list[ActivityNote], url: str,
+                 ledger: DeliveryLedger | None = None) -> tuple[int, int, int, int]:
+    """POST each note to a running board API via the bridge (real HTTP; red
+    line enforced — sensitive notes are dropped locally, never sent). If a
+    ledger is given (§14 L4), already-delivered notes are skipped, not resent."""
     from tracker.bridge import post_note
 
-    posted = skipped = failed = 0
+    posted = red_line_skipped = already_delivered = failed = 0
     for n in notes:
-        r = post_note(n, url)
+        r = post_note(n, url, ledger=ledger)
         if r.get("posted"):
             posted += 1
         elif r.get("reason") == "sensitive_not_transported":
-            skipped += 1
+            red_line_skipped += 1
+        elif r.get("reason") == "already_delivered":
+            already_delivered += 1
         else:
             failed += 1
             print(f"  [post 失败] {r}")
-    return posted, skipped, failed
+    return posted, red_line_skipped, already_delivered, failed
 
 
 def main() -> None:
@@ -86,6 +99,14 @@ def main() -> None:
     ap.add_argument("--post", metavar="URL",
                     help="also POST notes over real HTTP to a running board API "
                          "(e.g. http://127.0.0.1:8787); red line enforced")
+    ap.add_argument("--task-state", metavar="JSON",
+                    help="persist the task ledger across runs (§14 L3): load it "
+                         "if it exists, save it back after this run, so the same "
+                         "real-world task keeps being recognized across restarts")
+    ap.add_argument("--dedup-ledger", metavar="JSON",
+                    help="idempotent delivery (§14 L4): remembers which notes "
+                         "were already --store'd / --post'ed, so re-running "
+                         "replay over the same frames.jsonl doesn't duplicate rows")
     args = ap.parse_args()
 
     cfg = Config.load()
@@ -99,7 +120,7 @@ def main() -> None:
 
     understander = make_understander(
         backend, api_key=cfg.qwen_api_key, model=cfg.qwen_model,
-        base_url=cfg.qwen_base_url,
+        base_url=cfg.qwen_base_url, state_path=args.task_state,
     )
 
     notes: list[ActivityNote] = []
@@ -127,17 +148,32 @@ def main() -> None:
         for n in rows:
             print(f"    - {n.gist}")
 
+    ledger = None
+    if args.dedup_ledger:
+        ledger = DeliveryLedger()
+        if ledger.load(args.dedup_ledger):
+            print(f"\n[dedup] 已从 {args.dedup_ledger} 恢复投递账本")
+
     # --- minimal delivery: land into a local xiao_an.db (no board) ---
     if args.store:
-        landed = _store_notes(notes, args.store)
-        print(f"\n── 落库 ── {len(notes)} 条 note 已写入 {args.store}"
-              f"(库内共 {landed} 行 work_activities)")
+        written, dup_skipped = _store_notes(notes, args.store, ledger=ledger)
+        print(f"\n── 落库 ── {written} 条新写入 {args.store}"
+              f"({dup_skipped} 条已投递过,跳过)")
 
     # --- minimal HTTP delivery: POST to a running board API (real HTTP) ---
     if args.post:
-        posted, skipped, failed = _post_notes(notes, args.post)
+        posted, red_line_skipped, dup_skipped, failed = _post_notes(notes, args.post, ledger=ledger)
         print(f"\n── POST ── {posted} 条已发到 {args.post}"
-              f"({skipped} 条 sensitive 未发,{failed} 条失败)")
+              f"({red_line_skipped} 条 sensitive 未发,{dup_skipped} 条已投递过跳过,{failed} 条失败)")
+
+    if ledger is not None and args.dedup_ledger:
+        ledger.save(args.dedup_ledger)
+        print(f"[dedup] 已保存投递账本到 {args.dedup_ledger}")
+
+    if args.task_state:
+        understander.state.save(args.task_state)
+        print(f"\n── 任务状态 ── 已保存到 {args.task_state}"
+              f"(下次 --task-state 同一文件即可跨会话延续任务)")
 
 
 if __name__ == "__main__":

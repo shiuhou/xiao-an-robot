@@ -19,6 +19,7 @@ metadata only.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -64,12 +65,30 @@ class _Task:
     activity_type: str
     last_active_ms: int
     trace: list[dict] = field(default_factory=list)   # [{app,title,gist}]
+    closed: bool = False   # set from the model's task_closed verdict (§14 L3 fix:
+                            # this field used to be required+validated but never
+                            # applied — active() now honours it)
 
     def touch(self, seg: Segment, gist: str, activity_type: str) -> None:
         self.last_active_ms = seg.end_ms
         self.activity_type = activity_type or self.activity_type
         self.trace.append({"app": seg.app, "title": seg.title[:80], "gist": gist})
         self.trace = self.trace[-RECENT_TRACE:]
+
+    def to_dict(self) -> dict:
+        return {
+            "project_id": self.project_id, "title": self.title,
+            "activity_type": self.activity_type, "last_active_ms": self.last_active_ms,
+            "trace": self.trace, "closed": self.closed,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "_Task":
+        return cls(
+            project_id=d["project_id"], title=d["title"],
+            activity_type=d["activity_type"], last_active_ms=d["last_active_ms"],
+            trace=list(d.get("trace", [])), closed=bool(d.get("closed", False)),
+        )
 
 
 class Understander(Protocol):
@@ -86,7 +105,8 @@ class _TaskState:
 
     def active(self, now_ms: int) -> list[_Task]:
         live = [t for t in self._tasks.values()
-                if now_ms - t.last_active_ms <= TASK_IDLE_CLOSE_S * 1000]
+                if not t.closed
+                and now_ms - t.last_active_ms <= TASK_IDLE_CLOSE_S * 1000]
         live.sort(key=lambda t: t.last_active_ms, reverse=True)
         return live[:MAX_ACTIVE_TASKS]
 
@@ -99,6 +119,30 @@ class _TaskState:
         t = _Task(pid, title or "(未命名任务)", activity_type, seg.end_ms)
         self._tasks[pid] = t
         return t
+
+    # --- persistence (§14 L3: task state used to reset every process
+    # restart, fragmenting the same real-world task across sessions) ---
+    def to_dict(self) -> dict:
+        return {"n": self._n, "tasks": [t.to_dict() for t in self._tasks.values()]}
+
+    def load_dict(self, data: dict) -> None:
+        self._n = int(data.get("n", 0))
+        self._tasks = {}
+        for raw in data.get("tasks", []):
+            t = _Task.from_dict(raw)
+            self._tasks[t.project_id] = t
+
+    def save(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(self.to_dict(), fh, ensure_ascii=False, indent=2)
+
+    def load(self, path: str) -> bool:
+        """Load state from `path` if it exists. Returns whether it loaded."""
+        if not os.path.exists(path):
+            return False
+        with open(path, encoding="utf-8") as fh:
+            self.load_dict(json.load(fh))
+        return True
 
 
 def _note(seg: Segment, task: _Task, gist: str, act: str,
@@ -240,28 +284,52 @@ class QwenUnderstander:
 
         pid = str(a["continues_project_id"])
         act = str(a["activity_type"]) or "working"
-        if pid != "NEW" and self.state.get(pid):
-            task = self.state.get(pid)
+        existing = self.state.get(pid) if pid != "NEW" else None
+        # a CLOSED task is off the table for continuation: it isn't shown in
+        # active_tasks, but the model can still echo its old id (JSON mode
+        # guesses "t_001" when active_tasks is empty) — treat that like an
+        # unknown id and open a new task, so a finished task can't be revived
+        # and an unrelated segment can't inherit its title (§14 L3 review fix).
+        if existing is not None and not existing.closed:
+            task = existing
         else:
             task = self.state.new(str(a["new_task_title"]), act, seg)
         gist = str(a["gist"]) or seg.title
         task.touch(seg, gist, act)
-        return _note(seg, task, gist, act, confidence=float(a["confidence"]))
+        note = _note(seg, task, gist, act, confidence=float(a["confidence"]))
+        # apply the verdict that used to be validated but discarded (§14 L3 fix):
+        # a task the model says is DONE stops showing up in future active_tasks,
+        # so a later unrelated segment can't be misassociated onto it.
+        task.closed = bool(a["task_closed"])
+        return note
 
 
 # --------------------------------------------------------------------------- #
 # factory
 # --------------------------------------------------------------------------- #
 def make_understander(backend: str, *, api_key: str = "", model: str = "qwen-plus",
-                      base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                      base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      state_path: str | None = None,
                       ) -> Understander:
     """Pick a backend. 'qwen' needs openai + a key; missing either -> rule
-    fallback with a printed notice (segments are never lost)."""
+    fallback with a printed notice (segments are never lost).
+
+    state_path (§14 L3): if given and the file exists, the task ledger
+    (active tasks + trace + closed flags) is loaded from it, so the same
+    real-world task started in a PREVIOUS run keeps being recognized instead
+    of resetting to empty on every process restart. Caller is responsible
+    for calling `understander.state.save(state_path)` after ingesting."""
     if backend == "qwen":
         if OpenAI is None:
             print("[understander] openai 未安装,降级 rule 后端 (pip install openai)")
         elif not api_key:
             print("[understander] 未配置 qwen_api_key,降级 rule 后端")
         else:
-            return QwenUnderstander(api_key, model=model, base_url=base_url)
-    return RuleUnderstander()
+            u = QwenUnderstander(api_key, model=model, base_url=base_url)
+            if state_path and u.state.load(state_path):
+                print(f"[understander] 已从 {state_path} 恢复任务状态")
+            return u
+    u = RuleUnderstander()
+    if state_path and u.state.load(state_path):
+        print(f"[understander] 已从 {state_path} 恢复任务状态")
+    return u

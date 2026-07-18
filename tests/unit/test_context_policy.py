@@ -182,6 +182,22 @@ class ContextInjectionPolicyTest(unittest.TestCase):
                 self.assertIn(scope, decision.requested_scopes)
                 self.assertEqual(decision.method, "keyword_heuristic")
 
+    def test_casual_busy_phrasings_need_work_context(self) -> None:
+        # §14 L6 regression: these were found NOT to match before the keyword
+        # gate was extended (real bug found during 衔接层 e2e testing —
+        # "帮我看看我最近在忙什么" produced zero injected activities).
+        for text in (
+            "帮我看看我最近在忙什么",
+            "我在干什么",
+            "我在干嘛",
+            "最近在忙啥",
+            "看看我的屏幕在干嘛",
+        ):
+            with self.subTest(text=text):
+                decision = self.policy.decide_for_text(text)
+                self.assertTrue(decision.needs_work_context)
+                self.assertIn("work", decision.requested_scopes)
+
     def test_policy_does_not_modify_database_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "xiao_an.db"

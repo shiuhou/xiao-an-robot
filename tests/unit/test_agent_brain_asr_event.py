@@ -141,6 +141,32 @@ class SnapshotOpenClawAdapter:
 
 
 class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
+    def test_disabling_work_mode_interrupts_stale_running_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = WorkModeStore(Path(temp_dir) / "work_mode.json", cooldown_seconds=0)
+            lease = store.acquire_episode(chain="link1", source="asr", text="帮我查一下天气")
+
+            state = store.update_controls(system_enabled=False)
+
+        self.assertTrue(lease.acquired)
+        self.assertEqual(state["episode_state"], "idle")
+        self.assertIsNone(state["active_run_id"])
+        self.assertEqual(state["last_episode"]["status"], "interrupted")
+        self.assertEqual(state["last_episode"]["result"]["reason"], "work_mode_disabled")
+
+    def test_work_mode_store_can_interrupt_stale_running_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = WorkModeStore(Path(temp_dir) / "work_mode.json", cooldown_seconds=0)
+            lease = store.acquire_episode(chain="link1", source="asr", text="帮我查一下天气")
+
+            state = store.interrupt_episode(reason="link1_process_missing")
+
+        self.assertTrue(lease.acquired)
+        self.assertEqual(state["episode_state"], "idle")
+        self.assertIsNone(state["active_run_id"])
+        self.assertEqual(state["last_episode"]["status"], "interrupted")
+        self.assertEqual(state["last_episode"]["result"]["reason"], "link1_process_missing")
+
     async def test_asr_transcript_tired_text_uses_companion_fast_path(self) -> None:
         gateway = FakeGateway()
         openclaw_adapter = FakeOpenClawAdapter()
@@ -257,6 +283,43 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(reminders["items"][0]["status"], "cancelled")
         self.assertEqual(dashboard["local_fast_path"]["last_route"], "local_fast_path.link1.reminder_cancel")
 
+    async def test_asr_link1_natural_work_phrases_stay_on_local_fast_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = root / "workspace-xiaoan-runtime"
+            openclaw_adapter = FakeOpenClawAdapter()
+            brain = XiaoAnBrain(
+                gateway=FakeGateway(),
+                memory=FakeMemory(),
+                openclaw_adapter=openclaw_adapter,
+                local_fast_path=LocalFastPathRouter(RuntimeWorkspaceDocs(workspace)),
+                work_mode_store=WorkModeStore(root / "work_mode.json", cooldown_seconds=0),
+            )
+
+            cases = [
+                ("看一下待办", "local_fast_path.link1.task_query"),
+                ("小安小安十分钟之后提醒我喝水", "local_fast_path.link1.reminder_add"),
+                ("十分钟以后叫我喝水", "local_fast_path.link1.reminder_add"),
+                ("过十分钟叫我喝水", "local_fast_path.link1.reminder_add"),
+                ("下午三点叫我开会", "local_fast_path.link1.reminder_add"),
+                ("明天下午三点安排开会", "local_fast_path.link1.schedule_add"),
+            ]
+            routes = []
+            for text, _route in cases:
+                result = await brain.handle_event({
+                    "type": "asr.transcript",
+                    "payload": {"text": text, "completed_mic_segment": True},
+                })
+                routes.append(result["route"])
+
+            reminders = json.loads((workspace / "state" / "local_reminders.json").read_text(encoding="utf-8"))
+            schedule_text = (workspace / "SCHEDULE.md").read_text(encoding="utf-8")
+
+        self.assertEqual(routes, [route for _text, route in cases])
+        self.assertEqual(openclaw_adapter.events, [])
+        self.assertEqual([item["title"] for item in reminders["items"]], ["喝水", "喝水", "喝水", "开会"])
+        self.assertIn("开会", schedule_text)
+
     async def test_asr_link3_local_fast_path_covers_robot_commands_without_openclaw(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -294,6 +357,69 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(openclaw_adapter.events, [])
         self.assertIn(("motion", "stop", {}, 5000), gateway.calls)
         self.assertTrue(any(call[0] == "expression" and call[1] == "happy" for call in gateway.calls))
+
+    async def test_asr_link3_natural_robot_phrases_stay_on_local_fast_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = root / "workspace-xiaoan-runtime"
+            openclaw_adapter = FakeOpenClawAdapter()
+            gateway = FakeGateway()
+            brain = XiaoAnBrain(
+                gateway=gateway,
+                memory=FakeMemory(),
+                openclaw_adapter=openclaw_adapter,
+                local_fast_path=LocalFastPathRouter(RuntimeWorkspaceDocs(workspace)),
+                work_mode_store=WorkModeStore(root / "work_mode.json", cooldown_seconds=0),
+            )
+
+            cases = [
+                ("小安小安你能听到我吗", "local_fast_path.link3.greeting"),
+                ("小安，你能听到我吗", "local_fast_path.link3.greeting"),
+                ("能听到我吗", "local_fast_path.link3.greeting"),
+                ("回到充电座", "local_fast_path.link3.return_to_dock"),
+                ("转左边", "local_fast_path.link3.turn_left"),
+                ("转右边", "local_fast_path.link3.turn_right"),
+                ("开心一点", "local_fast_path.link3.set_expression"),
+            ]
+            routes = []
+            for text, _route in cases:
+                result = await brain.handle_event({
+                    "type": "asr.transcript",
+                    "payload": {"text": text, "completed_mic_segment": True},
+                })
+                routes.append(result["route"])
+
+        self.assertEqual(routes, [route for _text, route in cases])
+        self.assertEqual(openclaw_adapter.events, [])
+        self.assertTrue(any(call[0] == "motion" and call[1] == "move_back_to_dock" for call in gateway.calls))
+        self.assertTrue(any(call[0] == "expression" and call[1] == "happy" for call in gateway.calls))
+
+    async def test_asr_local_fast_path_greeting_sends_tts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = root / "workspace-xiaoan-runtime"
+            openclaw_adapter = FakeOpenClawAdapter()
+            gateway = FakeGateway()
+            brain = XiaoAnBrain(
+                gateway=gateway,
+                memory=FakeMemory(),
+                openclaw_adapter=openclaw_adapter,
+                local_fast_path=LocalFastPathRouter(RuntimeWorkspaceDocs(workspace)),
+                work_mode_store=WorkModeStore(root / "work_mode.json", cooldown_seconds=0),
+            )
+
+            result = await brain.handle_event({
+                "type": "asr.transcript",
+                "payload": {"text": "小安小安你能听到我吗", "completed_mic_segment": True},
+            })
+
+        expected_reply = "我在。工作模式已经准备好，你可以直接说任务、提醒或者机器人动作。"
+        self.assertEqual(result["route"], "local_fast_path.link3.greeting")
+        self.assertEqual(openclaw_adapter.events, [])
+        self.assertEqual(gateway.calls, [("tts", expected_reply)])
+        self.assertEqual(result["tts_text"], expected_reply)
+        self.assertEqual(result["tts_source"], "spoken_text")
+        self.assertTrue(any(action.get("name") == "robot.say" for action in result["executed_actions"]))
 
     async def test_asr_weather_stays_on_openclaw_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -573,6 +699,39 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context["tool_profile"], "conversation")
         self.assertEqual(context["local_fast_path"]["reason"], "openclaw_owned_intent")
 
+    async def test_completed_mic_segment_can_route_after_mic_recognition_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "work_mode.json"
+            WorkModeStore(state_path, cooldown_seconds=0).update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=False,
+                camera_capture_enabled=True,
+            )
+            openclaw_adapter = FakeOpenClawAdapter(
+                decision=OpenClawDecision(handled=True, reply_text="天气回复"),
+            )
+            brain = XiaoAnBrain(
+                gateway=FakeGateway(),
+                memory=FakeMemory(),
+                openclaw_adapter=openclaw_adapter,
+                work_mode_store=WorkModeStore(state_path, cooldown_seconds=0),
+            )
+
+            result = await brain.handle_event({
+                "type": "asr.transcript",
+                "payload": {
+                    "text": "小安帮我查一下天气",
+                    "source": "local_mic",
+                    "session_id": "complete-segment",
+                    "completed_mic_segment": True,
+                },
+            })
+
+        self.assertEqual(result["route"], "link_1_openclaw")
+        self.assertEqual(result["reason"], "openclaw_decision")
+        self.assertNotEqual(result["reason"], "mic_recognition_disabled")
+        self.assertEqual(openclaw_adapter.events[0].session_id, "complete-segment")
+
     async def test_asr_transcript_expression_action_uses_local_fast_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -659,7 +818,8 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["route"], "local_fast_path.link1.reminder_add")
         self.assertEqual(openclaw_adapter.events, [])
-        self.assertEqual(gateway.calls, [])
+        self.assertEqual(gateway.calls, [("tts", "好，一分钟后提醒你喝水。")])
+        self.assertEqual(result["tts_text"], "好，一分钟后提醒你喝水。")
         self.assertIn("喝水", schedule_text)
         self.assertIn("scheduler: local", schedule_text)
 

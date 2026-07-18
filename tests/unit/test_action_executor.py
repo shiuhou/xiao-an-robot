@@ -321,6 +321,9 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         result = await executor.execute(OpenClawDecision(handled=True, reply_text="hello"))
 
         self.assertEqual(robot_motion.say_calls, ["hello"])
+        self.assertEqual(result["tts_text"], "hello")
+        self.assertEqual(result["tts_source"], "reply_text")
+        self.assertEqual(result["tts_tool"], "robot.say")
         self.assertEqual(result["executed_actions"], [{
             "name": "robot.say",
             "source": "reply_text",
@@ -376,6 +379,8 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(robot_motion.say_calls, ["spoken"])
         self.assertEqual(result["spoken_text"], "spoken")
         self.assertEqual(result["reply_text"], "legacy reply")
+        self.assertEqual(result["tts_text"], "spoken")
+        self.assertEqual(result["tts_source"], "spoken_text")
         self.assertEqual(result["executed_actions"], [{
             "name": "robot.say",
             "source": "spoken_text",
@@ -425,6 +430,9 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(action["name"], "xiaoan.robot.say")
         self.assertTrue(action["result"]["ok"])
         self.assertEqual(action["result"]["tool"], "xiaoan.robot.say")
+        self.assertEqual(result["tts_text"], "hello")
+        self.assertEqual(result["tts_source"], "tool_call")
+        self.assertEqual(result["tts_tool"], "xiaoan.robot.say")
 
     async def test_robot_expression_tool_call_calls_show_expression(self) -> None:
         robot_motion = FakeRobotMotionSkill()
@@ -673,6 +681,10 @@ class ActionExecutorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(robot_motion.say_calls, [])
         self.assertEqual(robot_motion.care_calls, ["我出来陪你一下"])
+        self.assertEqual(result["reply_text"], "先缓一缓")
+        self.assertEqual(result["tts_text"], "我出来陪你一下")
+        self.assertEqual(result["tts_source"], "tool_call")
+        self.assertEqual(result["tts_tool"], "xiaoan.robot.care")
         self.assertEqual(result["skipped_actions"], [])
         self.assertEqual(result["executed_actions"][0]["name"], "xiaoan.robot.care")
 

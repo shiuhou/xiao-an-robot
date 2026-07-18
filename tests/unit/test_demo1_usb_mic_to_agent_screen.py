@@ -7,8 +7,10 @@ import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import wave
 
+from base_station.perception import mic_capture
 from tools.demo.demo1_usb_mic_to_agent_screen import (
     append_log,
     build_openclaw_asr_event,
@@ -132,6 +134,63 @@ card 1: UACDemoV10 [UACDemoV1.0], device 0: USB Audio [USB Audio]
 
         self.assertEqual(recording_sample_rate(device, 16000), 48000)
         self.assertEqual(recording_sample_rate({"backend": "arecord"}, 16000), 16000)
+
+    def test_persistent_arecord_recorder_uses_per_window_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "window.wav"
+
+            def write_wav(**kwargs):
+                output_path = Path(kwargs["output_path"])
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with wave.open(str(output_path), "wb") as wav:
+                    wav.setnchannels(1)
+                    wav.setsampwidth(2)
+                    wav.setframerate(16000)
+                    wav.writeframes(struct.pack("<" + "h" * 1600, *([4000] * 1600)))
+                return output_path
+
+            recorder = mic_capture.PersistentWavRecorder(
+                device={"backend": "arecord", "device_id": "plughw:1,0"},
+                sample_rate=16000,
+                channels=1,
+            )
+            with patch.object(mic_capture, "record_wav_arecord", side_effect=write_wav) as record:
+                with recorder:
+                    recorder.record_window(target, 0.5)
+                    data = recorder.read_window(0.5)
+
+        self.assertEqual(record.call_count, 2)
+        self.assertEqual(record.call_args_list[0].kwargs["output_path"], target)
+        self.assertEqual(record.call_args_list[0].kwargs["device_id"], "plughw:1,0")
+        self.assertGreater(len(data), 0)
+
+    def test_persistent_pyaudio_recorder_drains_buffer_before_window(self) -> None:
+        class FakeStream:
+            def __init__(self) -> None:
+                self.reads: list[int] = []
+
+            def get_read_available(self) -> int:
+                return 1024
+
+            def read(self, frames: int, exception_on_overflow: bool = False) -> bytes:
+                del exception_on_overflow
+                self.reads.append(frames)
+                return b"\x00\x00" * frames
+
+        stream = FakeStream()
+        recorder = mic_capture.PersistentWavRecorder(
+            device={"backend": "pyaudio", "index": 0},
+            sample_rate=16000,
+            channels=1,
+            frames_per_buffer=1024,
+        )
+        recorder._stream = stream
+
+        data = recorder.read_window(0.1)
+
+        self.assertEqual(stream.reads[0], 1024)
+        self.assertEqual(sum(stream.reads[1:]), 1600)
+        self.assertEqual(len(data), 3200)
 
     def test_wav_level_report_flags_target_peak_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

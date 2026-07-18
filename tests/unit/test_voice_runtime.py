@@ -112,6 +112,17 @@ class CountingASRBackend:
         }
 
 
+class PunctuationASRBackend:
+    def transcribe(self, audio_clip: dict) -> dict:
+        return {
+            "text": "。",
+            "language": "zh",
+            "confidence": 0.1,
+            "backend": "punctuation",
+            "duration_ms": int(audio_clip.get("duration_ms") or 0),
+        }
+
+
 class FakePersistentRecorder:
     instances = []
 
@@ -119,6 +130,7 @@ class FakePersistentRecorder:
         self.kwargs = kwargs
         self.recorded = []
         self.discarded = []
+        self.read_windows = []
         self.closed = False
         FakePersistentRecorder.instances.append(self)
 
@@ -141,14 +153,36 @@ class FakePersistentRecorder:
         self.discarded.append(duration_seconds)
         return int(16000 * duration_seconds * 2)
 
+    def read_window(self, duration_seconds: float) -> bytes:
+        self.read_windows.append(duration_seconds)
+        frame_count = max(1, int(16000 * duration_seconds))
+        return struct.pack("<" + "h" * frame_count, *([4000] * frame_count))
+
     def close(self) -> None:
         self.closed = True
+
+
+class ToggleOffRecorder(FakePersistentRecorder):
+    state_path: Path | None = None
+    stop_after_reads = 3
+
+    def read_window(self, duration_seconds: float) -> bytes:
+        data = super().read_window(duration_seconds)
+        if len(self.read_windows) >= self.stop_after_reads and self.state_path is not None:
+            WorkModeStore(self.state_path, cooldown_seconds=0).update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=False,
+                camera_capture_enabled=True,
+            )
+        return data
 
 
 class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         FakeRuntime.instances = []
         FakePersistentRecorder.instances = []
+        ToggleOffRecorder.state_path = None
+        ToggleOffRecorder.stop_after_reads = 3
 
     async def test_process_text_sends_asr_transcript_event_to_existing_runtime(self) -> None:
         runtime = FakeRuntime(
@@ -208,6 +242,19 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status["event_type"], "voice.recording")
         self.assertEqual(status["previous_output"]["text"], "上一句")
+
+    def test_muted_status_preserves_meaningful_previous_output_without_nesting(self) -> None:
+        first = {
+            "event_type": "asr.transcript",
+            "text": "小安在吗",
+            "reply_text": "我在。",
+        }
+        muted_once = voice_runtime._muted_status("voice-test", first)
+        muted_twice = voice_runtime._muted_status("voice-test", muted_once)
+
+        self.assertEqual(muted_twice["event_type"], "voice.muted")
+        self.assertEqual(muted_twice["previous_output"], first)
+        self.assertNotEqual(muted_twice["previous_output"].get("event_type"), "voice.muted")
 
     async def test_process_text_publishes_native_openclaw_reply_to_dashboard(self) -> None:
         runtime = NativeReplyRuntime(
@@ -395,6 +442,46 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pending["reason"], "openclaw_pending")
         self.assertEqual(pending["text"], "帮我查一下天气")
 
+    async def test_process_audio_file_does_not_route_punctuation_only_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audio_path = Path(temp_dir) / "speech.wav"
+            samples = [4000] * 16000
+            with wave.open(str(audio_path), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16000)
+                wav.writeframes(struct.pack("<" + "h" * len(samples), *samples))
+
+            runtime = FakeRuntime(
+                db_path=":memory:",
+                robot_ws_url="ws://example.invalid/agent",
+            )
+            latest_path = Path(temp_dir) / "latest_voice.json"
+            state_path = Path(temp_dir) / "work_mode_state.json"
+            store = WorkModeStore(state_path)
+            store.acquire_episode(chain="link1", source="asr", text="旧 active")
+            with patch.dict(os.environ, {"XIAOAN_WORK_MODE_STATE_PATH": str(state_path)}):
+                output = await voice_runtime.process_audio_file(
+                    runtime,
+                    str(audio_path),
+                    session_id="mic-test",
+                    asr_backend="sensevoice",
+                    asr_backend_instance=PunctuationASRBackend(),
+                    vad_backend="energy",
+                    trim_speech=False,
+                    latest_output_path=str(latest_path),
+                )
+            state = store.snapshot()
+
+        self.assertEqual(output["event_type"], "asr.empty_transcript")
+        self.assertEqual(output["reason"], "asr_nonlexical_transcript")
+        self.assertEqual(output["text"], "。")
+        self.assertEqual(runtime.brain.events, [])
+        self.assertFalse(latest_path.exists())
+        self.assertIsNone(state["active_run_id"])
+        self.assertEqual(state["last_episode"]["status"], "ignored")
+        self.assertEqual(state["last_episode"]["result"]["reason"], "asr_nonlexical_transcript")
+
     async def test_process_audio_file_can_reuse_precreated_asr_backend(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             audio_path = Path(temp_dir) / "speech.wav"
@@ -455,6 +542,7 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
                         duration_seconds=1.0,
                         asr_backend="fake",
                         output_dir=str(Path(temp_dir) / "audio"),
+                        work_mode_gated=True,
                     )
             finally:
                 if old_env is None:
@@ -468,6 +556,171 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(FakePersistentRecorder.instances[0].recorded, [])
         self.assertTrue(FakePersistentRecorder.instances[0].closed)
         self.assertFalse(process_audio.called)
+
+    async def test_local_mic_loop_without_work_mode_gate_ignores_muted_work_mode_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "work_mode.json"
+            WorkModeStore(state_path, cooldown_seconds=0).update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=False,
+                camera_capture_enabled=True,
+            )
+            old_env = os.environ.get("XIAOAN_WORK_MODE_STATE_PATH")
+            os.environ["XIAOAN_WORK_MODE_STATE_PATH"] = str(state_path)
+            output = {
+                "event_type": "asr.transcript",
+                "handled": True,
+                "text": "小安能听到我吗",
+            }
+            try:
+                with patch.object(voice_runtime, "PersistentWavRecorder", FakePersistentRecorder), patch.object(
+                    voice_runtime,
+                    "list_input_devices",
+                    return_value=[{
+                        "backend": "pyaudio",
+                        "index": 0,
+                        "device_id": "0",
+                        "name": "unit mic",
+                        "max_input_channels": 1,
+                        "default_sample_rate": 16000,
+                    }],
+                ), patch.object(voice_runtime, "create_asr_backend", return_value=CountingASRBackend()), patch.object(
+                    voice_runtime,
+                    "process_audio_file",
+                    new=AsyncMock(return_value=output),
+                ) as process_audio:
+                    count = await voice_runtime.run_local_mic_loop(
+                        runtime_factory=FakeRuntime,
+                        output_stream=io.StringIO(),
+                        error_stream=io.StringIO(),
+                        db_path=":memory:",
+                        once=True,
+                        duration_seconds=1.0,
+                        asr_backend="fake",
+                        output_dir=str(Path(temp_dir) / "audio"),
+                    )
+            finally:
+                if old_env is None:
+                    os.environ.pop("XIAOAN_WORK_MODE_STATE_PATH", None)
+                else:
+                    os.environ["XIAOAN_WORK_MODE_STATE_PATH"] = old_env
+
+        self.assertEqual(count, 1)
+        self.assertEqual(FakePersistentRecorder.instances[0].discarded, [])
+        self.assertEqual(len(FakePersistentRecorder.instances[0].recorded), 1)
+        self.assertTrue(process_audio.called)
+
+    async def test_local_mic_loop_discards_short_window_after_robot_tts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            latest_output = Path(temp_dir) / "latest.json"
+            first_output = {
+                "event_type": "asr.transcript",
+                "handled": True,
+                "text": "小安你好",
+                "route": "link_1_openclaw",
+                "reason": "openclaw_decision",
+                "tts_text": "你好，我在。",
+                "executed_actions": [
+                    {
+                        "name": "robot.say",
+                        "source": "reply_text",
+                        "arguments": {"text": "你好，我在。"},
+                    }
+                ],
+            }
+            with patch.object(voice_runtime, "PersistentWavRecorder", FakePersistentRecorder), patch.object(
+                voice_runtime,
+                "list_input_devices",
+                return_value=[{
+                    "backend": "pyaudio",
+                    "index": 0,
+                    "device_id": "0",
+                    "name": "unit mic",
+                    "max_input_channels": 1,
+                    "default_sample_rate": 16000,
+                }],
+            ), patch.object(voice_runtime, "create_asr_backend", return_value=CountingASRBackend()), patch.object(
+                voice_runtime,
+                "process_audio_file",
+                new=AsyncMock(side_effect=[first_output, KeyboardInterrupt()]),
+            ), patch.dict(os.environ, {"XIAOAN_VOICE_POST_TTS_DISCARD_SECONDS": "2.0"}):
+                count = await voice_runtime.run_local_mic_loop(
+                    runtime_factory=FakeRuntime,
+                    output_stream=io.StringIO(),
+                    error_stream=io.StringIO(),
+                    db_path=":memory:",
+                    duration_seconds=6.0,
+                    asr_backend="fake",
+                    output_dir=str(Path(temp_dir) / "audio"),
+                    latest_output_path=str(latest_output),
+                )
+            latest = json.loads(latest_output.read_text(encoding="utf-8"))
+
+        self.assertEqual(count, 1)
+        recorder = FakePersistentRecorder.instances[0]
+        self.assertEqual(recorder.discarded, [2.0])
+        self.assertEqual(len(recorder.recorded), 2)
+        self.assertTrue(recorder.closed)
+        self.assertEqual(latest["event_type"], "voice.recording")
+        self.assertEqual(latest["previous_output"]["event_type"], "voice.post_tts_discard")
+        self.assertEqual(latest["previous_output"]["tts_text"], "你好，我在。")
+
+    async def test_until_mic_off_mode_records_one_complete_segment_before_asr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "work_mode.json"
+            WorkModeStore(state_path, cooldown_seconds=0).update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=True,
+                camera_capture_enabled=True,
+            )
+            ToggleOffRecorder.state_path = state_path
+            output = {
+                "event_type": "asr.transcript",
+                "handled": True,
+                "text": "小安帮我记录完整句子",
+            }
+            old_env = os.environ.get("XIAOAN_WORK_MODE_STATE_PATH")
+            os.environ["XIAOAN_WORK_MODE_STATE_PATH"] = str(state_path)
+            try:
+                with patch.object(voice_runtime, "PersistentWavRecorder", ToggleOffRecorder), patch.object(
+                    voice_runtime,
+                    "list_input_devices",
+                    return_value=[{
+                        "backend": "pyaudio",
+                        "index": 0,
+                        "device_id": "0",
+                        "name": "unit mic",
+                        "max_input_channels": 1,
+                        "default_sample_rate": 16000,
+                    }],
+                ), patch.object(voice_runtime, "create_asr_backend", return_value=CountingASRBackend()), patch.object(
+                    voice_runtime,
+                    "process_audio_file",
+                    new=AsyncMock(return_value=output),
+                ) as process_audio:
+                    count = await voice_runtime.run_local_mic_loop(
+                        runtime_factory=FakeRuntime,
+                        output_stream=io.StringIO(),
+                        error_stream=io.StringIO(),
+                        db_path=":memory:",
+                        once=True,
+                        duration_seconds=6.0,
+                        asr_backend="fake",
+                        output_dir=str(Path(temp_dir) / "audio"),
+                        capture_mode="until_mic_off",
+                    )
+            finally:
+                if old_env is None:
+                    os.environ.pop("XIAOAN_WORK_MODE_STATE_PATH", None)
+                else:
+                    os.environ["XIAOAN_WORK_MODE_STATE_PATH"] = old_env
+
+        recorder = FakePersistentRecorder.instances[0]
+        self.assertEqual(count, 1)
+        self.assertEqual(len(recorder.recorded), 0)
+        self.assertGreaterEqual(len(recorder.read_windows), 3)
+        self.assertTrue(process_audio.await_args.kwargs["completed_mic_segment"])
+        self.assertEqual(process_audio.await_args.kwargs["trim_speech"], True)
 
     def test_prewarm_asr_skips_non_sensevoice_backend(self) -> None:
         result = voice_runtime.prewarm_asr_model(asr_backend="fake")
@@ -509,6 +762,7 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
                 "--local-demo-allow-motion",
                 "--local-demo-reminders-path",
                 "runtime/reminders.json",
+                "--work-mode-gated",
             ]
         )
 
@@ -522,6 +776,7 @@ class VoiceRuntimeTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(kwargs["local_demo_send_to_robot"])
         self.assertTrue(kwargs["local_demo_allow_motion"])
         self.assertEqual(kwargs["local_demo_reminders_path"], "runtime/reminders.json")
+        self.assertTrue(kwargs["work_mode_gated"])
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from urllib.parse import unquote, urlparse, urlsplit
 
 from agent.core.work_mode import WorkModeStore
@@ -679,12 +679,15 @@ class IntegrationConsoleApp:
                 "integration-console-work-voice" if is_work_voice else f"integration-console-{link}",
                 "--duration",
                 duration,
+                *(["--capture-mode", "until_mic_off"] if is_work_voice else []),
                 "--asr-language",
                 self._env_text(f"XIAOAN_{normal_link.upper()}_ASR_LANGUAGE", "zh"),
                 "--audio-output-dir",
                 str(self.link_runtime_dir(link) / "audio"),
                 "--latest-output",
                 str(self.link_voice_output_path(link)),
+                *(["--once"] if not is_work_voice else []),
+                *(["--work-mode-gated"] if is_work_voice else []),
                 *(["--local-demo-reminders-path", str(self.fast_demo_reminders_path)] if link in {"link1", "work_voice"} else []),
                 *(["--disable-companion-fast-path"] if link == "link1" else []),
                 "--verbose",
@@ -727,9 +730,10 @@ class IntegrationConsoleApp:
                 self._env_text("XIAOAN_LINK2_OPENFACE_DEVICE", self._env_text("XIAOAN_LINK2_DEVICE", "NPU")),
                 "--vlm-device",
                 self._env_text("XIAOAN_LINK2_VLM_DEVICE", "GPU"),
-                "--preload-vlm",
                 "--verbose",
             ]
+            if self._env_truthy("XIAOAN_LINK2_PRELOAD_VLM", False):
+                command.append("--preload-vlm")
             if self._env_truthy("XIAOAN_LINK2_FORCE_VLM", False):
                 command.append("--force-vlm")
             return command
@@ -915,12 +919,35 @@ class IntegrationConsoleApp:
             env.pop(key, None)
         return env
 
+    def _running_process_key(self, keys: Iterable[str]) -> str | None:
+        for key in keys:
+            state = self.link_process_state(key)
+            if state.get("running"):
+                return key
+        return None
+
+    def _single_shot_voice_running(self) -> str | None:
+        return self._running_process_key(("link1", "link3", "fast1", "fast3"))
+
+    def _work_mode_conflict_for_start(self, link: str) -> str | None:
+        if link in {"link1", "link3", "fast1", "fast3"}:
+            if self.link_process_state("work_voice").get("running"):
+                return "work_mode_running_use_stop_first"
+        if link == "work_voice":
+            running = self._single_shot_voice_running()
+            if running:
+                return f"single_shot_link_running:{running}"
+        return None
+
     def start_link(self, body: dict[str, Any]) -> dict[str, Any]:
         link = str(body.get("link") or "").strip()
         try:
             command = self.link_command(link)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
+        conflict = self._work_mode_conflict_for_start(link)
+        if conflict:
+            return {"ok": False, "error": conflict}
         state = self.link_process_state(link)
         if state["running"]:
             return {"ok": True, "link": link, "state": state, "already_running": True}
@@ -996,6 +1023,9 @@ class IntegrationConsoleApp:
             command = self.fast_demo_command(link, body)
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
+        conflict = self._work_mode_conflict_for_start(link)
+        if conflict:
+            return {"ok": False, "error": conflict}
         self.fast_demo_options[link] = {
             "send_to_robot": bool(body.get("send_to_robot", False)),
             "allow_motion": bool(body.get("allow_motion", False)),
@@ -1074,11 +1104,15 @@ class IntegrationConsoleApp:
         }
 
     def start_work_mode(self, body: dict[str, Any]) -> dict[str, Any]:
+        conflict = self._work_mode_conflict_for_start("work_voice")
+        if conflict:
+            return {"ok": False, "error": conflict, "work_mode": self.work_mode_store.snapshot()}
         state = self.work_mode_store.update_controls(
             system_enabled=True,
             mic_recognition_enabled=bool(body.get("mic_recognition_enabled", True)),
             camera_capture_enabled=bool(body.get("camera_capture_enabled", True)),
         )
+        state = self._recover_stale_work_mode_episode(state, self.link_process_states())
         voice = self.start_link({"link": "work_voice"})
         visual = self.start_link({"link": "link2"}) if state.get("camera_capture_enabled") else {"ok": True, "skipped": True}
         return {
@@ -1313,11 +1347,16 @@ class IntegrationConsoleApp:
         }
 
     def update_work_mode(self, body: dict[str, Any]) -> dict[str, Any]:
+        if bool(body.get("system_enabled")):
+            conflict = self._work_mode_conflict_for_start("work_voice")
+            if conflict:
+                return {"ok": False, "error": conflict, "work_mode": self.work_mode_store.snapshot()}
         state = self.work_mode_store.update_controls(
             system_enabled=body.get("system_enabled") if "system_enabled" in body else None,
             mic_recognition_enabled=body.get("mic_recognition_enabled") if "mic_recognition_enabled" in body else None,
             camera_capture_enabled=body.get("camera_capture_enabled") if "camera_capture_enabled" in body else None,
         )
+        state = self._recover_stale_work_mode_episode(state, self.link_process_states())
         self.log_event(
             event_type="work_mode.update",
             request_id=uuid.uuid4().hex[:12],
@@ -1330,7 +1369,27 @@ class IntegrationConsoleApp:
             result="ok",
             raw_response_summary=state,
         )
-        return {"ok": True, "work_mode": state}
+        voice: dict[str, Any] | None = None
+        visual: dict[str, Any] | None = None
+        if state.get("system_enabled"):
+            voice_state = self.link_process_state("work_voice")
+            if not voice_state.get("running"):
+                voice = self.start_link({"link": "work_voice"})
+            if state.get("camera_capture_enabled"):
+                visual_state = self.link_process_state("link2")
+                if not visual_state.get("running"):
+                    visual = self.start_link({"link": "link2"})
+            else:
+                visual = self.stop_link({"link": "link2"})
+        else:
+            voice = self.stop_link({"link": "work_voice"})
+            visual = self.stop_link({"link": "link2"})
+        result = {"ok": True, "work_mode": state}
+        if voice is not None:
+            result["voice"] = voice
+        if visual is not None:
+            result["visual"] = visual
+        return result
 
     def work_mode_state(
         self,
@@ -1343,15 +1402,22 @@ class IntegrationConsoleApp:
         link_voice: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         state = self.work_mode_store.snapshot()
-        latest_image = media.get("latest_image") if isinstance(media.get("latest_image"), dict) else {}
         latest_audio = media.get("latest_audio") if isinstance(media.get("latest_audio"), dict) else {}
+        visual_files = visual.get("files") if isinstance(visual.get("files"), dict) else {}
+        visual_latest_image = visual_files.get("latest_image") if isinstance(visual_files.get("latest_image"), dict) else {}
         work_voice = processes.get("work_voice") if isinstance(processes.get("work_voice"), dict) else {}
         work_voice_output = self.link_voice_state("work_voice")
         link1 = processes.get("link1") if isinstance(processes.get("link1"), dict) else {}
         link2 = processes.get("link2") if isinstance(processes.get("link2"), dict) else {}
         link3 = processes.get("link3") if isinstance(processes.get("link3"), dict) else {}
         fast2 = processes.get("fast2") if isinstance(processes.get("fast2"), dict) else {}
+        state = self._recover_stale_work_mode_episode(state, processes)
         diagnostics = self.work_mode_diagnostics(visual=visual, link_voice=link_voice or {})
+        work_voice_card = self._work_voice_card_status(
+            state=state,
+            process=work_voice,
+            output=work_voice_output.get("output") if isinstance(work_voice_output.get("output"), dict) else {},
+        )
         local_fast_paths = [
             {
                 "name": "链路三机器人动作",
@@ -1390,11 +1456,17 @@ class IntegrationConsoleApp:
                 "latest_audio_age_ms": latest_audio.get("age_ms"),
             },
             "camera": {
-                "ok": bool(state.get("camera_capture_enabled") and latest_image.get("exists")),
+                "ok": bool(state.get("camera_capture_enabled") and visual.get("ok") and visual_latest_image.get("exists")),
                 "capture_enabled": bool(state.get("camera_capture_enabled")),
                 "label": "摄像头采集",
-                "detail": "持续采集" if state.get("camera_capture_enabled") else "采集关闭",
-                "latest_image_age_ms": latest_image.get("age_ms"),
+                "detail": (
+                    f"链路二实时摄像头帧：{visual.get('freshness')}"
+                    if state.get("camera_capture_enabled")
+                    else "采集关闭"
+                ),
+                "latest_image_age_ms": visual_latest_image.get("age_ms"),
+                "latest_image_source": "link2_visual_trace",
+                "latest_image_path": visual_latest_image.get("path"),
             },
             "arbiter": {
                 "ok": state.get("episode_state") in {"idle", "cooldown"},
@@ -1407,7 +1479,9 @@ class IntegrationConsoleApp:
             "link1": {
                 "ok": bool(work_voice.get("running") or link1.get("running") or work_voice_output.get("ok")),
                 "label": "链路一",
-                "detail": "待触发：任务 / 日程 / 提醒 / OpenClaw",
+                "detail": work_voice_card["detail"],
+                "status_kind": work_voice_card["status_kind"],
+                "status_label": work_voice_card["status_label"],
                 "process": work_voice or link1,
                 "voice": work_voice_output,
             },
@@ -1422,11 +1496,11 @@ class IntegrationConsoleApp:
                     "age_ms": visual.get("age_ms"),
                 },
             },
-            "asr_text": {
-                "ok": bool(diagnostics.get("asr_text")),
-                "label": "ASR 文本输出",
-                "detail": diagnostics.get("asr_text") or "等待语音识别输出",
-            },
+            "asr_text": self._work_asr_card_status(
+                state=state,
+                diagnostics=diagnostics,
+                process=work_voice,
+            ),
             "openface": {
                 "ok": bool((diagnostics.get("openface") or {}).get("cv_sample")),
                 "label": "OpenFace 指标",
@@ -1445,7 +1519,9 @@ class IntegrationConsoleApp:
             "link3": {
                 "ok": bool(work_voice.get("running") or link3.get("running") or work_voice_output.get("ok")),
                 "label": "链路三",
-                "detail": "待触发：机器人动作 / 表情 / 关怀",
+                "detail": work_voice_card["detail"],
+                "status_kind": work_voice_card["status_kind"],
+                "status_label": work_voice_card["status_label"],
                 "process": work_voice or link3,
                 "voice": work_voice_output,
             },
@@ -1471,6 +1547,120 @@ class IntegrationConsoleApp:
                 "dashboard": str(self.openclaw_workspace / "state" / "dashboard.json"),
                 "local_reminders": str(self.local_reminders_path),
             },
+        }
+
+    def _recover_stale_work_mode_episode(
+        self,
+        state: dict[str, Any],
+        processes: dict[str, Any],
+    ) -> dict[str, Any]:
+        if state.get("episode_state") != "running" or not state.get("active_run_id"):
+            return state
+        active_chain = str(state.get("active_chain") or "")
+        process_keys_by_chain = {
+            "link1": ("work_voice", "link1", "fast1"),
+            "link2": ("link2", "fast2"),
+            "link3": ("work_voice", "link3", "fast3"),
+            "work_voice": ("work_voice",),
+        }
+        process_keys = process_keys_by_chain.get(active_chain, (active_chain,))
+        for key in process_keys:
+            process = processes.get(key) if isinstance(processes.get(key), dict) else {}
+            if process.get("running"):
+                return state
+        return self.work_mode_store.interrupt_episode(reason=f"{active_chain or 'unknown'}_process_missing")
+
+    @staticmethod
+    def _work_voice_card_status(
+        *,
+        state: dict[str, Any],
+        process: dict[str, Any],
+        output: dict[str, Any],
+    ) -> dict[str, str]:
+        if not state.get("system_enabled"):
+            return {
+                "status_kind": "idle",
+                "status_label": "OFF",
+                "detail": "总工作模式关闭",
+            }
+        if not process.get("running"):
+            return {
+                "status_kind": "unavailable",
+                "status_label": "VOICE OFF",
+                "detail": "语音 runtime 未运行，开麦时会尝试重启",
+            }
+        event_type = str(output.get("event_type") or "")
+        reason = str(output.get("reason") or "")
+        if state.get("mic_recognition_enabled"):
+            return {
+                "status_kind": "running",
+                "status_label": "RECORDING",
+                "detail": "正在收音；关掉麦克风识别后提交完整语音",
+            }
+        if event_type == "asr.transcript" and reason == "openclaw_pending":
+            return {
+                "status_kind": "running",
+                "status_label": "PROCESSING",
+                "detail": "ASR 完成，等待 OpenClaw/本地动作",
+            }
+        if state.get("episode_state") == "running":
+            return {
+                "status_kind": "running",
+                "status_label": "PROCESSING",
+                "detail": "触发链路正在处理",
+            }
+        return {
+            "status_kind": "idle",
+            "status_label": "WAITING MIC",
+            "detail": "待触发：打开麦克风识别开始录完整语音",
+        }
+
+    @staticmethod
+    def _work_asr_card_status(
+        *,
+        state: dict[str, Any],
+        diagnostics: dict[str, Any],
+        process: dict[str, Any],
+    ) -> dict[str, Any]:
+        asr_text = str(diagnostics.get("asr_text") or "").strip()
+        if asr_text:
+            return {
+                "ok": True,
+                "label": "ASR 文本输出",
+                "detail": asr_text,
+                "status_kind": "live",
+                "status_label": "ASR",
+            }
+        if state.get("mic_recognition_enabled") and process.get("running"):
+            return {
+                "ok": True,
+                "label": "ASR 文本输出",
+                "detail": "正在录完整语音；关闭麦克风识别后转写并触发链路",
+                "status_kind": "running",
+                "status_label": "RECORDING",
+            }
+        if state.get("mic_recognition_enabled"):
+            return {
+                "ok": False,
+                "label": "ASR 文本输出",
+                "detail": "麦克风识别已打开，但语音 runtime 未运行；切换总工作模式会尝试重启",
+                "status_kind": "unavailable",
+                "status_label": "VOICE OFF",
+            }
+        if state.get("system_enabled"):
+            return {
+                "ok": False,
+                "label": "ASR 文本输出",
+                "detail": "待触发：打开麦克风识别开始录音",
+                "status_kind": "idle",
+                "status_label": "WAITING MIC",
+            }
+        return {
+            "ok": False,
+            "label": "ASR 文本输出",
+            "detail": "总工作模式关闭",
+            "status_kind": "idle",
+            "status_label": "OFF",
         }
 
     def work_mode_diagnostics(self, *, visual: dict[str, Any], link_voice: dict[str, Any]) -> dict[str, Any]:
@@ -1507,16 +1697,9 @@ class IntegrationConsoleApp:
         }
 
     def _latest_asr_text_from_voice(self, link_voice: dict[str, Any]) -> str:
-        candidates = []
-        for link in ("work_voice", "link1", "link3"):
-            item = link_voice.get(link) if isinstance(link_voice.get(link), dict) else {}
-            output = item.get("output") if isinstance(item.get("output"), dict) else {}
-            candidates.append(output)
-        for output in candidates:
-            text = self._voice_text(self._display_voice_output(output))
-            if text:
-                return text
-        return ""
+        item = link_voice.get("work_voice") if isinstance(link_voice.get("work_voice"), dict) else {}
+        output = item.get("output") if isinstance(item.get("output"), dict) else {}
+        return self._voice_text(self._display_voice_output(output))
 
     def link_state(
         self,
@@ -1529,7 +1712,6 @@ class IntegrationConsoleApp:
         processes: dict[str, Any] | None = None,
         link_voice: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        latest_image = media.get("latest_image") if isinstance(media.get("latest_image"), dict) else {}
         latest_audio = media.get("latest_audio") if isinstance(media.get("latest_audio"), dict) else {}
         audio_stats = media.get("audio_stats") if isinstance(media.get("audio_stats"), dict) else {}
         demo1 = asr.get("demo1_transcript") if isinstance(asr.get("demo1_transcript"), dict) else {}
@@ -1625,7 +1807,9 @@ class IntegrationConsoleApp:
         link3_audio = self._voice_audio_info(link3_output)
         link1_audio_fresh = link1_voice_fresh or _fresh(link1_audio, 30000)
         link3_audio_fresh = link3_voice_fresh or _fresh(link3_audio, 30000)
-        camera_fresh = _fresh(latest_image, FRESH_IMAGE_MS)
+        visual_files = visual.get("files") if isinstance(visual.get("files"), dict) else {}
+        visual_latest_image = visual_files.get("latest_image") if isinstance(visual_files.get("latest_image"), dict) else {}
+        camera_fresh = _fresh(visual_latest_image, FRESH_VISUAL_MS)
         visual_fresh = bool(visual.get("ok") and visual.get("age_ms") is not None and int(visual.get("age_ms") or 0) <= FRESH_VISUAL_MS)
         executed_actions = execution.get("executed_actions") if isinstance(execution.get("executed_actions"), list) else []
         link2_care_voice = self.link2_openclaw_care_voice_state()
@@ -1640,7 +1824,7 @@ class IntegrationConsoleApp:
         ]
         link2_steps = [
             _step("emotion runtime", link2_running, (processes.get("link2") or {}).get("pid")),
-            _step("相机连接", camera_fresh, latest_image.get("updated_at")),
+            _step("相机连接", camera_fresh, visual_latest_image.get("updated_at")),
             _step("ws_video 分析快照", visual_fresh, visual.get("freshness")),
             _step("视觉状态文件", bool(visual.get("ok")), visual.get("reason")),
             _step("OpenClaw 关怀语音", bool(link2_care_voice.get("text")), link2_care_voice.get("text") or link2_care_voice.get("reason")),
@@ -1655,9 +1839,10 @@ class IntegrationConsoleApp:
 
         return {
             "camera": {
-                "status": "live" if camera_fresh else ("stale" if latest_image.get("exists") else "missing"),
+                "status": "live" if camera_fresh else ("stale" if visual_latest_image.get("exists") else "missing"),
                 "done": camera_fresh,
-                "latest_image": latest_image,
+                "latest_image": visual_latest_image,
+                "latest_image_source": "link2_visual_trace",
             },
             "link1": {
                 "status": self._status_from_steps(link1_steps) if (link1_running or link1_completed_once) else "idle",
@@ -1761,6 +1946,8 @@ class IntegrationConsoleApp:
         return any(keyword in text for keyword in DANCE_KEYWORDS)
 
     def listen_fast_demo_dance(self, body: dict[str, Any]) -> dict[str, Any]:
+        if not str(body.get("transcript") or "").strip() and self.link_process_state("work_voice").get("running"):
+            return {"ok": False, "error": "work_mode_running_use_stop_first"}
         request_id = uuid.uuid4().hex[:12]
         started = time.time()
         voice = self._capture_dance_voice(body)
@@ -1914,6 +2101,8 @@ class IntegrationConsoleApp:
         return result
 
     def listen_fast_demo_story(self, body: dict[str, Any]) -> dict[str, Any]:
+        if not str(body.get("transcript") or "").strip() and self.link_process_state("work_voice").get("running"):
+            return {"ok": False, "error": "work_mode_running_use_stop_first"}
         request_id = uuid.uuid4().hex[:12]
         started = time.time()
         voice = self._capture_story_voice(body)
@@ -2889,11 +3078,24 @@ class IntegrationConsoleApp:
 
     @staticmethod
     def _display_voice_output(output: dict[str, Any]) -> dict[str, Any]:
-        if output.get("event_type") in {"voice.recording", "voice.runtime_started"}:
-            previous = output.get("previous_output")
+        current = output if isinstance(output, dict) else {}
+        seen: set[int] = set()
+        while current.get("event_type") in {
+            "voice.recording",
+            "voice.runtime_started",
+            "voice.muted",
+            "voice.post_tts_discard",
+        }:
+            marker = id(current)
+            if marker in seen:
+                return {}
+            seen.add(marker)
+            previous = current.get("previous_output")
             if isinstance(previous, dict):
-                return previous
-        return output
+                current = previous
+                continue
+            return {}
+        return current
 
     @staticmethod
     def _voice_phase(output: dict[str, Any], process: dict[str, Any]) -> dict[str, Any]:

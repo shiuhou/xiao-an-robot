@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import audioop
 import json
+import os
 import struct
 import sys
 import threading
@@ -40,6 +41,10 @@ from base_station.perception.mic_capture import (
 SUPPORTED_SOURCES = {"text_loop", "local_mic"}
 RESERVED_SOURCES = {"audio_file_loop"}
 DECISION_MODES = {"asr_only", "openclaw", "local_demo"}
+CAPTURE_MODES = {"fixed_window", "until_mic_off"}
+DEFAULT_POST_TTS_DISCARD_SECONDS = 2.0
+DEFAULT_CONTINUOUS_POLL_SECONDS = 0.25
+DEFAULT_CONTINUOUS_MAX_SECONDS = 180.0
 
 
 def build_voice_output(text: str, event: dict, result: dict) -> dict:
@@ -50,6 +55,9 @@ def build_voice_output(text: str, event: dict, result: dict) -> dict:
     for key in (
         "display_text",
         "spoken_text",
+        "tts_text",
+        "tts_source",
+        "tts_tool",
         "suppress_auto_tts",
         "executed_actions",
         "skipped_actions",
@@ -61,6 +69,10 @@ def build_voice_output(text: str, event: dict, result: dict) -> dict:
             continue
         if isinstance(openclaw_result, dict) and key in openclaw_result:
             output[key] = openclaw_result[key]
+    if not _output_text(output, "tts_text"):
+        tts_text = _output_tts_text(output)
+        if tts_text:
+            output["tts_text"] = tts_text
     return output
 
 
@@ -98,7 +110,33 @@ def _recording_status(
         },
     }
     if previous_output:
-        status["previous_output"] = previous_output
+        status["previous_output"] = _previous_voice_output(previous_output)
+    return status
+
+
+def _recording_until_mic_off_status(
+    *,
+    session_id: str,
+    wav_path: Path,
+    sample_rate: int,
+    previous_output: dict | None,
+) -> dict:
+    status = {
+        "event_type": "voice.recording",
+        "handled": False,
+        "reason": "recording_until_mic_off",
+        "text": "",
+        "session_id": session_id,
+        "audio": {
+            "audio_path": str(wav_path),
+            "sample_rate": sample_rate,
+            "channels": 1,
+            "duration_ms": None,
+            "stop_condition": "mic_recognition_disabled",
+        },
+    }
+    if previous_output:
+        status["previous_output"] = _previous_voice_output(previous_output)
     return status
 
 
@@ -110,8 +148,29 @@ def _muted_status(session_id: str, previous_output: dict | None) -> dict:
         "text": "",
         "session_id": session_id,
     }
-    if previous_output:
-        status["previous_output"] = previous_output
+    previous = _meaningful_voice_output(previous_output or {})
+    if previous:
+        status["previous_output"] = previous
+    return status
+
+
+def _post_tts_discard_status(
+    session_id: str,
+    previous_output: dict | None,
+    duration_seconds: float,
+) -> dict:
+    status = {
+        "event_type": "voice.post_tts_discard",
+        "handled": False,
+        "reason": "post_tts_discard",
+        "text": "",
+        "session_id": session_id,
+        "duration_ms": int(duration_seconds * 1000),
+        "tts_text": _output_tts_text(previous_output or {}),
+    }
+    previous = _meaningful_voice_output(previous_output or {})
+    if previous:
+        status["previous_output"] = previous
     return status
 
 
@@ -120,6 +179,28 @@ def _mic_recognition_allowed() -> bool:
     if not snapshot.get("persisted"):
         return True
     return bool(snapshot.get("system_enabled") and snapshot.get("mic_recognition_enabled"))
+
+
+def _post_tts_discard_seconds() -> float:
+    raw = os.environ.get("XIAOAN_VOICE_POST_TTS_DISCARD_SECONDS")
+    if raw is None:
+        return DEFAULT_POST_TTS_DISCARD_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_POST_TTS_DISCARD_SECONDS
+    return max(0.0, min(value, 10.0))
+
+
+def _continuous_max_seconds() -> float:
+    raw = os.environ.get("XIAOAN_VOICE_CONTINUOUS_MAX_SECONDS")
+    if raw is None:
+        return DEFAULT_CONTINUOUS_MAX_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_CONTINUOUS_MAX_SECONDS
+    return max(1.0, min(value, 900.0))
 
 
 def _openclaw_pending_output(text: str, event: dict) -> dict:
@@ -136,6 +217,20 @@ def _openclaw_pending_output(text: str, event: dict) -> dict:
             "reply_text": "",
         },
     )
+
+
+def _has_meaningful_transcript_text(text: str) -> bool:
+    return any(char.isalnum() for char in text)
+
+
+def _release_active_voice_episode(status: str, result: dict[str, Any]) -> None:
+    store = WorkModeStore.from_env()
+    snapshot = store.snapshot()
+    if snapshot.get("episode_state") != "running":
+        return
+    if snapshot.get("active_chain") not in {"link1", "link3"}:
+        return
+    store.release_episode(str(snapshot.get("active_run_id") or ""), status=status, result=result)
 
 
 async def process_text(
@@ -202,6 +297,7 @@ async def process_audio_file(
     gateway_url: str = "ws://127.0.0.1:8765/agent",
     local_demo_reminders_path: str | None = None,
     asr_backend_instance: Any | None = None,
+    completed_mic_segment: bool = False,
 ) -> dict:
     """Run one microphone WAV through VAD/ASR and then link-1 OpenClaw routing."""
 
@@ -226,9 +322,24 @@ async def process_audio_file(
     if event is None:
         return prepared
 
-    transcript = str(prepared["text"])
+    transcript = str(prepared["text"]).strip()
+    if not _has_meaningful_transcript_text(transcript):
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        output = {
+            "event_type": "asr.empty_transcript",
+            "handled": False,
+            "reason": "asr_nonlexical_transcript",
+            "text": transcript,
+            "vad": payload.get("vad"),
+            "asr": payload.get("asr"),
+            "audio": payload.get("audio"),
+        }
+        _release_active_voice_episode("ignored", output)
+        return output
     event["payload"]["source"] = "local_mic"
     event["payload"]["session_id"] = session_id
+    if completed_mic_segment:
+        event["payload"]["completed_mic_segment"] = True
     if disable_companion_fast_path:
         event["payload"]["disable_companion_fast_path"] = True
     if decision_mode == "asr_only":
@@ -401,6 +512,8 @@ async def run_local_mic_loop(
     local_demo_send_to_robot: bool = False,
     local_demo_allow_motion: bool = False,
     local_demo_reminders_path: str | None = None,
+    capture_mode: str = "fixed_window",
+    work_mode_gated: bool = False,
 ) -> int:
     """Run fixed-window local microphone capture through ASR and link 1."""
 
@@ -413,6 +526,8 @@ async def run_local_mic_loop(
     audio_dir.mkdir(parents=True, exist_ok=True)
     if decision_mode not in DECISION_MODES:
         raise ValueError(f"unsupported_decision_mode:{decision_mode}")
+    if capture_mode not in CAPTURE_MODES:
+        raise ValueError(f"unsupported_capture_mode:{capture_mode}")
     runtime = None
     if decision_mode == "openclaw":
         runtime = runtime_factory(
@@ -472,7 +587,7 @@ async def run_local_mic_loop(
 
     try:
         while True:
-            if not _mic_recognition_allowed():
+            if work_mode_gated and not _mic_recognition_allowed():
                 muted = _muted_status(session_id, last_output)
                 _write_latest_output(latest_output_path, muted)
                 recorder.discard_window(max(0.25, min(duration_seconds, 2.0)))
@@ -480,21 +595,58 @@ async def run_local_mic_loop(
                 if once:
                     return handled_count
                 continue
+            if _output_has_robot_tts(last_output):
+                discard_seconds = min(duration_seconds, _post_tts_discard_seconds())
+                if discard_seconds > 0:
+                    post_tts = _post_tts_discard_status(session_id, last_output, discard_seconds)
+                    _write_latest_output(latest_output_path, post_tts)
+                    recorder.discard_window(discard_seconds)
+                    last_output = post_tts
+                    if once:
+                        return handled_count
+                    continue
             stamp = time.strftime("%Y%m%d_%H%M%S")
             wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.wav"
             asr_wav_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.asr.wav"
             trim_path = audio_dir / f"voice_runtime_{stamp}_{handled_count + 1}.trim.wav"
+            completed_mic_segment = False
             _write_latest_output(
                 latest_output_path,
-                _recording_status(
-                    session_id=session_id,
-                    wav_path=wav_path,
-                    sample_rate=active_sample_rate,
-                    duration_seconds=duration_seconds,
-                    previous_output=last_output,
+                (
+                    _recording_until_mic_off_status(
+                        session_id=session_id,
+                        wav_path=wav_path,
+                        sample_rate=active_sample_rate,
+                        previous_output=last_output,
+                    )
+                    if capture_mode == "until_mic_off"
+                    else _recording_status(
+                        session_id=session_id,
+                        wav_path=wav_path,
+                        sample_rate=active_sample_rate,
+                        duration_seconds=duration_seconds,
+                        previous_output=last_output,
+                    )
                 ),
             )
-            recorder.record_window(wav_path, duration_seconds)
+            if capture_mode == "until_mic_off":
+                recorded_seconds = _record_until_mic_off(
+                    recorder,
+                    wav_path,
+                    sample_rate=active_sample_rate,
+                    channels=1,
+                    poll_seconds=DEFAULT_CONTINUOUS_POLL_SECONDS,
+                    max_seconds=_continuous_max_seconds(),
+                )
+                completed_mic_segment = True
+                if recorded_seconds <= 0:
+                    last_output = _muted_status(session_id, last_output)
+                    _write_latest_output(latest_output_path, last_output)
+                    if once:
+                        return handled_count
+                    continue
+            else:
+                recorder.record_window(wav_path, duration_seconds)
             _finish_asr_backend_preload(preload_thread, preload_state)
             preload_thread = None
             prepared_wav_path = _ensure_asr_wav_format(
@@ -530,6 +682,7 @@ async def run_local_mic_loop(
                 gateway_url=gateway_url,
                 local_demo_reminders_path=local_demo_reminders_path,
                 asr_backend_instance=asr_backend_instance,
+                completed_mic_segment=completed_mic_segment,
             )
             if output.get("event_type") == "asr.transcript":
                 handled_count += 1
@@ -617,6 +770,69 @@ def _output_text(output: dict, key: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _previous_voice_output(output: dict) -> dict:
+    if not isinstance(output, dict):
+        return {}
+    if output.get("event_type") in {"voice.muted", "voice.recording", "voice.runtime_started"}:
+        return _meaningful_voice_output(output)
+    return output
+
+
+def _meaningful_voice_output(output: dict) -> dict:
+    current = output if isinstance(output, dict) else {}
+    seen = set()
+    while isinstance(current, dict) and current.get("event_type") in {
+        "voice.muted",
+        "voice.recording",
+        "voice.runtime_started",
+    }:
+        marker = id(current)
+        if marker in seen:
+            return {}
+        seen.add(marker)
+        previous = current.get("previous_output")
+        if not isinstance(previous, dict):
+            return {}
+        current = previous
+    return current if isinstance(current, dict) else {}
+
+
+def _output_tts_text(output: dict) -> str:
+    if not isinstance(output, dict):
+        return ""
+    text = _output_text(output, "tts_text")
+    if text:
+        return text
+    for action in output.get("executed_actions", []):
+        text = _tts_text_from_executed_action(action)
+        if text:
+            return text
+    nested = output.get("openclaw_result")
+    if isinstance(nested, dict):
+        return _output_tts_text(nested)
+    return ""
+
+
+def _output_has_robot_tts(output: dict | None) -> bool:
+    if isinstance(output, dict) and output.get("event_type") == "voice.post_tts_discard":
+        return False
+    return bool(_output_tts_text(output or {}))
+
+
+def _tts_text_from_executed_action(action: Any) -> str:
+    if not isinstance(action, dict):
+        return ""
+    arguments = action.get("arguments")
+    if not isinstance(arguments, dict):
+        return ""
+    name = str(action.get("name") or "")
+    if name in {"robot.say", "xiaoan.robot.say"}:
+        return str(arguments.get("text") or "").strip()
+    if name in {"robot.care", "robot.care_for_user", "xiaoan.robot.care"}:
+        return str(arguments.get("text") or arguments.get("reply_text") or "").strip()
+    return ""
+
+
 def _compact_output(output: dict) -> dict:
     compact = {}
     for key in (
@@ -627,6 +843,9 @@ def _compact_output(output: dict) -> dict:
         "reason",
         "display_text",
         "spoken_text",
+        "tts_text",
+        "tts_source",
+        "tts_tool",
         "reply_text",
         "executed_actions",
         "skipped_actions",
@@ -647,6 +866,38 @@ def _write_silence_wav(path: Path, *, sample_rate: int = 16000, duration_seconds
         wav.setsampwidth(2)
         wav.setframerate(sample_rate)
         wav.writeframes(samples)
+
+
+def _write_pcm_wav(path: Path, pcm: bytes, *, sample_rate: int, channels: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        wav.writeframes(pcm)
+
+
+def _record_until_mic_off(
+    recorder: Any,
+    wav_path: Path,
+    *,
+    sample_rate: int,
+    channels: int,
+    poll_seconds: float,
+    max_seconds: float,
+) -> float:
+    started = time.monotonic()
+    chunks: list[bytes] = []
+    while _mic_recognition_allowed():
+        elapsed = time.monotonic() - started
+        remaining = max_seconds - elapsed
+        if remaining <= 0:
+            break
+        chunk_seconds = max(0.05, min(float(poll_seconds), remaining))
+        chunks.append(recorder.read_window(chunk_seconds))
+    pcm = b"".join(chunks)
+    _write_pcm_wav(wav_path, pcm, sample_rate=sample_rate, channels=channels)
+    return len(pcm) / max(1, sample_rate * channels * 2)
 
 
 def _ensure_asr_wav_format(source: Path, target: Path, *, sample_rate: int = 16000, channels: int = 1) -> Path:
@@ -888,6 +1139,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--prewarm-asr", action="store_true", help="Load the configured ASR model once and exit.")
     parser.add_argument("--device", default=None, help="Local microphone device index, id, or name substring.")
     parser.add_argument("--duration", type=float, default=5.0, help="Fixed local_mic capture window in seconds.")
+    parser.add_argument(
+        "--capture-mode",
+        choices=sorted(CAPTURE_MODES),
+        default="fixed_window",
+        help="Use fixed windows or record one utterance until microphone recognition is switched off.",
+    )
+    parser.add_argument(
+        "--work-mode-gated",
+        action="store_true",
+        help="Honor XIAOAN_WORK_MODE_STATE_PATH as a microphone recognition gate.",
+    )
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--audio-output-dir", default="runtime/voice_runtime_audio")
     parser.add_argument("--once", action="store_true", help="Exit after one local_mic capture window.")
@@ -996,6 +1258,8 @@ async def main(args: argparse.Namespace | None = None) -> int:
             local_demo_send_to_robot=args.local_demo_send_to_robot,
             local_demo_allow_motion=args.local_demo_allow_motion,
             local_demo_reminders_path=args.local_demo_reminders_path,
+            capture_mode=args.capture_mode,
+            work_mode_gated=args.work_mode_gated,
         )
         return 0
     await run_text_loop(

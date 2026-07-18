@@ -87,6 +87,8 @@ class ActionExecutor:
                 "spoken_text": decision.spoken_text,
                 "reply_text": decision.reply_text,
                 "suppress_auto_tts": decision.suppress_auto_tts,
+                "tts_text": "",
+                "tts_source": "",
                 "executed_actions": executed_actions,
                 "skipped_actions": skipped_actions,
             }
@@ -160,6 +162,11 @@ class ActionExecutor:
             "executed_actions": executed_actions,
             "skipped_actions": skipped_actions,
         }
+        tts = self._first_executed_tts(executed_actions)
+        result["tts_text"] = tts.get("text", "")
+        result["tts_source"] = tts.get("source", "")
+        if tts.get("tool"):
+            result["tts_tool"] = tts["tool"]
         if decision.raw is not None:
             result["openclaw_raw"] = decision.raw
         return result
@@ -569,6 +576,29 @@ class ActionExecutor:
         if result is not None:
             action["result"] = result
         return action
+
+    @classmethod
+    def _first_executed_tts(cls, executed_actions: list[dict]) -> dict[str, str]:
+        for action in executed_actions:
+            if not isinstance(action, dict):
+                continue
+            name = str(action.get("name") or "")
+            canonical_name = cls.LEGACY_ROBOT_TOOL_ALIASES.get(name, name)
+            arguments = action.get("arguments") if isinstance(action.get("arguments"), dict) else {}
+            text = ""
+            if canonical_name == "xiaoan.robot.say":
+                text = str(arguments.get("text") or "").strip()
+            elif canonical_name == "xiaoan.robot.care":
+                text = str(arguments.get("text") or arguments.get("reply_text") or "").strip()
+            elif canonical_name == "xiaoan.breathing.start":
+                text = str(arguments.get("text") or "").strip()
+            if text:
+                return {
+                    "text": text,
+                    "source": str(action.get("source") or "tool_call"),
+                    "tool": name,
+                }
+        return {"text": "", "source": "", "tool": ""}
 
     @staticmethod
     async def _call(function, *args, **kwargs):

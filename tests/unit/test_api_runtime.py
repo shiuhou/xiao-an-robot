@@ -152,6 +152,9 @@ class ApiRuntimeDashboardSyncTest(unittest.TestCase):
             session_id="voice-runtime",
             source="voice_runtime.text_loop",
             execution_result={
+                "tts_text": "好呀，已经放进待办啦。",
+                "tts_source": "spoken_text",
+                "tts_tool": "robot.say",
                 "openclaw_result": {
                     "openclaw_raw": {
                         "capture": {
@@ -168,6 +171,9 @@ class ApiRuntimeDashboardSyncTest(unittest.TestCase):
 
         dashboard = self.read_dashboard()
         self.assertEqual(dashboard["todos"][0]["title"], "晚上1点做事事")
+        self.assertEqual(dashboard["latest_reply"]["tts_text"], "好呀，已经放进待办啦。")
+        self.assertEqual(dashboard["latest_reply"]["tts_source"], "spoken_text")
+        self.assertEqual(dashboard["latest_reply"]["tts_tool"], "robot.say")
         self.assertEqual(dashboard["todos"][0]["due_text"], "晚上1点")
         self.assertEqual(dashboard["todos"][0]["source"], "openclaw_capture")
         self.assertEqual(

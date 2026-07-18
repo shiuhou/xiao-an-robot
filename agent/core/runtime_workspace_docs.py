@@ -371,18 +371,20 @@ class RuntimeWorkspaceDocs:
 
 def clean_capture_title(text: str, *, kind: str) -> str:
     value = str(text or "").strip()
-    value = re.sub(r"^\s*小安[，,\s]*", "", value)
+    value = re.sub(r"^\s*(小安[，,\s]*)+", "", value)
     replacements = [
         "帮我", "请", "把", "加个", "新增", "添加", "加入todo list", "加入待办", "加到待办",
         "添加待办", "待办", "任务", "加入日程", "加到日程", "添加日程",
-        "日程", "提醒我", "提醒", "叫我一下", "记得",
+        "日程", "提醒我", "提醒", "叫我一下", "叫我", "喊我", "通知我", "记得",
+        "创建", "记录", "安排",
     ]
     for token in replacements:
         value = value.replace(token, "")
     if kind in {"schedule", "reminder"}:
         value = re.sub(r"(今天|明天|后天)?(早上|上午|中午|下午|晚上)?[一二两三四五六七八九十\d]{1,3}点(半|[一二两三四五六七八九十\d]{1,3}分?)?", "", value)
-        value = re.sub(r"[一二两三四五六七八九十\d]+(秒钟?|分钟?|小时|钟头)后", "", value)
-        value = value.replace("待会", "").replace("等会", "").replace("到点", "")
+        value = re.sub(r"[一二两三四五六七八九十\d]+(秒钟?|分钟?|小时|钟头)(后|之后|以后)", "", value)
+        value = re.sub(r"过[一二两三四五六七八九十\d]+(秒钟?|分钟?|小时|钟头)", "", value)
+        value = value.replace("待会", "").replace("等会", "").replace("过会", "").replace("到点", "")
     value = value.strip(" ，。,.：:;；")
     return value or ("这件事" if kind == "reminder" else "未命名事项")
 

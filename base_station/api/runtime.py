@@ -761,12 +761,30 @@ class ApiRuntime:
             or self._text_or_empty(reply_text)
             or self._first_say_text(tool_calls)
         )
+        tts_text = self._text_or_empty(
+            execution_result.get("tts_text", "")
+            if isinstance(execution_result, dict)
+            else ""
+        )
+        tts_source = self._text_or_empty(
+            execution_result.get("tts_source", "")
+            if isinstance(execution_result, dict)
+            else ""
+        )
+        tts_tool = self._text_or_empty(
+            execution_result.get("tts_tool", "")
+            if isinstance(execution_result, dict)
+            else ""
+        )
         latest = {
             "type": notification_type,
             "display_text": self._text_or_empty(display_text),
             "spoken_text": self._text_or_empty(spoken_text),
             "reply_text": self._text_or_empty(reply_text),
             "suppress_auto_tts": bool(suppress_auto_tts),
+            "tts_text": tts_text,
+            "tts_source": tts_source,
+            "tts_tool": tts_tool,
             "output_text": output_text,
             "tool_calls": self._copy_jsonish(tool_calls),
             "metadata": self._copy_jsonish(metadata),
@@ -813,6 +831,10 @@ class ApiRuntime:
         dashboard["latest_reply"] = {
             "display_text": self._text_or_empty(latest.get("display_text", "")),
             "spoken_text": self._text_or_empty(latest.get("spoken_text", "")),
+            "reply_text": self._text_or_empty(latest.get("reply_text", "")),
+            "tts_text": self._text_or_empty(latest.get("tts_text", "")),
+            "tts_source": self._text_or_empty(latest.get("tts_source", "")),
+            "tts_tool": self._text_or_empty(latest.get("tts_tool", "")),
             "source": self._text_or_empty(latest.get("source", "")),
             "received_at": now_iso,
         }

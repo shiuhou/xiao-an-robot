@@ -156,17 +156,17 @@ class LocalFastPathRouter:
                 actions.append(_action("motion.stop", result))
                 reply = "好，我停下。"
                 intent = "stop_motion"
-            elif _has_any(normalized, ("回dock", "回去", "回家", "回窝", "回充电", "返回基站", "回基站")):
+            elif _has_any(normalized, _ROBOT_RETURN_KEYWORDS):
                 result = await _call(robot_motion.return_to_dock, speed=0.54, timeout_ms=1200)
                 actions.append(_action("xiaoan.robot.return_to_dock", result))
                 reply = "好，我回去待命。"
                 intent = "return_to_dock"
-            elif _has_any(normalized, ("左转", "向左", "往左")):
+            elif _has_any(normalized, _ROBOT_TURN_LEFT_KEYWORDS):
                 result = await _call(robot_motion.turn, direction="left", angle_deg=_angle_or_default(normalized))
                 actions.append(_action("xiaoan.robot.turn", result))
                 reply = "好，向左转。"
                 intent = "turn_left"
-            elif _has_any(normalized, ("右转", "向右", "往右")):
+            elif _has_any(normalized, _ROBOT_TURN_RIGHT_KEYWORDS):
                 result = await _call(robot_motion.turn, direction="right", angle_deg=_angle_or_default(normalized))
                 actions.append(_action("xiaoan.robot.turn", result))
                 reply = "好，向右转。"
@@ -222,7 +222,7 @@ class LocalFastPathRouter:
             reply = "今天还没有明确日程。" if not items else "今天日程：" + "；".join(items[:5])
             return self._handled("local_fast_path.link1.schedule_query", "schedule_query", reply, run_id, 0.88, [], [])
 
-        if _has_any(normalized, ("今天待办", "待办有哪些", "任务有哪些", "todo有哪些", "查待办", "查询待办")):
+        if _has_any(normalized, ("今天待办", "待办有哪些", "任务有哪些", "todo有哪些", "查待办", "查询待办", "看一下待办", "看看待办", "看待办", "待办列表", "任务列表", "todo列表")):
             items = self.docs.today_tasks()
             reply = "当前没有待办。" if not items else "当前待办：" + "；".join(items[:5])
             return self._handled("local_fast_path.link1.task_query", "task_query", reply, run_id, 0.88, [], [])
@@ -283,8 +283,8 @@ class LocalFastPathRouter:
                 [write.__dict__],
             )
 
-        if _has_any(normalized, ("提醒", "待会", "等会", "过会", "秒后", "分钟后", "小时后", "闹钟", "到点")):
-            reminder = parse_reminder_due_at(transcript)
+        if _looks_like_reminder_add(normalized):
+            reminder = _parse_due_at(transcript)
             if not _explicit_time(reminder):
                 return self._miss("reminder_time_unclear")
             title = clean_capture_title(transcript, kind="reminder")
@@ -312,8 +312,8 @@ class LocalFastPathRouter:
                 {"reminder": reminder},
             )
 
-        if _has_any(normalized, ("日程", "日历", "行程", "schedule", "calendar")):
-            schedule = parse_reminder_due_at(transcript)
+        if _looks_like_schedule_add(normalized):
+            schedule = _parse_due_at(transcript)
             if not _explicit_time(schedule):
                 return self._miss("schedule_time_unclear")
             title = clean_capture_title(transcript, kind="schedule")
@@ -351,7 +351,7 @@ class LocalFastPathRouter:
         return self._miss("not_work_fast_path")
 
     def _looks_like_robot_fast_path(self, normalized: str) -> bool:
-        if _has_any(normalized, ("停", "停止", "别动", "不要动", "出来", "出dock", "过来", "靠近", "回dock", "回去", "回家", "回窝", "返回基站", "回基站", "左转", "右转", "向左", "向右", "往左", "往右")):
+        if _has_any(normalized, _ROBOT_ACTION_HINT_KEYWORDS):
             return True
         if _is_greeting(normalized) or _is_breathing_guide(normalized) or _is_robot_status_query(normalized):
             return True
@@ -420,6 +420,37 @@ def _explicit_time(parsed: dict[str, Any]) -> bool:
     return confidence >= 0.5 and str(parsed.get("time_text") or "") != "默认1分钟后" and bool(parsed.get("due_at"))
 
 
+_ROBOT_RETURN_KEYWORDS = (
+    "回dock",
+    "回去",
+    "回家",
+    "回窝",
+    "回充电",
+    "回去充电",
+    "充电座",
+    "充电桩",
+    "充电底座",
+    "底座",
+    "返回基站",
+    "回基站",
+)
+_ROBOT_TURN_LEFT_KEYWORDS = ("左转", "向左", "往左", "转左", "左边转")
+_ROBOT_TURN_RIGHT_KEYWORDS = ("右转", "向右", "往右", "转右", "右边转")
+_ROBOT_ACTION_HINT_KEYWORDS = (
+    "停",
+    "停止",
+    "别动",
+    "不要动",
+    "出来",
+    "出dock",
+    "过来",
+    "靠近",
+    *_ROBOT_RETURN_KEYWORDS,
+    *_ROBOT_TURN_LEFT_KEYWORDS,
+    *_ROBOT_TURN_RIGHT_KEYWORDS,
+)
+
+
 def _angle_or_default(text: str) -> float:
     match = re.search(r"(\d{1,3})度", text)
     if not match:
@@ -430,7 +461,7 @@ def _angle_or_default(text: str) -> float:
 def _is_greeting(text: str) -> bool:
     return text in {"你好", "嗨", "hi", "hello", "小安在吗", "小安你好", "小安", "在吗"} or _has_any(
         text,
-        ("小安在吗", "你好小安", "小安你好"),
+        ("小安在吗", "你好小安", "小安你好", "能听到我吗", "听得到我吗", "听见我吗", "听得到吗", "你在吗", "在不在"),
     )
 
 
@@ -452,9 +483,58 @@ def _requested_expression(text: str) -> str | None:
     expression = match_requested_expression(text)
     if expression is not None:
         return expression
-    if _has_any(text, ("笑一个", "笑一下", "笑笑", "笑脸")):
+    if _has_any(text, ("笑一个", "笑一下", "笑笑", "笑脸", "开心一点", "高兴一点", "快乐一点")):
         return "happy"
     return None
+
+
+def _looks_like_reminder_add(text: str) -> bool:
+    return _has_any(
+        text,
+        (
+            "提醒",
+            "待会",
+            "等会",
+            "过会",
+            "秒后",
+            "秒钟后",
+            "分钟后",
+            "小时后",
+            "之后",
+            "以后",
+            "闹钟",
+            "到点",
+            "叫我",
+            "喊我",
+            "通知我",
+        ),
+    )
+
+
+def _looks_like_schedule_add(text: str) -> bool:
+    return _has_any(text, ("日程", "日历", "行程", "schedule", "calendar")) or (
+        _has_any(text, ("安排", "会议", "开会")) and _explicit_time(_parse_due_at(text))
+    )
+
+
+def _parse_due_at(transcript: str) -> dict[str, Any]:
+    parsed = parse_reminder_due_at(transcript)
+    if _explicit_time(parsed):
+        return parsed
+    normalized = _normalize_relative_time_text(transcript)
+    if normalized == transcript:
+        return parsed
+    reparsed = parse_reminder_due_at(normalized)
+    return reparsed if _explicit_time(reparsed) else parsed
+
+
+def _normalize_relative_time_text(text: str) -> str:
+    value = str(text or "")
+    amount = r"([0-9]+|[一二两三四五六七八九十]+)"
+    unit = r"(秒钟?|分钟?|小时|钟头)"
+    value = re.sub(amount + unit + r"(之后|以后)", r"\1\2后", value)
+    value = re.sub(r"过" + amount + unit, r"\1\2后", value)
+    return value
 
 
 def _match_title(text: str, *, kind: str) -> str:

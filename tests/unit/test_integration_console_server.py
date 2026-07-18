@@ -158,6 +158,23 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', html)
 
+    def test_single_shot_voice_links_are_not_labeled_resident_recording(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            server = create_server("127.0.0.1", 0, runtime_dir=temp_dir)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            host, port = server.server_address[:2]
+            try:
+                with urllib.request.urlopen(f"http://{host}:{port}/console", timeout=5) as response:
+                    html = response.read().decode("utf-8")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertIn('<input id="link1RunSwitch" type="checkbox"> 运行一次', html)
+        self.assertIn('<input id="link3RunSwitch" type="checkbox"> 运行一次', html)
+
     def test_health_and_state_work_without_runtime_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             server = create_server(
@@ -204,7 +221,10 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
         self.assertFalse(state["processes"]["link2"]["running"])
 
     def test_work_mode_update_persists_to_state_api(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "base_station.integration_console.console_server.subprocess.Popen",
+            side_effect=lambda *args, **kwargs: FakePopen(*args, **kwargs),
+        ), patch("base_station.integration_console.console_server.time.sleep", return_value=None):
             server = create_server(
                 "127.0.0.1",
                 0,
@@ -238,6 +258,7 @@ class IntegrationConsoleHttpTest(unittest.TestCase):
                 thread.join(timeout=5)
 
         self.assertTrue(update["ok"])
+        self.assertIn("voice", update)
         self.assertTrue(state["work_mode"]["state"]["system_enabled"])
         self.assertTrue(state["work_mode"]["state"]["mic_recognition_enabled"])
         self.assertTrue(state_file_exists)
@@ -532,8 +553,10 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("--enable-vlm-gate", link2)
         self.assertIn("--latest-output", link1)
         self.assertIn("--asr-language", link1)
-        self.assertNotIn("--once", link1)
-        self.assertNotIn("--once", link3)
+        self.assertIn("--once", link1)
+        self.assertIn("--once", link3)
+        self.assertNotIn("--work-mode-gated", link1)
+        self.assertNotIn("--work-mode-gated", link3)
         self.assertEqual(link1[link1.index("--duration") + 1], "6.0")
         self.assertEqual(link3[link3.index("--duration") + 1], "6.0")
         self.assertNotIn("--once", link2)
@@ -550,13 +573,25 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(link2[link2.index("--vlm-max-new-tokens") + 1], "128")
         self.assertEqual(link2[link2.index("--device") + 1], "NPU")
         self.assertEqual(link2[link2.index("--vlm-device") + 1], "GPU")
-        self.assertIn("--preload-vlm", link2)
+        self.assertNotIn("--preload-vlm", link2)
         self.assertEqual(
             link2[link2.index("--vlm-model-path") + 1],
             "base_station/models/Qwen2.5-VL-3B-OV-int4",
         )
         self.assertNotIn("--force-vlm", link2)
         self.assertIn("base_station.monitor.voice_runtime", link3)
+
+    def test_link2_vlm_preload_is_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
+            os.environ,
+            {"XIAOAN_LINK2_PRELOAD_VLM": "1"},
+        ):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            link2 = app.link_command("link2")
+
+        self.assertIn("--enable-vlm-gate", link2)
+        self.assertIn("--preload-vlm", link2)
+        self.assertNotIn("--force-vlm", link2)
 
     def test_work_voice_command_is_real_resident_openclaw_voice_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -567,7 +602,9 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("base_station.monitor.voice_runtime", command)
         self.assertIn("local_mic", command)
         self.assertNotIn("--once", command)
+        self.assertIn("--work-mode-gated", command)
         self.assertNotIn("--decision-mode", command)
+        self.assertEqual(command[command.index("--capture-mode") + 1], "until_mic_off")
         self.assertIn("--latest-output", command)
         self.assertIn("work_voice", command[command.index("--latest-output") + 1])
         self.assertEqual(env["XIAO_AN_OPENCLAW_BACKEND"], "gateway")
@@ -590,12 +627,72 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("work_voice", app.link_processes)
         self.assertIn("link2", app.link_processes)
 
+    def test_work_voice_and_single_shot_voice_links_are_mutually_exclusive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.link_processes["work_voice"] = FakeRunningProcess()
+            link_result = app.start_link({"link": "link1"})
+            fast_result = app.start_fast_demo({"link": "fast3"})
+
+        self.assertFalse(link_result["ok"])
+        self.assertEqual(link_result["error"], "work_mode_running_use_stop_first")
+        self.assertFalse(fast_result["ok"])
+        self.assertEqual(fast_result["error"], "work_mode_running_use_stop_first")
+
+    def test_start_work_mode_is_blocked_by_single_shot_voice_link(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.link_processes["link3"] = FakeRunningProcess()
+            result = app.start_work_mode({
+                "mic_recognition_enabled": True,
+                "camera_capture_enabled": False,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "single_shot_link_running:link3")
+        self.assertFalse(result["work_mode"]["system_enabled"])
+        self.assertNotIn("work_voice", app.link_processes)
+
+    def test_update_work_mode_is_blocked_by_fast_demo_voice_link(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.link_processes["fast1"] = FakeRunningProcess()
+            result = app.update_work_mode({
+                "system_enabled": True,
+                "mic_recognition_enabled": True,
+                "camera_capture_enabled": False,
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "single_shot_link_running:fast1")
+        self.assertFalse(result["work_mode"]["system_enabled"])
+        self.assertNotIn("work_voice", app.link_processes)
+
+    def test_work_mode_update_restarts_missing_voice_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir, patch(
+            "base_station.integration_console.console_server.subprocess.Popen",
+            side_effect=lambda *args, **kwargs: FakePopen(*args, **kwargs),
+        ), patch("base_station.integration_console.console_server.time.sleep", return_value=None):
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            result = app.update_work_mode({
+                "system_enabled": True,
+                "mic_recognition_enabled": True,
+                "camera_capture_enabled": False,
+            })
+
+        self.assertTrue(result["ok"])
+        self.assertIn("voice", result)
+        self.assertIn("work_voice", app.link_processes)
+        self.assertNotIn("link2", app.link_processes)
+
     def test_work_mode_state_exposes_routing_policy_and_link2_diagnostics(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             runtime = Path(temp_dir)
             workspace = runtime / "workspace-xiaoan-runtime"
             visual_dir = runtime / "integration_console" / "visual"
             visual_dir.mkdir(parents=True)
+            (runtime / "latest.jpg").write_bytes(b"cached-camera-frame")
+            (visual_dir / "latest_annotated.jpg").write_bytes(b"live-link2-frame")
             (visual_dir / "latest_state.json").write_text(
                 json.dumps(
                     {
@@ -631,8 +728,145 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertEqual(work["diagnostics"]["openface"]["frame_id"], 7)
         self.assertTrue(work["diagnostics"]["vlm_gate"]["should_trigger"])
         self.assertEqual(work["diagnostics"]["vlm_runtime"]["request_id"], "vlm-1")
+        self.assertEqual(work["cards"]["camera"]["latest_image_source"], "link2_visual_trace")
+        self.assertIn("integration_console/visual/latest_annotated.jpg", work["cards"]["camera"]["latest_image_path"])
+        self.assertEqual(state["links"]["camera"]["latest_image_source"], "link2_visual_trace")
+        self.assertIn("integration_console/visual/latest_annotated.jpg", state["links"]["camera"]["latest_image"]["path"])
         self.assertEqual(work["workspace"]["dashboard"], str(workspace / "state" / "dashboard.json"))
         self.assertEqual(work["workspace"]["local_reminders"], str(workspace / "state" / "local_reminders.json"))
+
+    def test_work_mode_diagnostics_prefers_work_voice_previous_output_over_stale_link1(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            work_voice_dir = runtime / "integration_console" / "work_voice"
+            link1_dir = runtime / "integration_console" / "link1"
+            work_voice_dir.mkdir(parents=True)
+            link1_dir.mkdir(parents=True)
+            (work_voice_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "voice.muted",
+                        "reason": "mic_recognition_disabled",
+                        "text": "",
+                        "previous_output": {
+                            "event_type": "asr.transcript",
+                            "text": "小安在吗",
+                            "reply_text": "我在。",
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (link1_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "asr.transcript",
+                        "text": "小安，帮我在飞猪上创立一个文档，你导小安小安。",
+                        "reply_text": "已在飞书创建文档：小安小安",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+
+            state = app.state()
+
+        self.assertEqual(state["work_mode"]["diagnostics"]["asr_text"], "小安在吗")
+
+    def test_work_mode_diagnostics_does_not_fallback_to_stale_link_voice(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            runtime = Path(temp_dir)
+            work_voice_dir = runtime / "integration_console" / "work_voice"
+            link1_dir = runtime / "integration_console" / "link1"
+            work_voice_dir.mkdir(parents=True)
+            link1_dir.mkdir(parents=True)
+            (work_voice_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "voice.muted",
+                        "reason": "mic_recognition_disabled",
+                        "text": "",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (link1_dir / "latest_voice.json").write_text(
+                json.dumps(
+                    {
+                        "event_type": "asr.transcript",
+                        "text": "小安，帮我在飞猪上创立一个文档，你导小安小安。",
+                        "reply_text": "已在飞书创建文档：小安小安",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            app = IntegrationConsoleApp(runtime_dir=runtime)
+
+            state = app.state()
+
+        self.assertEqual(state["work_mode"]["diagnostics"]["asr_text"], "")
+        self.assertNotIn("飞猪", state["work_mode"]["cards"]["asr_text"]["detail"])
+
+    def test_work_mode_asr_card_explains_until_mic_off_recording(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.work_mode_store.update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=True,
+                camera_capture_enabled=False,
+            )
+            app.link_processes["work_voice"] = FakeRunningProcess()
+
+            state = app.state()
+            asr_card = state["work_mode"]["cards"]["asr_text"]
+
+        self.assertTrue(asr_card["ok"])
+        self.assertEqual(asr_card["status_label"], "RECORDING")
+        self.assertIn("关闭麦克风识别后转写", asr_card["detail"])
+
+    def test_work_mode_asr_card_warns_when_voice_runtime_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.work_mode_store.update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=True,
+                camera_capture_enabled=False,
+            )
+
+            state = app.state()
+            asr_card = state["work_mode"]["cards"]["asr_text"]
+
+        self.assertFalse(asr_card["ok"])
+        self.assertEqual(asr_card["status_label"], "VOICE OFF")
+        self.assertIn("语音 runtime 未运行", asr_card["detail"])
+
+    def test_work_mode_state_recovers_stale_running_episode_when_process_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.work_mode_store.update_controls(
+                system_enabled=True,
+                mic_recognition_enabled=True,
+                camera_capture_enabled=False,
+            )
+            lease = app.work_mode_store.acquire_episode(
+                chain="link1",
+                source="asr",
+                text="帮我查一下天气",
+                requires_mic_recognition=True,
+            )
+
+            state = app.state()
+
+        self.assertTrue(lease.acquired)
+        work_state = state["work_mode"]["state"]
+        self.assertEqual(work_state["episode_state"], "idle")
+        self.assertIsNone(work_state["active_run_id"])
+        self.assertEqual(work_state["last_episode"]["status"], "interrupted")
+        self.assertEqual(work_state["last_episode"]["result"]["reason"], "link1_process_missing")
 
     def test_voice_link_commands_accept_mic_device_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch.dict(
@@ -1163,6 +1397,18 @@ class IntegrationConsoleCommandTest(unittest.TestCase):
         self.assertIn("--decision-mode", command)
         self.assertIn("asr_only", command)
         self.assertNotIn("--local-demo-link", command)
+
+    def test_fast_demo_story_and_dance_listen_are_blocked_while_work_voice_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = IntegrationConsoleApp(runtime_dir=temp_dir)
+            app.link_processes["work_voice"] = FakeRunningProcess()
+            story = app.listen_fast_demo_story({"send_to_robot": False})
+            dance = app.listen_fast_demo_dance({"send_to_robot": False})
+
+        self.assertFalse(story["ok"])
+        self.assertEqual(story["error"], "work_mode_running_use_stop_first")
+        self.assertFalse(dance["ok"])
+        self.assertEqual(dance["error"], "work_mode_running_use_stop_first")
 
     def test_fast_demo_story_voice_choice_advances_without_clicking(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

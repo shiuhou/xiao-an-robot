@@ -269,6 +269,7 @@ function renderWorkMode() {
   );
   kv("workCameraKv", [
     ["参与触发", cameraEnabled ? "yes" : "no"],
+    ["来源", cameraCard.latest_image_source || "-"],
     ["latest image", msAge(cameraCard.latest_image_age_ms)],
     ["说明", cameraCard.detail],
   ]);
@@ -314,7 +315,7 @@ function renderWorkMode() {
     last_episode: mode.last_episode,
   });
   const diagnostics = work.diagnostics || {};
-  setText("workAsrText", diagnostics.asr_text || "-");
+  setText("workAsrText", diagnostics.asr_text || cards.asr_text?.detail || "-");
   renderWorkBrainReply();
   renderVisualDiagnostics(state?.visual || {}, {
     freshness: "workVisualFreshness",
@@ -330,7 +331,7 @@ function renderWorkMode() {
 }
 
 function renderWorkBrainReply() {
-  const output = latestVoiceOutput();
+  const output = workVoiceOutput();
   const dashboard = state?.openclaw_dashboard?.dashboard || {};
   const latestReply = dashboard.latest_reply || {};
   const route = output.route || latestReply.route || dashboard.local_fast_path?.last_route || "-";
@@ -357,23 +358,28 @@ function renderWorkBrainReply() {
   setText("workBrainReplyText", reply || "-");
 }
 
-function latestVoiceOutput() {
-  const candidates = [
-    state?.link_voice?.work_voice?.output,
-    state?.link_voice?.link1?.output,
-    state?.link_voice?.link3?.output,
-    state?.fast_demo?.fast1?.voice?.output,
-    state?.fast_demo?.fast3?.voice?.output,
-  ];
-  return candidates.find((item) => item && (item.reply_text || item.display_text || item.spoken_text || item.route)) || {};
+function workVoiceOutput() {
+  return displayVoiceOutput(state?.link_voice?.work_voice?.output || {});
+}
+
+function displayVoiceOutput(output) {
+  const transient = new Set(["voice.recording", "voice.runtime_started", "voice.muted", "voice.post_tts_discard"]);
+  let current = output || {};
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (!current || !transient.has(current.event_type) || !current.previous_output) break;
+    current = current.previous_output;
+  }
+  return current || {};
 }
 
 function renderWorkLink(prefix, card, process) {
   const ready = !!card.ok;
+  const label = card.status_label || (process.running ? "RUNNING" : (ready ? "READY" : "WAIT"));
+  const kind = card.status_kind || (process.running ? "running" : (ready ? "live" : "idle"));
   statusPill(
     $(`${prefix}Pill`),
-    process.running ? "running" : (ready ? "live" : "idle"),
-    process.running ? "RUNNING" : (ready ? "READY" : "WAIT"),
+    kind,
+    label,
   );
   kv(`${prefix}Kv`, [
     ["说明", card.detail || "-"],
@@ -702,7 +708,6 @@ function renderLink2Diagnostics() {
   setText("link2OpenFaceJson", pretty(openfacePayload));
   setText("link2VlmTriggerJson", pretty(gatePayload));
   setText("link2VlmRuntimeJson", pretty(vlmPayload));
-  setText("workAsrText", latestText || "-");
   renderVisualDiagnostics(visual, {
     freshness: "workVisualFreshness",
     cvMetrics: "workVisualCvMetrics",
@@ -1146,7 +1151,10 @@ function bindEvents() {
     sendMotion(action);
   });
   ["workModeSystemSwitch", "workModeMicRecognitionSwitch", "workModeCameraSwitch"].forEach((id) => {
-    $(id).addEventListener("change", async () => {
+    $(id).addEventListener("change", async (event) => {
+      if (event.target.id === "workModeSystemSwitch" && $("workModeSystemSwitch").checked) {
+        $("workModeMicRecognitionSwitch").checked = true;
+      }
       const body = {
         system_enabled: $("workModeSystemSwitch").checked,
         mic_recognition_enabled: $("workModeMicRecognitionSwitch").checked,
@@ -1237,7 +1245,8 @@ function bindEvents() {
         node.checked = !start;
         toast(`失败: ${result.error || "unknown"}`);
       } else {
-        toast(start ? `${key} 常驻语音 runtime 已启动` : `${key} runtime 已停止`);
+        const oneShot = key === "link1" || key === "link3";
+        toast(start ? `${key} ${oneShot ? "单次采集" : "runtime"}已启动` : `${key} runtime 已停止`);
       }
       await refreshState();
     });

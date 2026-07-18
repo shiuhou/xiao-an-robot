@@ -94,6 +94,15 @@ class WorkModeStore:
                 state["system_enabled"] = enabled
                 state["mic_device_open"] = enabled
                 if not enabled:
+                    last = state.get("last_episode") if isinstance(state.get("last_episode"), dict) else None
+                    if last is not None and last.get("status") == "running":
+                        last = dict(last)
+                        last.update({
+                            "status": "interrupted",
+                            "ended_at": _now_iso(),
+                            "result": {"reason": "work_mode_disabled"},
+                        })
+                        state["last_episode"] = last
                     state["mic_recognition_enabled"] = False
                     state["episode_state"] = "idle"
                     state["active_chain"] = None
@@ -175,6 +184,28 @@ class WorkModeStore:
                     time.time() + self.cooldown_seconds,
                     timezone.utc,
                 ).isoformat(),
+                "last_episode": last,
+            })
+            self._write_unlocked(state)
+            return dict(state)
+
+    def interrupt_episode(self, *, reason: str) -> dict[str, Any]:
+        with self._locked():
+            state = self._read_unlocked()
+            if state.get("episode_state") != "running" or not state.get("active_run_id"):
+                return dict(state)
+            last = state.get("last_episode") if isinstance(state.get("last_episode"), dict) else {}
+            last.update({
+                "status": "interrupted",
+                "ended_at": _now_iso(),
+                "result": {"reason": reason},
+            })
+            state.update({
+                "updated_at": _now_iso(),
+                "episode_state": "idle",
+                "active_chain": None,
+                "active_run_id": None,
+                "cooldown_until": None,
                 "last_episode": last,
             })
             self._write_unlocked(state)

@@ -17,7 +17,7 @@ from agent.core.local_fast_path import LocalFastPathRouter
 from agent.core.memory import XiaoAnMemoryStore
 from agent.core.memory_recorder import MemoryRecorder
 from agent.core.event_router import openclaw_base_context_for_asr
-from agent.core.openclaw_adapter import OpenClawEvent
+from agent.core.openclaw_adapter import OpenClawDecision, OpenClawEvent
 from agent.core.openclaw_adapter_factory import build_openclaw_adapter_from_env
 from agent.core.work_mode import EpisodeLease, WorkModeStore
 from agent.skills.companion_request import CompanionRequestSkill
@@ -221,13 +221,14 @@ class XiaoAnBrain:
     async def _handle_asr_event(self, event: dict) -> dict:
         payload = event.get("payload") or {}
         text = payload.get("text")
+        requires_mic_recognition = not bool(payload.get("completed_mic_segment"))
         chain_hint = self.local_fast_path.classify_chain(text)
         if chain_hint == "link3":
             lease = self._acquire_episode(
                 chain="link3",
                 source="asr",
                 text=text,
-                requires_mic_recognition=True,
+                requires_mic_recognition=requires_mic_recognition,
             )
             if not lease.acquired:
                 return self._blocked_by_work_mode(lease)
@@ -241,6 +242,10 @@ class XiaoAnBrain:
                     robot_motion=self.robot_motion,
                 )
                 if local_result.get("handled"):
+                    local_result = await self._execute_local_fast_path_tts(
+                        local_result,
+                        source_event_type=ASR_TRANSCRIPT_EVENT,
+                    )
                     final_result = local_result
                     return local_result
                 final_status = "skipped"
@@ -265,7 +270,7 @@ class XiaoAnBrain:
                 chain="link3",
                 source="asr",
                 text=text,
-                requires_mic_recognition=True,
+                requires_mic_recognition=requires_mic_recognition,
             )
             if not lease.acquired:
                 return self._blocked_by_work_mode(lease)
@@ -288,7 +293,7 @@ class XiaoAnBrain:
             chain="link1",
             source="asr",
             text=text,
-            requires_mic_recognition=True,
+            requires_mic_recognition=requires_mic_recognition,
         )
         if not lease.acquired:
             return self._blocked_by_work_mode(lease)
@@ -302,6 +307,10 @@ class XiaoAnBrain:
                 robot_motion=self.robot_motion,
             )
             if local_result.get("handled"):
+                local_result = await self._execute_local_fast_path_tts(
+                    local_result,
+                    source_event_type=ASR_TRANSCRIPT_EVENT,
+                )
                 final_result = local_result
                 return local_result
 
@@ -384,6 +393,63 @@ class XiaoAnBrain:
             "chain": lease.chain,
             "work_mode": lease.state or {},
         }
+
+    async def _execute_local_fast_path_tts(
+        self,
+        result: dict,
+        *,
+        source_event_type: str | None = None,
+    ) -> dict:
+        if not result.get("handled"):
+            return result
+        if result.get("suppress_auto_tts"):
+            result.setdefault("tts_text", "")
+            result.setdefault("tts_source", "")
+            return result
+        if result.get("tts_text") or self._has_executed_tts(result):
+            return result
+
+        spoken_text = str(result.get("spoken_text") or "").strip()
+        reply_text = str(result.get("reply_text") or "").strip()
+        auto_tts_text = spoken_text or reply_text
+        if not auto_tts_text:
+            result.setdefault("tts_text", "")
+            result.setdefault("tts_source", "")
+            return result
+
+        decision = OpenClawDecision(
+            handled=True,
+            display_text=result.get("display_text"),
+            spoken_text=spoken_text,
+            reply_text=reply_text,
+            suppress_auto_tts=False,
+        )
+        tts_result = await self.action_executor.execute(
+            decision,
+            source_event_type=source_event_type,
+        )
+        merged = dict(result)
+        merged["executed_actions"] = [
+            *(result.get("executed_actions") or []),
+            *(tts_result.get("executed_actions") or []),
+        ]
+        merged["skipped_actions"] = [
+            *(result.get("skipped_actions") or []),
+            *(tts_result.get("skipped_actions") or []),
+        ]
+        merged["tts_text"] = tts_result.get("tts_text", "")
+        merged["tts_source"] = tts_result.get("tts_source", "")
+        if tts_result.get("tts_tool"):
+            merged["tts_tool"] = tts_result["tts_tool"]
+        return merged
+
+    @staticmethod
+    def _has_executed_tts(result: dict) -> bool:
+        for action in result.get("executed_actions") or []:
+            name = str(action.get("name") or action.get("tool") or "")
+            if name in {"robot.say", "xiaoan.robot.say", "audio.play_tts"}:
+                return True
+        return False
 
     def _rewrite_failed_reminder_for_local_fallback(
         self,

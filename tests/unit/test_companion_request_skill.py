@@ -30,14 +30,24 @@ class FakeRobotMotion:
 
 class CompanionRequestSkillTest(unittest.IsolatedAsyncioTestCase):
     async def test_tired_text_triggers_handled_true(self) -> None:
-        motion = FakeRobotMotion()
-        skill = CompanionRequestSkill(robot_motion=motion)
+        cases = [
+            ("我有点累", "fatigue_keyword"),
+            ("我太累了，想歇一下", "fatigue_keyword"),
+            ("我快撑不住了", "fatigue_keyword"),
+            ("我心情不好，陪陪我", "negative_keyword"),
+            ("我有点不开心", "negative_keyword"),
+            ("我快要崩溃了", "negative_keyword"),
+        ]
+        for text, reason in cases:
+            with self.subTest(text=text):
+                motion = FakeRobotMotion()
+                skill = CompanionRequestSkill(robot_motion=motion)
 
-        result = await skill.handle_text("我有点累")
+                result = await skill.handle_text(text)
 
-        self.assertTrue(result["handled"])
-        self.assertEqual(result["reason"], "asr_emotion_triggered")
-        self.assertEqual(result["trigger_result"]["reason"], "fatigue_keyword")
+                self.assertTrue(result["handled"])
+                self.assertEqual(result["reason"], "asr_emotion_triggered")
+                self.assertEqual(result["trigger_result"]["reason"], reason)
 
     async def test_tired_text_calls_local_pre_response_with_tts(self) -> None:
         motion = FakeRobotMotion()

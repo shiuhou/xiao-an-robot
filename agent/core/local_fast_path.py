@@ -151,7 +151,7 @@ class LocalFastPathRouter:
         reply = "收到。"
         intent = "robot_action"
         try:
-            if _has_any(normalized, ("停", "停止", "别动", "不要动", "stop")):
+            if _has_any(normalized, _ROBOT_STOP_KEYWORDS):
                 result = await _call(robot_motion.run, "stop", {})
                 actions.append(_action("motion.stop", result))
                 reply = "好，我停下。"
@@ -178,7 +178,7 @@ class LocalFastPathRouter:
                     actions.append(_action("xiaoan.robot.expression", result))
                     reply = f"好，表情换成 {expression}。"
                     intent = "set_expression"
-                elif _has_any(normalized, ("出来", "出dock", "过来", "靠近")):
+                elif _has_any(normalized, _ROBOT_MOVE_OUT_KEYWORDS):
                     result = await _call(robot_motion.move_out_of_dock, speed=1.0, distance_cm=8.0, timeout_ms=1200)
                     actions.append(_action("xiaoan.robot.move_out", result))
                     reply = "好，我出来一点。"
@@ -217,17 +217,12 @@ class LocalFastPathRouter:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         del payload
-        if _has_any(normalized, ("今天日程", "今日日程", "今天的日程", "今天安排", "今天有什么安排", "查一下今天日程", "查一下今天的日程")):
-            items = self.docs.today_schedule()
-            reply = "今天还没有明确日程。" if not items else "今天日程：" + "；".join(items[:5])
-            return self._handled("local_fast_path.link1.schedule_query", "schedule_query", reply, run_id, 0.88, [], [])
-
-        if _has_any(normalized, ("今天待办", "待办有哪些", "任务有哪些", "todo有哪些", "查待办", "查询待办", "看一下待办", "看看待办", "看待办", "待办列表", "任务列表", "todo列表")):
+        if _has_any(normalized, _TASK_QUERY_KEYWORDS):
             items = self.docs.today_tasks()
             reply = "当前没有待办。" if not items else "当前待办：" + "；".join(items[:5])
             return self._handled("local_fast_path.link1.task_query", "task_query", reply, run_id, 0.88, [], [])
 
-        if _has_any(normalized, ("完成待办", "完成任务", "办完", "已完成", "做完")):
+        if _has_any(normalized, _TASK_COMPLETE_KEYWORDS):
             title = _match_title(transcript, kind="task")
             if not title:
                 return self._miss("task_match_unclear")
@@ -244,7 +239,7 @@ class LocalFastPathRouter:
                 [write.__dict__],
             )
 
-        if _has_any(normalized, ("取消待办", "取消任务", "删除待办", "删掉待办")):
+        if _has_any(normalized, _TASK_CANCEL_KEYWORDS):
             title = _match_title(transcript, kind="task")
             if not title:
                 return self._miss("task_match_unclear")
@@ -261,7 +256,7 @@ class LocalFastPathRouter:
                 [write.__dict__],
             )
 
-        if _has_any(normalized, ("查询提醒", "查提醒", "有什么提醒", "提醒有哪些", "我的提醒")):
+        if _has_any(normalized, _REMINDER_QUERY_KEYWORDS):
             items = self.docs.pending_reminders()
             reply = "当前没有待触发提醒。" if not items else "当前提醒：" + "；".join(items[:5])
             return self._handled("local_fast_path.link1.reminder_query", "reminder_query", reply, run_id, 0.88, [], [])
@@ -335,7 +330,7 @@ class LocalFastPathRouter:
                 {"schedule": schedule},
             )
 
-        if _has_any(normalized, ("待办", "任务", "todo", "to-do")) and not _has_any(normalized, ("查询", "查", "哪些", "有什么")):
+        if _has_any(normalized, _TASK_ADD_KEYWORDS) and not _has_any(normalized, _QUERY_HINT_KEYWORDS):
             title = clean_capture_title(transcript, kind="task")
             write = self.docs.add_task(title, transcript=transcript, run_id=run_id)
             return self._handled(
@@ -422,33 +417,129 @@ def _explicit_time(parsed: dict[str, Any]) -> bool:
 
 _ROBOT_RETURN_KEYWORDS = (
     "回dock",
+    "回到dock",
+    "回去dock",
     "回去",
     "回家",
     "回窝",
     "回充电",
+    "回到充电",
     "回去充电",
+    "回充电座",
+    "回到充电座",
     "充电座",
     "充电桩",
     "充电底座",
     "底座",
     "返回基站",
     "回基站",
+    "回到基站",
+    "返回底座",
+    "回去待命",
+    "回去休息",
 )
-_ROBOT_TURN_LEFT_KEYWORDS = ("左转", "向左", "往左", "转左", "左边转")
-_ROBOT_TURN_RIGHT_KEYWORDS = ("右转", "向右", "往右", "转右", "右边转")
-_ROBOT_ACTION_HINT_KEYWORDS = (
+_ROBOT_TURN_LEFT_KEYWORDS = ("左转", "向左", "往左", "转左", "左边转", "向左转", "往左转", "转向左边", "左转一点")
+_ROBOT_TURN_RIGHT_KEYWORDS = ("右转", "向右", "往右", "转右", "右边转", "向右转", "往右转", "转向右边", "右转一点")
+_ROBOT_STOP_KEYWORDS = (
     "停",
     "停止",
+    "停一下",
+    "暂停",
     "别动",
     "不要动",
+    "别走",
+    "先停",
+    "刹车",
+    "stop",
+)
+_ROBOT_MOVE_OUT_KEYWORDS = (
     "出来",
+    "出来一下",
+    "出来一点",
+    "走出来",
     "出dock",
+    "离开dock",
+    "离开充电座",
     "过来",
+    "过来一下",
     "靠近",
+    "靠近我",
+    "到我这边",
+)
+_ROBOT_ACTION_HINT_KEYWORDS = (
+    *_ROBOT_STOP_KEYWORDS,
+    *_ROBOT_MOVE_OUT_KEYWORDS,
     *_ROBOT_RETURN_KEYWORDS,
     *_ROBOT_TURN_LEFT_KEYWORDS,
     *_ROBOT_TURN_RIGHT_KEYWORDS,
 )
+_TASK_QUERY_KEYWORDS = (
+    "今天待办",
+    "待办有哪些",
+    "任务有哪些",
+    "todo有哪些",
+    "查待办",
+    "查询待办",
+    "看一下待办",
+    "看看待办",
+    "看待办",
+    "看看任务",
+    "看一下任务",
+    "待办列表",
+    "任务列表",
+    "todo列表",
+    "我的待办",
+    "我的任务",
+    "还有什么待办",
+    "还有哪些待办",
+    "今天有什么待办",
+    "今天有什么任务",
+)
+_TASK_COMPLETE_KEYWORDS = (
+    "完成待办",
+    "完成任务",
+    "办完",
+    "已完成",
+    "做完",
+    "搞定了",
+    "标记完成",
+    "设为完成",
+    "打勾",
+    "划掉",
+)
+_TASK_CANCEL_KEYWORDS = (
+    "取消待办",
+    "取消任务",
+    "删除待办",
+    "删除任务",
+    "删掉待办",
+    "删掉任务",
+    "移除待办",
+    "移除任务",
+    "不用做了",
+)
+_REMINDER_QUERY_KEYWORDS = (
+    "查询提醒",
+    "查提醒",
+    "有什么提醒",
+    "提醒有哪些",
+    "我的提醒",
+    "看看提醒",
+    "看一下提醒",
+    "提醒列表",
+    "待触发提醒",
+    "还有什么提醒",
+    "还有哪些提醒",
+)
+_TASK_ADD_KEYWORDS = (
+    "待办",
+    "任务",
+    "todo",
+    "to-do",
+    "加个事",
+    "记个任务",
+)
+_QUERY_HINT_KEYWORDS = ("查询", "查", "看看", "看一下", "哪些", "有什么", "列表")
 
 
 def _angle_or_default(text: str) -> float:
@@ -459,23 +550,76 @@ def _angle_or_default(text: str) -> float:
 
 
 def _is_greeting(text: str) -> bool:
-    return text in {"你好", "嗨", "hi", "hello", "小安在吗", "小安你好", "小安", "在吗"} or _has_any(
+    return text in {"你好", "嗨", "hi", "hello", "小安在吗", "小安你好", "小安", "在吗", "喂小安"} or _has_any(
         text,
-        ("小安在吗", "你好小安", "小安你好", "能听到我吗", "听得到我吗", "听见我吗", "听得到吗", "你在吗", "在不在"),
+        (
+            "小安在吗",
+            "小安你在吗",
+            "小安在不在",
+            "你好小安",
+            "小安你好",
+            "能听到我吗",
+            "听得到我吗",
+            "听得见我吗",
+            "听见我吗",
+            "听得到吗",
+            "听得见吗",
+            "你在吗",
+            "在不在",
+            "在线吗",
+            "还在线吗",
+            "收到请回答",
+            "能不能听到",
+            "你醒着吗",
+        ),
     )
 
 
 def _is_breathing_guide(text: str) -> bool:
-    return _has_any(text, ("呼吸引导", "带我呼吸", "陪我呼吸", "做个呼吸", "呼吸练习", "深呼吸"))
+    return _has_any(
+        text,
+        (
+            "呼吸引导",
+            "带我呼吸",
+            "陪我呼吸",
+            "做个呼吸",
+            "呼吸练习",
+            "深呼吸",
+            "带我放松",
+            "陪我放松",
+            "放松一下",
+            "缓一缓",
+            "冷静一下",
+        ),
+    )
 
 
 def _is_robot_status_query(text: str) -> bool:
-    return _has_any(text, ("机器人状态", "你的状态", "小安状态", "电量", "有电吗", "连接状态", "在dock", "在基站", "工作状态"))
+    return _has_any(
+        text,
+        (
+            "机器人状态",
+            "你的状态",
+            "小安状态",
+            "电量",
+            "电池",
+            "剩余电量",
+            "有电吗",
+            "连接状态",
+            "连上了吗",
+            "机器人连上了吗",
+            "在线状态",
+            "在dock",
+            "在基站",
+            "在充电座",
+            "工作状态",
+        ),
+    )
 
 
 def _is_cancel_reminder(text: str) -> bool:
-    return _has_any(text, ("取消提醒", "删除提醒", "删掉提醒")) or (
-        _has_any(text, ("取消", "删除", "删掉")) and "提醒" in text
+    return _has_any(text, ("取消提醒", "删除提醒", "删掉提醒", "关掉提醒", "取消闹钟", "删除闹钟", "关掉闹钟")) or (
+        _has_any(text, ("取消", "删除", "删掉", "关掉", "不用")) and _has_any(text, ("提醒", "闹钟"))
     )
 
 
@@ -493,6 +637,11 @@ def _looks_like_reminder_add(text: str) -> bool:
         text,
         (
             "提醒",
+            "提醒我",
+            "帮我提醒",
+            "记得提醒",
+            "设个提醒",
+            "设置提醒",
             "待会",
             "等会",
             "过会",
@@ -503,17 +652,41 @@ def _looks_like_reminder_add(text: str) -> bool:
             "之后",
             "以后",
             "闹钟",
+            "设个闹钟",
+            "定个闹钟",
+            "设置闹钟",
             "到点",
+            "到时候",
+            "到时",
             "叫我",
             "喊我",
+            "叫一下我",
+            "喊一下我",
+            "叫醒我",
             "通知我",
         ),
     )
 
 
 def _looks_like_schedule_add(text: str) -> bool:
-    return _has_any(text, ("日程", "日历", "行程", "schedule", "calendar")) or (
-        _has_any(text, ("安排", "会议", "开会")) and _explicit_time(_parse_due_at(text))
+    return _has_any(
+        text,
+        (
+            "加入日程",
+            "加到日程",
+            "添加日程",
+            "新增日程",
+            "记到日程",
+            "放进日程",
+            "写进日程",
+            "日程里",
+            "日历",
+            "行程",
+            "schedule",
+            "calendar",
+        ),
+    ) or (
+        _has_any(text, ("安排", "会议", "开会", "约个会", "排个会")) and _explicit_time(_parse_due_at(text))
     )
 
 
@@ -550,6 +723,13 @@ def _match_title(text: str, *, kind: str) -> str:
         "已完成",
         "做完",
         "办完",
+        "搞定了",
+        "标记完成",
+        "设为完成",
+        "打勾",
+        "划掉",
+        "移除",
+        "不用做了",
     ):
         value = value.replace(token, "")
     return value.strip(" ，。,.：:;；")

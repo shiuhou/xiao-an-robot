@@ -58,18 +58,18 @@
     },
     {
       "id": "WM-L1-05",
-      "category": "link1_local_schedule",
+      "category": "link1_openclaw_schedule",
       "phrase": "查询今日日程",
-      "expected_owner": "local",
-      "expected_route": "local_fast_path.link1.schedule_query",
+      "expected_owner": "openclaw",
+      "expected_route": "link_1_openclaw",
       "expect_tts": true
     },
     {
       "id": "WM-L1-05B",
-      "category": "link1_local_schedule",
+      "category": "link1_openclaw_schedule",
       "phrase": "小安帮我查一下今天的日程",
-      "expected_owner": "local",
-      "expected_route": "local_fast_path.link1.schedule_query",
+      "expected_owner": "openclaw",
+      "expected_route": "link_1_openclaw",
       "expect_tts": true
     },
     {

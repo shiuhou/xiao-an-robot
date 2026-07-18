@@ -55,7 +55,7 @@ python3 -m base_station.integration_console.console_server --host 0.0.0.0 --port
 | WM-L1-02 | 看一下待办 | `local_fast_path.link1.task_query` | 回复列出刚才的待办 |
 | WM-L1-03 | 完成待办测试桌面助手验收 | `local_fast_path.link1.task_complete` | `TASKS.md` 对应项变成 `[x]` |
 | WM-L1-04 | 今天晚上十一点新增日程，检查桌面助手验收 | `local_fast_path.link1.schedule_add` | `SCHEDULE.md` 写入日程 |
-| WM-L1-05 | 查询今日日程 | `local_fast_path.link1.schedule_query` | 回复包含刚才的日程 |
+| WM-L1-05 | 查询今日日程 | `link_1_openclaw` | OpenClaw 使用 `SCHEDULE.md` 上下文回复刚才的日程 |
 | WM-L1-06 | 十分钟后提醒我喝水 | `local_fast_path.link1.reminder_add` | `SCHEDULE.md` 和 `local_reminders.json` 都有记录 |
 | WM-L1-07 | 查询提醒 | `local_fast_path.link1.reminder_query` | 回复包含喝水提醒 |
 | WM-L1-08 | 取消喝水提醒 | `local_fast_path.link1.reminder_cancel` | `local_reminders.json` 对应项为 cancelled |

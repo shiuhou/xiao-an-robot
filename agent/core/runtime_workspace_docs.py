@@ -309,11 +309,11 @@ class RuntimeWorkspaceDocs:
         return items
 
     def _dashboard_schedules(self, *, now: datetime | None = None, limit: int = 8) -> list[dict[str, Any]]:
-        today = _now(now).date().isoformat()
+        del now
         items: list[dict[str, Any]] = []
         for line in _read_text(self.schedule_path).splitlines():
             parsed = _parse_schedule_item_line(line)
-            if parsed is None or parsed["date"] != today:
+            if parsed is None:
                 continue
             if parsed.get("type") == "reminder":
                 continue
@@ -432,9 +432,12 @@ def clean_capture_title(text: str, *, kind: str) -> str:
     value = str(text or "").strip()
     value = re.sub(r"^\s*(小安[，,\s]*)+", "", value)
     replacements = [
-        "帮我", "请", "把", "加个", "新增", "添加", "加入todo list", "加入待办", "加到待办",
+        "帮我", "请", "把", "加个", "记个", "新增", "添加", "加入todo list", "加入待办", "加到待办",
         "添加待办", "待办", "任务", "加入日程", "加到日程", "添加日程",
-        "日程", "提醒我", "提醒", "叫我一下", "叫我", "喊我", "通知我", "记得",
+        "新增日程", "记到日程", "放进日程", "写进日程", "日程",
+        "提醒我", "帮我提醒", "设个提醒", "设置提醒", "提醒",
+        "设个闹钟", "定个闹钟", "设置闹钟", "闹钟",
+        "叫我一下", "叫一下我", "叫我", "喊我", "喊一下我", "通知我", "记得",
         "创建", "记录", "安排",
     ]
     for token in replacements:

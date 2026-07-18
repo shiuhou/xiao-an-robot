@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 import tempfile
 import json
+from datetime import datetime
 from pathlib import Path
 
 from agent.core.brain import XiaoAnBrain
@@ -255,12 +256,14 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 ("完成待办测试总工作模式", "local_fast_path.link1.task_complete"),
                 ("小安，帮我加个待办，取消用例", "local_fast_path.link1.task_add"),
                 ("取消待办取消用例", "local_fast_path.link1.task_cancel"),
+                ("记个任务扩展关键词", "local_fast_path.link1.task_add"),
+                ("标记完成扩展关键词", "local_fast_path.link1.task_complete"),
+                ("记个任务移除关键词", "local_fast_path.link1.task_add"),
+                ("移除待办移除关键词", "local_fast_path.link1.task_cancel"),
                 ("今天晚上十一点新增日程，检查总工作模式", "local_fast_path.link1.schedule_add"),
-                ("查询今日日程", "local_fast_path.link1.schedule_query"),
                 ("十分钟后提醒我喝水", "local_fast_path.link1.reminder_add"),
                 ("查询提醒", "local_fast_path.link1.reminder_query"),
                 ("取消喝水提醒", "local_fast_path.link1.reminder_cancel"),
-                ("小安帮我查一下今天的日程", "local_fast_path.link1.schedule_query"),
             ]
             routes = []
             for text, _route in cases:
@@ -282,10 +285,52 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("检查总工作模式", schedule_text)
         self.assertIn("scheduler: local", schedule_text)
         self.assertEqual(reminders["items"][0]["status"], "cancelled")
-        self.assertEqual(dashboard["local_fast_path"]["last_route"], "local_fast_path.link1.schedule_query")
+        self.assertEqual(dashboard["local_fast_path"]["last_route"], "local_fast_path.link1.reminder_cancel")
         self.assertTrue(any(item["title"] == "检查总工作模式" for item in dashboard["schedules"]))
         self.assertTrue(any(item["title"] == "喝水" for item in dashboard["reminders"]))
         self.assertTrue(any(item["title"] == "测试总工作模式" for item in dashboard["todos"]))
+
+    async def test_asr_schedule_query_goes_to_openclaw_with_runtime_schedule_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            workspace = root / "workspace-xiaoan-runtime"
+            docs = RuntimeWorkspaceDocs(workspace)
+            today = datetime.now().date().isoformat()
+            docs.add_schedule(
+                "写作业",
+                transcript="把晚上11点写作业加入日程",
+                run_id="seed-schedule",
+                due_at=f"{today}T23:00:00+08:00",
+            )
+            gateway = FakeGateway()
+            openclaw_adapter = FakeOpenClawAdapter(
+                OpenClawDecision(
+                    handled=True,
+                    display_text="今天晚上十一点写作业。",
+                    spoken_text="今天晚上十一点写作业。",
+                    reply_text="今天晚上十一点写作业。",
+                )
+            )
+            brain = XiaoAnBrain(
+                gateway=gateway,
+                memory=FakeMemory(),
+                openclaw_adapter=openclaw_adapter,
+                local_fast_path=LocalFastPathRouter(docs),
+                work_mode_store=WorkModeStore(root / "work_mode.json", cooldown_seconds=0),
+            )
+
+            result = await brain.handle_event({
+                "type": "asr.transcript",
+                "payload": {"text": "小安帮我查一下今天的日程"},
+            })
+
+        self.assertEqual(result["route"], "link_1_openclaw")
+        self.assertEqual(len(openclaw_adapter.events), 1)
+        context = openclaw_adapter.events[0].context
+        self.assertEqual(context["local_fast_path"]["reason"], "no_fast_path_match")
+        self.assertIn("runtime_workspace", context)
+        self.assertTrue(any("写作业" in item for item in context["runtime_workspace"]["today_schedule"]))
+        self.assertEqual(gateway.calls[-1], ("tts", "今天晚上十一点写作业。"))
 
     async def test_asr_link1_natural_work_phrases_stay_on_local_fast_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -302,12 +347,14 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
             cases = [
                 ("看一下待办", "local_fast_path.link1.task_query"),
-                ("小安帮我查一下今天的日程", "local_fast_path.link1.schedule_query"),
+                ("我的任务", "local_fast_path.link1.task_query"),
                 ("小安小安十分钟之后提醒我喝水", "local_fast_path.link1.reminder_add"),
+                ("设个闹钟十分钟后喝水", "local_fast_path.link1.reminder_add"),
                 ("十分钟以后叫我喝水", "local_fast_path.link1.reminder_add"),
                 ("过十分钟叫我喝水", "local_fast_path.link1.reminder_add"),
                 ("下午三点叫我开会", "local_fast_path.link1.reminder_add"),
                 ("明天下午三点安排开会", "local_fast_path.link1.schedule_add"),
+                ("把明天下午三点开会加到日程", "local_fast_path.link1.schedule_add"),
             ]
             routes = []
             for text, _route in cases:
@@ -322,7 +369,7 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(routes, [route for _text, route in cases])
         self.assertEqual(openclaw_adapter.events, [])
-        self.assertEqual([item["title"] for item in reminders["items"]], ["喝水", "喝水", "喝水", "开会"])
+        self.assertEqual([item["title"] for item in reminders["items"]], ["喝水", "喝水", "喝水", "喝水", "开会"])
         self.assertIn("开会", schedule_text)
 
     async def test_asr_link3_local_fast_path_covers_robot_commands_without_openclaw(self) -> None:
@@ -381,10 +428,19 @@ class XiaoAnBrainASREventTest(unittest.IsolatedAsyncioTestCase):
                 ("小安小安你能听到我吗", "local_fast_path.link3.greeting"),
                 ("小安，你能听到我吗", "local_fast_path.link3.greeting"),
                 ("能听到我吗", "local_fast_path.link3.greeting"),
+                ("小安你醒着吗", "local_fast_path.link3.greeting"),
+                ("陪我放松一下", "local_fast_path.link3.breathing_guide"),
+                ("机器人连上了吗", "local_fast_path.link3.robot_status"),
+                ("停一下", "local_fast_path.link3.stop_motion"),
+                ("靠近我", "local_fast_path.link3.move_out"),
                 ("回到充电座", "local_fast_path.link3.return_to_dock"),
+                ("回去待命", "local_fast_path.link3.return_to_dock"),
                 ("转左边", "local_fast_path.link3.turn_left"),
+                ("往左转一点", "local_fast_path.link3.turn_left"),
                 ("转右边", "local_fast_path.link3.turn_right"),
+                ("往右转一点", "local_fast_path.link3.turn_right"),
                 ("开心一点", "local_fast_path.link3.set_expression"),
+                ("睡觉表情", "local_fast_path.link3.set_expression"),
             ]
             routes = []
             for text, _route in cases:

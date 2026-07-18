@@ -30,6 +30,18 @@ from base_station.integration_console.fast_demo_brain import parse_reminder_due_
 SUPPORTED_EMOTION_EVENTS = {"emotion.sample", "emotion.alert"}
 ASR_TRANSCRIPT_EVENT = "asr.transcript"
 FRONTEND_MESSAGE_EVENT = "frontend.message"
+RUNTIME_WORKSPACE_CONTEXT_KEYWORDS = (
+    "日程",
+    "日历",
+    "行程",
+    "安排",
+    "待办",
+    "任务",
+    "todo",
+    "to-do",
+    "提醒",
+    "闹钟",
+)
 
 
 class XiaoAnBrain:
@@ -620,7 +632,7 @@ class XiaoAnBrain:
         source: str,
     ) -> dict:
         try:
-            return self.context_builder.build_for_text(
+            context = self.context_builder.build_for_text(
                 text,
                 base_context=base_context,
                 event_type=event_type,
@@ -632,7 +644,37 @@ class XiaoAnBrain:
                 "scope": "context_builder",
                 "error": str(exc),
             })
-            return context
+        self._inject_runtime_workspace_context(context, text)
+        return context
+
+    def _inject_runtime_workspace_context(self, context: dict, text: str | None) -> None:
+        normalized = str(text or "").replace(" ", "").lower()
+        if not any(keyword in normalized for keyword in RUNTIME_WORKSPACE_CONTEXT_KEYWORDS):
+            return
+
+        docs = getattr(self.local_fast_path, "docs", None)
+        if docs is None:
+            return
+
+        try:
+            context["runtime_workspace"] = {
+                "usage_hint": (
+                    "For schedule/task/reminder questions, use this workspace "
+                    "snapshot before saying context is missing."
+                ),
+                "workspace": str(docs.workspace),
+                "schedule_path": str(docs.schedule_path),
+                "tasks_path": str(docs.tasks_path),
+                "local_reminders_path": str(docs.local_reminders_path),
+                "today_schedule": docs.today_schedule(limit=8),
+                "today_tasks": docs.today_tasks(limit=8),
+                "pending_reminders": docs.pending_reminders(limit=8),
+            }
+        except Exception as exc:
+            context.setdefault("context_errors", []).append({
+                "scope": "runtime_workspace",
+                "error": str(exc),
+            })
 
     def _record_companion_request(self, payload: dict, companion_result: dict) -> None:
         recorder = getattr(self, "memory_recorder", None)

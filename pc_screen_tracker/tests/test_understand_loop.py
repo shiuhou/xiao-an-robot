@@ -15,6 +15,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
@@ -122,6 +123,44 @@ class UnderstandLoopTest(unittest.TestCase):
         self.assertEqual(stats["posted"], 0)
         # cursor did NOT advance to the tail; it rewinds to retry the first closed seg
         self.assertLess(self._cursor(), self.base + 80_000 - 1)
+
+    def test_http_error_is_dropped_not_stuck(self) -> None:
+        # (a) a board 4xx must not silently vanish AND must not poison the cursor
+        self._patch_post(lambda n: {"posted": False, "reason": "http_error", "status": 400})
+        loop = UnderstandLoop(_cfg(self.db))
+
+        stats = loop.run_cycle(now_ms=self.now)
+
+        self.assertEqual(stats["posted"], 0)
+        self.assertEqual(stats["dropped"], 2)          # both closed segs 400'd
+        self.assertFalse(stats["unreachable"])
+        self.assertEqual(self._cursor(), self.base + 80_000 - 1)  # advanced, not stuck
+
+    def test_already_delivered_segment_skips_ingest(self) -> None:
+        # (b) a segment already in the ledger must be skipped BEFORE ingest,
+        # so no second Qwen call is made for it.
+        from tracker.segmenter import segment_frames
+        store = Store(self.db)
+        try:
+            first_closed = segment_frames(store.query_frames(0))[0]
+        finally:
+            store.close()
+
+        loop = UnderstandLoop(_cfg(self.db))
+        loop.ledger.mark(SimpleNamespace(
+            timestamp_ms=first_closed.start_ms, source="screen",
+            app_name=first_closed.app, window_title=first_closed.title))
+
+        ingested: list[str] = []
+        real_ingest = loop.understander.ingest
+        loop.understander.ingest = lambda seg: (ingested.append(seg.app) or real_ingest(seg))
+
+        self._patch_post(lambda n: {"posted": True})
+        stats = loop.run_cycle(now_ms=self.now)
+
+        self.assertNotIn(first_closed.app, ingested)    # pre-delivered -> not re-ingested
+        self.assertIn("msedge.exe", ingested)           # the other closed seg still runs
+        self.assertGreaterEqual(stats["skipped"], 1)
 
     def test_disabled_without_board_url(self) -> None:
         cfg = _cfg(self.db)

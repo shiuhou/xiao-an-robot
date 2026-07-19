@@ -27,6 +27,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from tracker.bridge import DeliveryLedger, post_note
 from tracker.config import Config
@@ -84,7 +85,7 @@ class UnderstandLoop:
         while not self._stop.wait(interval):
             try:
                 stats = self.run_cycle()
-                if stats.get("posted"):
+                if stats.get("posted") or stats.get("dropped") or stats.get("unreachable"):
                     print(f"[understand] cycle -> {stats}")
             except Exception as exc:  # noqa: BLE001 — a bad cycle must not kill the thread
                 print(f"[understand] cycle error: {exc}")
@@ -128,18 +129,37 @@ class UnderstandLoop:
                     "posted": 0, "skipped": 0}
 
         closed, held = segments[:-1], segments[-1]
-        posted = skipped = 0
+        posted = skipped = dropped = 0
         first_failed = None
         for seg in closed:
+            # (b) skip segments already delivered BEFORE ingesting, so a restart /
+            # replay / cursor reset that re-reads delivered frames doesn't pay for
+            # a second Qwen call. The probe mirrors bridge.note_fingerprint's fields
+            # (timestamp_ms | source | app_name | window_title) for the note this
+            # segment will become.
+            probe = SimpleNamespace(timestamp_ms=seg.start_ms, source="screen",
+                                    app_name=seg.app, window_title=seg.title)
+            if self.ledger.seen(probe):
+                skipped += 1
+                continue
             note = self.understander.ingest(seg)
             result = post_note(note, self.cfg.board_base_url, ledger=self.ledger)
+            reason = result.get("reason")
             if result.get("posted"):
                 posted += 1
-            elif result.get("reason") in ("already_delivered", "sensitive_not_transported"):
+            elif reason in ("already_delivered", "sensitive_not_transported"):
                 skipped += 1
-            elif result.get("reason") == "unreachable":
+            elif reason == "unreachable":
                 first_failed = seg
                 break
+            else:
+                # (a) http_error etc.: a board 4xx (e.g. missing_app_name for an
+                # empty-app segment) is a permanently-undeliverable note — dropping
+                # it and advancing is correct (retrying a 4xx would poison the
+                # cursor), but surface it instead of failing silently.
+                dropped += 1
+                print(f"[understand] dropped seg ts={seg.start_ms} "
+                      f"app={seg.app!r}: {result}")
 
         # persist ledger + task state BEFORE moving the cursor (crash-safe).
         self.understander.state.save(self._task_state_path)
@@ -153,5 +173,5 @@ class UnderstandLoop:
             self._save_cursor(held.start_ms - 1)
 
         return {"frames": len(frames), "segments": len(segments),
-                "posted": posted, "skipped": skipped,
+                "posted": posted, "skipped": skipped, "dropped": dropped,
                 "unreachable": first_failed is not None}

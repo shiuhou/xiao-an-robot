@@ -10,7 +10,7 @@ tasks, reports, or natural-language replies; OpenClaw owns those domains.
 | --- | --- | --- |
 | Robot demo skills | `robot_motion.py`, `emotion_monitor.py`, `companion_request.py` | Current local bridge for expression/motion/TTS-like commands, emotion-triggered care, and companion requests. |
 | Compatibility skills | `breathing_guide.py`, `calendar.py`, `daily_report.py`, `habit_tracker.py`, `morning_brief.py` | Kept for old local skill compatibility and tests. Do not expand these as product owners without an OpenClaw decision. |
-| Deprecated | `screen_report.py` | Screen monitoring has exited the current MVP. Kept only for historical compatibility. |
+| Robot demo skills | `screen_report.py` | Voice-triggered ("汇总屏幕使用…") screen usage report: assembles Markdown from the PC-pushed usage summary cache + today's work_activities, then the brain pushes it to OpenClaw to create a Feishu doc. |
 
 ## Rules
 
@@ -18,8 +18,6 @@ tasks, reports, or natural-language replies; OpenClaw owns those domains.
   command paths.
 - Keep calendar/habit/report behavior in OpenClaw-facing flows rather than
   growing local state here.
-- Do not extend `screen_report.py` unless screen monitoring is explicitly
-  brought back into scope.
 - When adding a new skill, add tests and document whether it is a current demo
   skill, compatibility shim, or deprecated surface.
 

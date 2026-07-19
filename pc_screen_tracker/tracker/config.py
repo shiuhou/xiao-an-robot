@@ -4,6 +4,12 @@ Privacy tiers (choose via config.json -> "privacy_level"):
   L0  only app name + derived category (no window title, no url)
   L1  + window title + browser domain (no full url path)   <-- default
   L2  + full browser url + focused text preview
+
+The `samples` (stats) table always honours the tier above. When
+`understand_enabled` is on, the separate local `frames` table additionally
+captures body text at any tier so the Qwen gist can be specific — an explicit
+opt-in that overrides the tier's "no text preview" default. Blocklist apps and
+sensitive/IM surfaces are still never read, at every tier.
 """
 from __future__ import annotations
 
@@ -39,11 +45,20 @@ class Config:
     # OpenAI-compatible DashScope endpoint. Beijing default; international site is
     # https://dashscope-intl.aliyuncs.com/compatible-mode/v1
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    # wire the understanding layer into live `track`: capture body-text frames and
+    # run the segment->understand->post loop. Off by default => `track` stays a
+    # pure stats collector (no extra UIA cost, no frames stored, nothing posted).
+    understand_enabled: bool = False
+    # how often the background understand loop runs a cycle (seconds).
+    understand_interval_sec: float = 900.0
 
     # --- 衔接层 (§衔接, phase 2): board ingest endpoint ---
     # base URL of the Intel board's local API, e.g. "http://10.7.146.x:PORT".
     # Empty => transport disabled (notes stay on the PC).
     board_base_url: str = ""
+    # how often `track` pushes a usage summary to the board (voice screen report
+    # cache). Only active when board_base_url is set.
+    summary_push_interval_sec: float = 1800.0
 
     @classmethod
     def load(cls) -> "Config":

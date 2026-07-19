@@ -565,6 +565,47 @@ class ApiRuntime:
             "work_activity_id": result.get("work_activity_id"),
         }
 
+    def ingest_screen_usage_summary(
+        self,
+        payload: dict[str, Any],
+        session_id: str = "default",
+    ) -> dict[str, Any]:
+        """Cache the PC's periodic screen-usage aggregate (PC push -> Local Event
+        Store). Stored as one memory_events row per push; readers only ever use
+        the latest one. Like work-activity ingest, this never dispatches into the
+        response pipeline."""
+        active_payload = dict(payload or {})
+        raw_ts = active_payload.get("generated_at_ms")
+        try:
+            timestamp_ms = int(raw_ts) if raw_ts is not None else None
+        except (TypeError, ValueError):
+            timestamp_ms = None
+        with self._operation_lock:
+            event_id = self.memory_store.insert_event(
+                event_type="screen.usage_summary",
+                source=str(active_payload.get("source") or "screen"),
+                text="screen usage summary",
+                payload=active_payload,
+                timestamp_ms=timestamp_ms,
+                session_id=session_id,
+            )
+        return {"event_id": event_id}
+
+    def latest_screen_usage_summary(self) -> dict[str, Any]:
+        with self._operation_lock:
+            events = self.memory_store.query_recent_events(
+                limit=1,
+                event_type="screen.usage_summary",
+            )
+        if not events:
+            return {"summary": None}
+        event = events[0]
+        return {
+            "summary": event.get("payload") or {},
+            "event_id": event.get("id"),
+            "timestamp_ms": event.get("timestamp_ms"),
+        }
+
     def query_summaries(
         self,
         summary_type: str | None = None,

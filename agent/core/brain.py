@@ -23,6 +23,7 @@ from agent.core.work_mode import EpisodeLease, WorkModeStore
 from agent.skills.companion_request import CompanionRequestSkill
 from agent.skills.emotion_monitor import EmotionMonitorSkill
 from agent.skills.robot_motion import RobotMotionSkill
+from agent.skills.screen_report import ScreenReportSkill
 from base_station.monitor.emotion_db import EmotionDB
 from base_station.integration_console.fast_demo_brain import parse_reminder_due_at
 
@@ -84,6 +85,7 @@ class XiaoAnBrain:
         self.companion_request = CompanionRequestSkill(
             robot_motion=self.robot_motion,
         )
+        self.screen_report = ScreenReportSkill(memory_store=self.context_memory)
         self.openclaw_adapter = (
             openclaw_adapter
             if openclaw_adapter is not None
@@ -267,6 +269,26 @@ class XiaoAnBrain:
             finally:
                 self._release_episode(lease, status=final_status, result=final_result)
 
+        if ScreenReportSkill.matches(text):
+            lease = self._acquire_episode(
+                chain="link1",
+                source="asr",
+                text=text,
+                requires_mic_recognition=True,
+            )
+            if not lease.acquired:
+                return self._blocked_by_work_mode(lease)
+            final_result = None
+            final_status = "completed"
+            try:
+                final_result = await self._handle_screen_report(payload=payload, text=text)
+                return final_result
+            except Exception:
+                final_status = "failed"
+                raise
+            finally:
+                self._release_episode(lease, status=final_status, result=final_result)
+
         companion_disabled = bool(payload.get("disable_companion_fast_path"))
         companion_result = (
             {
@@ -357,6 +379,56 @@ class XiaoAnBrain:
             raise
         finally:
             self._release_episode(lease, status=final_status, result=final_result)
+
+    async def _handle_screen_report(self, *, payload: dict, text: str | None) -> dict:
+        """Push-mode screen usage report: the skill prepares the full Markdown
+        locally; OpenClaw is only asked to create a new Feishu doc and write it."""
+        report = self.screen_report.build_report()
+        instruction = (
+            f"请在飞书新建一篇文档，标题《{report['title']}》，"
+            "把 context.screen_report.markdown 的内容原样写入正文，"
+            "并在正文开头补一句话总结今天的屏幕使用情况。"
+            "完成后用一句话告知结果；不要自行去飞书查找或改写其他资料。"
+        )
+        openclaw_context = {
+            "payload": {
+                "text": text or "",
+                "session_id": payload.get("session_id", "default"),
+            },
+            "route_hint": {
+                "kind": "screen_report",
+                "tool_profile": "default",
+                "intent_hint": "screen_report",
+            },
+            "tool_profile": "default",
+            "intent_hint": "screen_report",
+            "screen_report": {
+                "title": report["title"],
+                "markdown": report["markdown"],
+                "has_usage": report["has_usage"],
+                "activity_count": report["activity_count"],
+            },
+        }
+        openclaw_event = OpenClawEvent(
+            type="screen.report",
+            text=instruction,
+            source="asr",
+            session_id=payload.get("session_id", "default"),
+            context=openclaw_context,
+        )
+        decision = self.openclaw_adapter.handle_event(openclaw_event)
+        execution_result = await self.action_executor.execute(
+            decision,
+            source_event_type="screen.report",
+        )
+        execution_result["route"] = "link_1_screen_report"
+        execution_result["reason"] = "screen_report_push"
+        execution_result["screen_report"] = {
+            "title": report["title"],
+            "has_usage": report["has_usage"],
+            "activity_count": report["activity_count"],
+        }
+        return execution_result
 
     def _acquire_episode(
         self,

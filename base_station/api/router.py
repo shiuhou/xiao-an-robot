@@ -58,6 +58,9 @@ class ApiRouter:
                 limit=self._query_limit(query, default=20),
             ))
 
+        if active_method == "GET" and active_path == "/api/screen-usage-summary":
+            return success(self.runtime.latest_screen_usage_summary())
+
         if active_method == "GET" and active_path == "/api/summaries":
             return success(self.runtime.query_summaries(
                 summary_type=self._query_value(query, "summary_type"),
@@ -352,6 +355,34 @@ class ApiRouter:
             session_id = self._session_id(active_body)
             return success(self.runtime.ingest_work_activity(
                 arguments=arguments,
+                session_id=session_id,
+            ))
+
+        if active_method == "POST" and active_path == "/api/screen-usage-summary":
+            active_body = body_json if isinstance(body_json, dict) else None
+            if active_body is None:
+                return error(
+                    code="invalid_body",
+                    message="body must be a JSON object",
+                    status=400,
+                )
+            for num_field in ("generated_at_ms", "active_seconds", "away_seconds"):
+                value = active_body.get(num_field)
+                if (
+                    value is not None
+                    and (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                    )
+                ):
+                    return error(
+                        code=f"invalid_{num_field}",
+                        message=f"{num_field} must be a number",
+                        status=400,
+                    )
+            session_id = self._session_id(active_body)
+            return success(self.runtime.ingest_screen_usage_summary(
+                payload=active_body,
                 session_id=session_id,
             ))
 
